@@ -1,0 +1,35 @@
+#!/bin/bash
+# swift test for the vendored FinanceCore package, with full output on disk.
+# Runs the real command. Filters output only.
+set -uo pipefail
+cd "$(dirname "$0")/.."
+REPO_NAME=finance-app
+. Scripts/lib.sh
+# XCTest ships with Xcode, not with CommandLineTools, so `swift test` needs the
+# same toolchain selection the xcodebuild wrappers use.
+. Scripts/xcode-env.sh
+
+LOG="$(log_path test-core)"
+echo "COMMAND   cd Packages/FinanceCore && xcrun swift test"
+
+( cd Packages/FinanceCore && xcrun swift test 2>&1 ) > "$LOG"
+RC=$?
+
+swift_test_counts "$LOG"
+WARNINGS=$(grep -cE "^.*: warning: " "$LOG" | head -1); WARNINGS=${WARNINGS:-0}
+
+echo "STATUS    $([ "$RC" -eq 0 ] && echo PASS || echo FAIL)"
+report_test_counts
+[ "$WARNINGS" -gt 0 ] && echo "WARNINGS  $WARNINGS compiler warning(s)"
+
+if [ "$RC" -ne 0 ]; then
+    echo
+    echo "--- failures (deduplicated) ---"
+    grep -nE "error: |✘|failed after|XCTAssert|Test .* recorded an issue" "$LOG" \
+        | awk -F': ' '{msg=$0; sub(/^[0-9]+:/, "", msg); if (!seen[msg]++) print}' \
+        | head -20
+fi
+
+echo "FULL LOG  $LOG"
+prune_logs
+exit $RC

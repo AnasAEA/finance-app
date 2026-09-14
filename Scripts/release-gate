@@ -1,0 +1,29 @@
+#!/bin/bash
+# The Release security gate: builds Release and proves no development fixture
+# or provider-only identifier reached the produced bundle.
+#
+# This delegates to the repository's own Scripts/verify-release-bundle.sh —
+# the real gate, unchanged. This wrapper only shortens its output.
+set -uo pipefail
+cd "$(dirname "$0")/.."
+REPO_NAME=finance-app
+. Scripts/lib.sh
+. Scripts/xcode-env.sh
+
+LOG="$(log_path release-gate)"
+echo "COMMAND   Scripts/verify-release-bundle.sh $*"
+
+Scripts/verify-release-bundle.sh "$@" > "$LOG" 2>&1
+RC=$?
+
+echo "STATUS    $([ "$RC" -eq 0 ] && echo PASS || echo FAIL)"
+echo "VERDICTS"
+grep -E "^(PASS|FAIL|OK|WARN)" "$LOG" | head -15 | sed 's/^/          /'
+if [ "$RC" -ne 0 ]; then
+    echo
+    echo "--- failure detail ---"
+    grep -nE "FAIL|error: " "$LOG" | head -20
+fi
+echo "FULL LOG  $LOG   ($(wc -l < "$LOG" | tr -d ' ') lines)"
+prune_logs
+exit $RC

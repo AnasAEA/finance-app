@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  The two keys that make the app's Documents directory a place a person can
+  reach, so an exported finance file can be put there and picked from the
+  normal Files browser instead of having to arrive through a share sheet.
+
+  They live in a file rather than as INFOPLIST_KEY_* build settings because
+  UIFileSharingEnabled is not one of the keys Xcode's generated-plist mechanism
+  can express: setting INFOPLIST_KEY_UIFileSharingEnabled builds cleanly and
+  emits nothing, which is the worst kind of "working". The rest of the target's
+  Info.plist keys are still generated and merged into this file.
+
+  Both are needed together. LSSupportsOpeningDocumentsInPlace alone lets the app
+  open a document where it lies; UIFileSharingEnabled is what actually puts the
+  container in "On My iPhone".
+-->
+<plist version="1.0">
+<dict>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<true/>
+	<key>UIFileSharingEnabled</key>
+	<true/>
+	<!--
+	  The private sync service.
+
+	  It is a URL, not a credential: the service authenticates callers by
+	  device signature, so knowing the address grants nothing. It lives here
+	  rather than in a Swift literal because a build pointed at the wrong host
+	  should be a visibly wrong configuration file, not a line of code nobody
+	  re-reads. Substituted from the BANK_SYNC_BASE_URL build setting so a
+	  different deployment does not need a source edit.
+
+	  HTTPS only; BankSyncConfiguration refuses anything else before a signed
+	  request — and the signature with it — could go over a readable link.
+	-->
+	<key>BankSyncBaseURL</key>
+	<string>$(BANK_SYNC_BASE_URL)</string>
+</dict>
+</plist>

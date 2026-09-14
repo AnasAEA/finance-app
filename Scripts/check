@@ -1,0 +1,13 @@
+#!/bin/bash
+# Quick gate for ordinary edits: FinanceCore tests plus a Debug build.
+# It is deliberately not the full app suite — use Scripts/test-app for
+# that, and Scripts/release-gate before shipping.
+set -uo pipefail
+cd "$(dirname "$0")/.."
+RC=0
+Scripts/test-core || RC=1
+echo
+Scripts/build-debug || RC=1
+echo
+echo "OVERALL   $([ "$RC" -eq 0 ] && echo PASS || echo FAIL)"
+exit $RC

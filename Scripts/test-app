@@ -1,0 +1,36 @@
+#!/bin/bash
+# xcodebuild test for the app + integration suites. The full xcodebuild log is
+# enormous and is kept on disk in full; only the verdict reaches the terminal.
+#
+# Destination: FINANCE_APP_DESTINATION (default an iPhone simulator). No
+# device UDID or team id is committed here.
+set -uo pipefail
+cd "$(dirname "$0")/.."
+REPO_NAME=finance-app
+. Scripts/lib.sh
+. Scripts/xcode-env.sh
+
+LOG="$(log_path test-app)"
+echo "COMMAND   xcodebuild -scheme FinanceApp -destination '$APP_DESTINATION' test"
+
+xcodebuild -project FinanceApp.xcodeproj -scheme FinanceApp \
+    -destination "$APP_DESTINATION" test > "$LOG" 2>&1
+RC=$?
+
+swift_test_counts "$LOG"
+WARNINGS=$(grep -cE ": warning: " "$LOG" | head -1); WARNINGS=${WARNINGS:-0}
+
+echo "STATUS    $([ "$RC" -eq 0 ] && echo PASS || echo FAIL)"
+report_test_counts
+[ "$WARNINGS" -gt 0 ] && echo "WARNINGS  $WARNINGS compiler warning(s)"
+
+if [ "$RC" -ne 0 ]; then
+    echo
+    echo "--- first failures ---"
+    grep -nE ": error: |failed - |XCTAssert.*failed|\*\* TEST FAILED \*\*|Testing failed:" "$LOG" \
+        | head -25
+fi
+
+echo "FULL LOG  $LOG   ($(wc -l < "$LOG" | tr -d ' ') lines)"
+prune_logs
+exit $RC

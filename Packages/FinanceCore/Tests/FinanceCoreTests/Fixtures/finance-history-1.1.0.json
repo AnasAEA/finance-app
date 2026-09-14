@@ -1,0 +1,228 @@
+{
+  "archiveID" : "synthetic-history-110",
+  "contentSHA256" : "81674add652d0c7f9a1f6067e75a28eb487ff47de05abd59c3ec23b0116d1734",
+  "documentKind" : "finance-history-archive",
+  "payload" : {
+    "accounts" : [
+      {
+        "id" : "acct-alpha",
+        "name" : "Alpha Current",
+        "provider" : "synthetic"
+      },
+      {
+        "id" : "acct-beta",
+        "name" : "Beta Savings",
+        "provider" : "synthetic"
+      }
+    ],
+    "archiveCutoff" : "2024-12-31",
+    "dateRange" : {
+      "end" : "2024-05-11",
+      "start" : "2024-01-15"
+    },
+    "recordCount" : 5,
+    "records" : [
+      {
+        "accountID" : "acct-alpha",
+        "bookedAmountEURCents" : -12345,
+        "category" : {
+          "sub" : "Groceries",
+          "top" : "ESSENTIAL"
+        },
+        "confidence" : "high",
+        "date" : "2024-01-15",
+        "description" : "Alpha Groceries",
+        "economicAmountEURCents" : -12345,
+        "economicType" : "SPENDING",
+        "economicViewRole" : "PRIMARY",
+        "evidence" : {
+          "basis" : "Synthetic fixture row",
+          "ruleID" : "SYN-01"
+        },
+        "flags" : {
+          "financingLeg" : false,
+          "internalTransfer" : false,
+          "passThrough" : "none"
+        },
+        "historicalID" : "SYN-0001",
+        "links" : {
+          "groupID" : "GROUP-1"
+        },
+        "merchant" : "Alpha Groceries",
+        "originalAmount" : {
+          "cents" : -12345,
+          "currency" : "EUR"
+        },
+        "personalAmountEURCents" : -12345,
+        "provenance" : "DIRECTLY_OBSERVED",
+        "provider" : "synthetic",
+        "rail" : "CARD",
+        "rawDescription" : "SYNTHETIC ALPHA GROCERIES",
+        "status" : "BOOKED"
+      },
+      {
+        "accountID" : "acct-alpha",
+        "category" : {
+          "sub" : "Software",
+          "top" : "LIFESTYLE"
+        },
+        "confidence" : "high",
+        "date" : "2024-02-20",
+        "description" : "Beta Subscription",
+        "economicAmountEURCents" : -4600,
+        "economicType" : "SPENDING",
+        "economicViewRole" : "PRIMARY",
+        "evidence" : {
+          "basis" : "Synthetic fixture row",
+          "ruleID" : "SYN-01"
+        },
+        "flags" : {
+          "financingLeg" : false,
+          "internalTransfer" : false,
+          "passThrough" : "none"
+        },
+        "historicalID" : "SYN-0002",
+        "links" : {
+          "groupID" : "GROUP-1"
+        },
+        "merchant" : "Beta Subscription",
+        "originalAmount" : {
+          "cents" : -5000,
+          "currency" : "USD"
+        },
+        "personalAmountEURCents" : -4600,
+        "provenance" : "DIRECTLY_OBSERVED",
+        "provider" : "synthetic",
+        "rail" : "CARD",
+        "rawDescription" : "SYNTHETIC BETA SUBSCRIPTION",
+        "status" : "BOOKED"
+      },
+      {
+        "accountID" : "acct-beta",
+        "category" : {
+          "top" : "TRAVEL"
+        },
+        "confidence" : "high",
+        "date" : "2024-03-05",
+        "description" : "Gamma Travel",
+        "economicAmountEURCents" : -620,
+        "economicSource" : "EARNED",
+        "economicType" : "SPENDING",
+        "economicViewRole" : "PRIMARY",
+        "evidence" : {
+          "basis" : "Synthetic fixture row",
+          "ruleID" : "SYN-01"
+        },
+        "flags" : {
+          "financingLeg" : false,
+          "internalTransfer" : false,
+          "passThrough" : "none"
+        },
+        "historicalID" : "SYN-0003",
+        "links" : {
+          "groupID" : "GROUP-1"
+        },
+        "merchant" : "Gamma Travel",
+        "originalAmount" : {
+          "cents" : -1000,
+          "currency" : "JPY"
+        },
+        "personalAmountEURCents" : -620,
+        "provenance" : "DIRECTLY_OBSERVED",
+        "provider" : "synthetic",
+        "rail" : "TRANSFER",
+        "rawDescription" : "SYNTHETIC GAMMA TRAVEL",
+        "status" : "BOOKED"
+      },
+      {
+        "accountID" : "acct-alpha",
+        "bookedAmountEURCents" : 250000,
+        "category" : {
+          "sub" : "Support",
+          "top" : "INCOME"
+        },
+        "confidence" : "high",
+        "date" : "2024-04-09",
+        "description" : "Delta Transfer",
+        "economicAmountEURCents" : 250000,
+        "economicSource" : "PARENTAL_SUPPORT",
+        "economicType" : "SUPPORT",
+        "economicViewRole" : "PRIMARY",
+        "evidence" : {
+          "basis" : "Synthetic fixture row",
+          "ruleID" : "SYN-01"
+        },
+        "flags" : {
+          "financingLeg" : false,
+          "internalTransfer" : false,
+          "passThrough" : "none"
+        },
+        "historicalID" : "SYN-0004",
+        "links" : {
+          "groupID" : "GROUP-1"
+        },
+        "merchant" : "Delta Transfer",
+        "originalAmount" : {
+          "cents" : 250000,
+          "currency" : "EUR"
+        },
+        "personalAmountEURCents" : 100000,
+        "provenance" : "DIRECTLY_OBSERVED",
+        "provider" : "synthetic",
+        "rail" : "TRANSFER",
+        "rawDescription" : "SYNTHETIC DELTA TRANSFER",
+        "status" : "BOOKED"
+      },
+      {
+        "accountID" : "acct-beta",
+        "category" : {
+          "sub" : "Exchange",
+          "top" : "OTHER"
+        },
+        "confidence" : "high",
+        "date" : "2024-05-11",
+        "description" : "Epsilon Exchange",
+        "economicAmountEURCents" : 90,
+        "economicType" : "SPENDING",
+        "economicViewRole" : "PRIMARY",
+        "evidence" : {
+          "basis" : "Synthetic fixture row",
+          "ruleID" : "SYN-01"
+        },
+        "flags" : {
+          "financingLeg" : false,
+          "internalTransfer" : false,
+          "passThrough" : "none"
+        },
+        "historicalID" : "SYN-0005",
+        "links" : {
+          "groupID" : "GROUP-1"
+        },
+        "merchant" : "Epsilon Exchange",
+        "originalAmount" : {
+          "cents" : 100,
+          "currency" : "XAA"
+        },
+        "personalAmountEURCents" : 90,
+        "provenance" : "DIRECTLY_OBSERVED",
+        "provider" : "synthetic",
+        "rail" : "TRANSFER",
+        "rawDescription" : "SYNTHETIC EPSILON EXCHANGE",
+        "status" : "BOOKED"
+      }
+    ],
+    "sourceGaps" : [
+      {
+        "affectedSources" : [
+          "synthetic-statement"
+        ],
+        "completeness" : "NO_TRANSACTION_EVIDENCE",
+        "endMonth" : "2024-07",
+        "message" : "No synthetic statement was produced for this range.",
+        "startMonth" : "2024-06"
+      }
+    ]
+  },
+  "schemaVersion" : "1.1.0",
+  "sourceRevision" : "0000000000000000000000000000000000000110"
+}

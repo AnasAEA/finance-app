@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  core:
+    name: FinanceCore
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain
+        run: xcodebuild -version && swift --version
+      - name: Test FinanceCore
+        working-directory: Packages/FinanceCore
+        run: swift test
+
+  app:
+    name: App and integration
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain
+        run: xcodebuild -version
+      - name: Pick an available iPhone simulator
+        id: sim
+        run: |
+          name=$(xcrun simctl list devices available --json \
+            | python3 -c 'import json,sys;d=json.load(sys.stdin)["devices"];print(next(x["name"] for r in sorted(d) for x in d[r] if x["name"].startswith("iPhone")))')
+          echo "Using $name"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+      - name: Build and test
+        # The XCUITest target is excluded here and runs in the local gate
+        # instead: it drives the simulator UI, which is slow and flaky on
+        # hosted runners. Everything below it — the app, integration and
+        # persistence suites — runs in full.
+        run: |
+          xcodebuild -project FinanceApp.xcodeproj -scheme FinanceApp \
+            -destination "platform=iOS Simulator,name=${{ steps.sim.outputs.name }}" \
+            -skip-testing:FinanceAppUITests \
+            test
+
+  release-gate:
+    name: Release bundle check
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prove no sample fixture reaches a Release bundle
+        run: Scripts/verify-release-bundle.sh

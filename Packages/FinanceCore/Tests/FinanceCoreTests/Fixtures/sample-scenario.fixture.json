@@ -1,0 +1,695 @@
+{
+  "accounts" : [
+    {
+      "currency" : "EUR",
+      "drawOrder" : 0,
+      "id" : "card-wallet",
+      "isActive" : true,
+      "kind" : "wallet",
+      "name" : "Card wallet",
+      "supportedRails" : [
+        "card_debit",
+        "electronic_payment",
+        "sepa_credit_transfer"
+      ]
+    },
+    {
+      "currency" : "EUR",
+      "drawOrder" : 1,
+      "id" : "online-wallet",
+      "isActive" : true,
+      "kind" : "wallet",
+      "name" : "Online wallet",
+      "supportedRails" : [
+        "card_debit",
+        "electronic_payment"
+      ]
+    },
+    {
+      "currency" : "EUR",
+      "drawOrder" : 2,
+      "id" : "bank-main",
+      "isActive" : true,
+      "kind" : "bank",
+      "name" : "Everyday bank",
+      "supportedRails" : [
+        "card_debit",
+        "electronic_payment",
+        "sepa_credit_transfer",
+        "sepa_direct_debit"
+      ]
+    },
+    {
+      "currency" : "EUR",
+      "drawOrder" : 3,
+      "id" : "pocket-eur",
+      "isActive" : true,
+      "kind" : "cash",
+      "name" : "Cash pocket (EUR)",
+      "supportedRails" : [
+        "physical_cash"
+      ]
+    },
+    {
+      "currency" : "CHF",
+      "drawOrder" : 4,
+      "id" : "pocket-chf",
+      "isActive" : true,
+      "kind" : "cash",
+      "name" : "Cash pocket (CHF)",
+      "supportedRails" : [
+        "physical_cash"
+      ]
+    }
+  ],
+  "balances" : [
+    {
+      "accountID" : "card-wallet",
+      "asOf" : "2027-02-28",
+      "balance" : "96.00 EUR",
+      "status" : "observed"
+    },
+    {
+      "accountID" : "online-wallet",
+      "asOf" : "2027-02-28",
+      "balance" : "0.00 EUR",
+      "status" : "observed"
+    },
+    {
+      "accountID" : "bank-main",
+      "asOf" : "2027-02-28",
+      "balance" : "300.00 EUR",
+      "status" : "observed"
+    },
+    {
+      "accountID" : "pocket-eur",
+      "asOf" : "2027-02-28",
+      "balance" : "0.00 EUR",
+      "status" : "observed"
+    },
+    {
+      "accountID" : "pocket-chf",
+      "asOf" : "2027-02-28",
+      "balance" : "150.00 CHF",
+      "status" : "observed"
+    }
+  ],
+  "crossProviderCandidates" : [
+
+  ],
+  "debts" : [
+    {
+      "id" : "debt-housing-arrears",
+      "name" : "Housing arrears",
+      "note" : "Two unpaid months acknowledged; no repayment agreement exists yet",
+      "originalAmount" : "960.00 EUR",
+      "paymentRequirement" : {
+        "currency" : "EUR",
+        "rails" : [
+          "sepa_direct_debit"
+        ]
+      },
+      "paymentSchedule" : [
+
+      ],
+      "status" : "active"
+    }
+  ],
+  "documentKind" : "DEV-FIXTURE — invented sample scenario, not financial evidence",
+  "expectedTransactions" : [
+    {
+      "certainty" : "guaranteed",
+      "date" : "2027-03-16",
+      "datePrecision" : "exact",
+      "factivity" : "expected",
+      "id" : "pot-arrival",
+      "incomeSourceID" : "inc-trip-pot",
+      "kind" : "passThrough",
+      "legs" : [
+        {
+          "accountID" : "pocket-eur",
+          "amount" : "1000.00 EUR"
+        }
+      ],
+      "lifecycle" : "pending",
+      "note" : "Gross arrival; only the 400.00 own share is income",
+      "ownership" : [
+        {
+          "amount" : "400.00 EUR",
+          "isSelf" : true,
+          "ownerID" : "holder"
+        },
+        {
+          "amount" : "600.00 EUR",
+          "isSelf" : false,
+          "ownerID" : "co-traveller"
+        }
+      ],
+      "provenance" : {
+        "evidenceGrade" : "unresolved",
+        "source" : "DEV-FIXTURE"
+      }
+    },
+    {
+      "date" : "2027-03-16",
+      "datePrecision" : "exact",
+      "factivity" : "expected",
+      "id" : "pot-deposit",
+      "kind" : "transfer",
+      "legs" : [
+        {
+          "accountID" : "pocket-eur",
+          "amount" : "-400.00 EUR"
+        },
+        {
+          "accountID" : "bank-main",
+          "amount" : "400.00 EUR"
+        }
+      ],
+      "lifecycle" : "pending",
+      "note" : "Own share relocated to the bank",
+      "provenance" : {
+        "evidenceGrade" : "unresolved",
+        "source" : "DEV-FIXTURE"
+      }
+    },
+    {
+      "date" : "2027-03-16",
+      "datePrecision" : "exact",
+      "factivity" : "expected",
+      "id" : "pot-handover",
+      "kind" : "passThrough",
+      "legs" : [
+        {
+          "accountID" : "pocket-eur",
+          "amount" : "-600.00 EUR"
+        }
+      ],
+      "lifecycle" : "pending",
+      "linkedTransactionID" : "pot-arrival",
+      "note" : "The co-traveller's share leaves; never spending",
+      "provenance" : {
+        "evidenceGrade" : "unresolved",
+        "source" : "DEV-FIXTURE"
+      }
+    }
+  ],
+  "externalAccountBindings" : [
+
+  ],
+  "externalEvidenceLinks" : [
+
+  ],
+  "externalObservations" : [
+
+  ],
+  "incomeSources" : [
+    {
+      "amount" : "400.00 EUR",
+      "arrivesOnAccount" : "pocket-eur",
+      "certainty" : "guaranteed",
+      "id" : "inc-trip-pot",
+      "name" : "Trip pot own share",
+      "note" : "Represented by the March 16 chain; never expanded twice",
+      "schedule" : {
+        "day" : "2027-03-16",
+        "kind" : "one_shot"
+      }
+    },
+    {
+      "amount" : "540.00 EUR",
+      "arrivesOnAccount" : "bank-main",
+      "certainty" : "expected",
+      "id" : "inc-studio",
+      "name" : "Studio retainer",
+      "schedule" : {
+        "day" : 27,
+        "from" : "2027-04",
+        "kind" : "monthly"
+      }
+    },
+    {
+      "amount" : "180.00 EUR",
+      "arrivesOnAccount" : "bank-main",
+      "certainty" : "target",
+      "id" : "inc-workshops",
+      "name" : "Workshop fees",
+      "schedule" : {
+        "day" : 18,
+        "from" : "2027-04",
+        "kind" : "monthly"
+      }
+    },
+    {
+      "amount" : "140.00 EUR",
+      "arrivesOnAccount" : "bank-main",
+      "certainty" : "target",
+      "id" : "inc-grant",
+      "name" : "Materials grant",
+      "schedule" : {
+        "day" : 12,
+        "from" : "2027-04",
+        "kind" : "monthly"
+      }
+    },
+    {
+      "amount" : "210.00 EUR",
+      "arrivesOnAccount" : "bank-main",
+      "certainty" : "possible",
+      "id" : "inc-hardship",
+      "name" : "Hardship fund",
+      "schedule" : {
+        "day" : "2027-05-14",
+        "kind" : "one_shot"
+      }
+    },
+    {
+      "amount" : "0.00 EUR",
+      "arrivesOnAccount" : "bank-main",
+      "certainty" : "expected",
+      "id" : "inc-royalties",
+      "name" : "Royalties",
+      "note" : "Tracked but currently silent",
+      "schedule" : {
+        "day" : 8,
+        "from" : "2027-04",
+        "kind" : "monthly"
+      }
+    }
+  ],
+  "installments" : [
+    {
+      "id" : "plan-headphones",
+      "installments" : [
+        {
+          "amount" : "40.00 EUR",
+          "dueDate" : "2027-01-06",
+          "paidOn" : "2027-01-06",
+          "sequence" : 1,
+          "status" : "paid"
+        },
+        {
+          "amount" : "40.00 EUR",
+          "dueDate" : "2027-02-06",
+          "paidOn" : "2027-02-06",
+          "sequence" : 2,
+          "status" : "paid"
+        },
+        {
+          "amount" : "40.00 EUR",
+          "dueDate" : "2027-03-06",
+          "sequence" : 3,
+          "status" : "scheduled"
+        },
+        {
+          "amount" : "40.00 EUR",
+          "dueDate" : "2027-04-06",
+          "sequence" : 4,
+          "status" : "scheduled"
+        }
+      ],
+      "originalPurchaseAmount" : "160.00 EUR",
+      "paymentRequirement" : {
+        "currency" : "EUR",
+        "rails" : [
+          "card_debit",
+          "electronic_payment"
+        ]
+      },
+      "provider" : "Paylater",
+      "purchaseDate" : "2027-01-06",
+      "purchaseDescription" : "Headphones",
+      "status" : "active"
+    },
+    {
+      "id" : "plan-camera",
+      "installments" : [
+        {
+          "amount" : "60.00 EUR",
+          "dueDate" : "2027-02-15",
+          "paidOn" : "2027-02-15",
+          "sequence" : 1,
+          "status" : "paid"
+        },
+        {
+          "amount" : "60.00 EUR",
+          "dueDate" : "2027-03-15",
+          "sequence" : 2,
+          "status" : "scheduled"
+        },
+        {
+          "amount" : "60.00 EUR",
+          "dueDate" : "2027-04-15",
+          "sequence" : 3,
+          "status" : "scheduled"
+        }
+      ],
+      "originalPurchaseAmount" : "180.00 EUR",
+      "paymentRequirement" : {
+        "currency" : "EUR",
+        "rails" : [
+          "card_debit",
+          "electronic_payment"
+        ]
+      },
+      "provider" : "Paylater",
+      "purchaseDate" : "2027-02-15",
+      "purchaseDescription" : "Camera lens",
+      "status" : "active"
+    },
+    {
+      "id" : "plan-desk",
+      "installments" : [
+        {
+          "amount" : "30.00 EUR",
+          "dueDate" : "2026-12-02",
+          "paidOn" : "2026-12-02",
+          "sequence" : 1,
+          "status" : "paid"
+        },
+        {
+          "amount" : "30.00 EUR",
+          "dueDate" : "2027-01-02",
+          "paidOn" : "2027-01-02",
+          "sequence" : 2,
+          "status" : "paid"
+        },
+        {
+          "amount" : "30.00 EUR",
+          "dueDate" : "2027-02-02",
+          "paidOn" : "2027-02-02",
+          "sequence" : 3,
+          "status" : "paid"
+        }
+      ],
+      "originalPurchaseAmount" : "90.00 EUR",
+      "paymentRequirement" : {
+        "currency" : "EUR",
+        "rails" : [
+          "card_debit",
+          "electronic_payment"
+        ]
+      },
+      "provider" : "Splitpay",
+      "purchaseDate" : "2026-12-02",
+      "purchaseDescription" : "Desk",
+      "status" : "completed"
+    },
+    {
+      "id" : "plan-bike",
+      "installments" : [
+        {
+          "amount" : "50.00 EUR",
+          "dueDate" : "2027-04-20",
+          "sequence" : 1,
+          "status" : "scheduled"
+        },
+        {
+          "amount" : "50.00 EUR",
+          "dueDate" : "2027-05-20",
+          "sequence" : 2,
+          "status" : "scheduled"
+        }
+      ],
+      "originalPurchaseAmount" : "100.00 EUR",
+      "paymentRequirement" : {
+        "currency" : "EUR",
+        "rails" : [
+          "card_debit",
+          "electronic_payment"
+        ]
+      },
+      "provider" : "Splitpay",
+      "purchaseDate" : "2027-03-20",
+      "purchaseDescription" : "Bicycle",
+      "status" : "active"
+    }
+  ],
+  "note" : "Sample data for previews and tests. Every person, account, merchant, amount and date is fictional.",
+  "observationResolutions" : [
+
+  ],
+  "planning" : {
+    "budgets" : [
+      {
+        "categoryKeys" : [
+          "groceries",
+          "transport"
+        ],
+        "confirmation" : "userConfirmed",
+        "effectiveFrom" : "2027-03",
+        "id" : "budget-everyday",
+        "monthlyAmount" : "90.00 EUR",
+        "monthlyOverrides" : [
+
+        ],
+        "name" : "Everyday spending",
+        "spendingClass" : "flexible"
+      }
+    ],
+    "carriedEURValues" : [
+      {
+        "accountID" : "pocket-chf",
+        "value" : "30.00 EUR"
+      }
+    ],
+    "defaultScenario" : "base",
+    "monthlyEconomicCeiling" : "750.00 EUR",
+    "plannedPurchases" : [
+
+    ],
+    "recurringObligations" : [
+      {
+        "amount" : "29.00 EUR",
+        "id" : "ob-broadband",
+        "name" : "Broadband",
+        "requirement" : {
+          "currency" : "EUR",
+          "rails" : [
+            "sepa_direct_debit"
+          ]
+        },
+        "spec" : {
+          "day" : 4,
+          "from" : "2027-03",
+          "kind" : "monthly"
+        },
+        "spendingClass" : "essential"
+      },
+      {
+        "amount" : "480.00 EUR",
+        "id" : "ob-housing",
+        "name" : "Housing",
+        "requirement" : {
+          "currency" : "EUR",
+          "rails" : [
+            "sepa_direct_debit"
+          ]
+        },
+        "spec" : {
+          "day" : 10,
+          "from" : "2027-03",
+          "kind" : "monthly"
+        },
+        "spendingClass" : "essential"
+      },
+      {
+        "amount" : "8.00 EUR",
+        "id" : "ob-insurance",
+        "name" : "Contents insurance",
+        "requirement" : {
+          "currency" : "EUR",
+          "rails" : [
+            "card_debit",
+            "electronic_payment"
+          ]
+        },
+        "spec" : {
+          "day" : 13,
+          "from" : "2027-03",
+          "kind" : "monthly"
+        },
+        "spendingClass" : "essential"
+      },
+      {
+        "amount" : "24.00 EUR",
+        "id" : "ob-transit",
+        "name" : "Transit pass",
+        "requirement" : {
+          "currency" : "EUR",
+          "rails" : [
+            "sepa_direct_debit"
+          ]
+        },
+        "spec" : {
+          "day" : 21,
+          "from" : "2027-03",
+          "kind" : "monthly"
+        },
+        "spendingClass" : "essential"
+      },
+      {
+        "amount" : "11.00 EUR",
+        "id" : "ob-music",
+        "name" : "Music streaming",
+        "requirement" : {
+          "currency" : "EUR",
+          "rails" : [
+            "card_debit",
+            "electronic_payment"
+          ]
+        },
+        "spec" : {
+          "day" : 26,
+          "from" : "2027-03",
+          "kind" : "monthly"
+        },
+        "spendingClass" : "optional"
+      }
+    ],
+    "safetyFloor" : "80.00 EUR",
+    "settlements" : [
+
+    ],
+    "sinkingFunds" : [
+
+    ]
+  },
+  "providerBalanceSnapshots" : [
+
+  ],
+  "schemaVersion" : "1.6.0",
+  "transactions" : [
+    {
+      "certainty" : "received",
+      "date" : "2027-02-05",
+      "datePrecision" : "exact",
+      "factivity" : "observed",
+      "id" : "tx-support-2027-02-05",
+      "kind" : "income",
+      "legs" : [
+        {
+          "accountID" : "bank-main",
+          "amount" : "410.00 EUR"
+        }
+      ],
+      "lifecycle" : "cleared",
+      "note" : "One-off support, recorded once",
+      "provenance" : {
+        "evidenceGrade" : "unresolved",
+        "source" : "DEV-FIXTURE"
+      }
+    },
+    {
+      "certainty" : "received",
+      "date" : "2027-02-10",
+      "datePrecision" : "exact",
+      "factivity" : "observed",
+      "id" : "tx-housing-reversed-2027-02-10",
+      "kind" : "expense",
+      "legs" : [
+        {
+          "accountID" : "bank-main",
+          "amount" : "-480.00 EUR"
+        }
+      ],
+      "lifecycle" : "reversed",
+      "note" : "Housing debit pulled back by the creditor; economically void",
+      "provenance" : {
+        "evidenceGrade" : "unresolved",
+        "source" : "DEV-FIXTURE"
+      }
+    },
+    {
+      "certainty" : "received",
+      "date" : "2027-02-20",
+      "datePrecision" : "exact",
+      "factivity" : "observed",
+      "id" : "tx-groceries-2027-02-20",
+      "kind" : "expense",
+      "legs" : [
+        {
+          "accountID" : "card-wallet",
+          "amount" : "-38.40 EUR"
+        }
+      ],
+      "lifecycle" : "cleared",
+      "provenance" : {
+        "evidenceGrade" : "unresolved",
+        "source" : "DEV-FIXTURE"
+      }
+    },
+    {
+      "certainty" : "received",
+      "date" : "2027-02-23",
+      "datePrecision" : "exact",
+      "factivity" : "observed",
+      "id" : "tx-groceries-refund-2027-02-23",
+      "kind" : "refund",
+      "legs" : [
+        {
+          "accountID" : "card-wallet",
+          "amount" : "22.00 EUR"
+        }
+      ],
+      "lifecycle" : "cleared",
+      "linkedTransactionID" : "tx-groceries-2027-02-20",
+      "provenance" : {
+        "evidenceGrade" : "unresolved",
+        "source" : "DEV-FIXTURE"
+      }
+    },
+    {
+      "certainty" : "received",
+      "date" : "2027-02-24",
+      "datePrecision" : "exact",
+      "factivity" : "observed",
+      "id" : "tx-withdrawal-2027-02-24",
+      "kind" : "cashWithdrawal",
+      "legs" : [
+        {
+          "accountID" : "bank-main",
+          "amount" : "-30.00 EUR"
+        },
+        {
+          "accountID" : "pocket-chf",
+          "amount" : "150.00 CHF"
+        }
+      ],
+      "lifecycle" : "cleared",
+      "note" : "Euro cash changed form and currency at the observed rate",
+      "provenance" : {
+        "evidenceGrade" : "unresolved",
+        "source" : "DEV-FIXTURE"
+      }
+    },
+    {
+      "certainty" : "received",
+      "date" : "2027-02-26",
+      "datePrecision" : "exact",
+      "factivity" : "observed",
+      "id" : "tx-salary-2027-02-26",
+      "kind" : "income",
+      "legs" : [
+        {
+          "accountID" : "bank-main",
+          "amount" : "620.00 EUR"
+        }
+      ],
+      "lifecycle" : "cleared",
+      "provenance" : {
+        "evidenceGrade" : "unresolved",
+        "source" : "DEV-FIXTURE"
+      }
+    }
+  ],
+  "trustedRuleAuditEvents" : [
+
+  ],
+  "trustedRuleObservationSuppressions" : [
+
+  ],
+  "trustedRules" : [
+
+  ]
+}

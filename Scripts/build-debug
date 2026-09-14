@@ -1,0 +1,25 @@
+#!/bin/bash
+# Debug build only — the fastest proof that the tree still compiles.
+set -uo pipefail
+cd "$(dirname "$0")/.."
+REPO_NAME=finance-app
+. Scripts/lib.sh
+. Scripts/xcode-env.sh
+
+LOG="$(log_path build-debug)"
+echo "COMMAND   xcodebuild -scheme FinanceApp -configuration Debug -destination '$APP_DESTINATION' build"
+
+xcodebuild -project FinanceApp.xcodeproj -scheme FinanceApp \
+    -configuration Debug -destination "$APP_DESTINATION" build > "$LOG" 2>&1
+RC=$?
+
+ERRORS=$(grep -cE ": error: " "$LOG" | head -1); ERRORS=${ERRORS:-0}
+WARNINGS=$(grep -cE ": warning: " "$LOG" | head -1); WARNINGS=${WARNINGS:-0}
+
+echo "STATUS    $([ "$RC" -eq 0 ] && echo PASS || echo FAIL)"
+echo "ERRORS    $ERRORS"
+[ "$WARNINGS" -gt 0 ] && echo "WARNINGS  $WARNINGS"
+[ "$RC" -ne 0 ] && { echo; grep -nE ": error: " "$LOG" | head -20; }
+echo "FULL LOG  $LOG   ($(wc -l < "$LOG" | tr -d ' ') lines)"
+prune_logs
+exit $RC

@@ -1,0 +1,243 @@
+{
+  "archiveID" : "synthetic-history-200",
+  "contentSHA256" : "11753e47e109cecd3f171c0676c6490a8e53b5fe94e1855d796e969050c86eab",
+  "documentKind" : "finance-history-archive",
+  "payload" : {
+    "accounts" : [
+      {
+        "id" : "acct-alpha",
+        "name" : "Alpha Current",
+        "provider" : "synthetic"
+      },
+      {
+        "id" : "acct-beta",
+        "name" : "Beta Savings",
+        "provider" : "synthetic"
+      }
+    ],
+    "archiveCutoff" : "2024-12-31",
+    "dateRange" : {
+      "end" : "2024-05-11",
+      "start" : "2024-01-15"
+    },
+    "recordCount" : 5,
+    "records" : [
+      {
+        "accountID" : "acct-alpha",
+        "bookedAmountEURCents" : -12345,
+        "category" : {
+          "sub" : "Groceries",
+          "top" : "ESSENTIAL"
+        },
+        "confidence" : "high",
+        "date" : "2024-01-15",
+        "description" : "Alpha Groceries",
+        "economicAmountEURCents" : -12345,
+        "economicType" : "SPENDING",
+        "economicViewRole" : "PRIMARY",
+        "evidence" : {
+          "basis" : "Synthetic fixture row",
+          "ruleID" : "SYN-01"
+        },
+        "flags" : {
+          "financingLeg" : false,
+          "internalTransfer" : false,
+          "passThrough" : "none"
+        },
+        "historicalID" : "SYN-0001",
+        "links" : {
+          "groupID" : "GROUP-1"
+        },
+        "merchant" : "Alpha Groceries",
+        "originalAmount" : {
+          "currency" : {
+            "code" : "EUR",
+            "exponent" : 2
+          },
+          "minorUnits" : -12345
+        },
+        "personalAmountEURCents" : -12345,
+        "provenance" : "DIRECTLY_OBSERVED",
+        "provider" : "synthetic",
+        "rail" : "CARD",
+        "rawDescription" : "SYNTHETIC ALPHA GROCERIES",
+        "status" : "BOOKED"
+      },
+      {
+        "accountID" : "acct-beta",
+        "category" : {
+          "sub" : "Exchange",
+          "top" : "OTHER"
+        },
+        "confidence" : "high",
+        "date" : "2024-02-20",
+        "description" : "Epsilon Exchange",
+        "economicAmountEURCents" : -1,
+        "economicType" : "SPENDING",
+        "economicViewRole" : "PRIMARY",
+        "evidence" : {
+          "basis" : "Synthetic fixture row",
+          "ruleID" : "SYN-01"
+        },
+        "flags" : {
+          "financingLeg" : false,
+          "internalTransfer" : false,
+          "passThrough" : "none"
+        },
+        "historicalID" : "SYN-0002",
+        "links" : {
+          "groupID" : "GROUP-1"
+        },
+        "merchant" : "Epsilon Exchange",
+        "originalAmount" : {
+          "currency" : {
+            "code" : "XAA",
+            "exponent" : 5
+          },
+          "minorUnits" : 100
+        },
+        "personalAmountEURCents" : -1,
+        "provenance" : "DIRECTLY_OBSERVED",
+        "provider" : "synthetic",
+        "rail" : "TRANSFER",
+        "rawDescription" : "SYNTHETIC EPSILON EXCHANGE",
+        "status" : "BOOKED"
+      },
+      {
+        "accountID" : "acct-alpha",
+        "bookedAmountEURCents" : 10000,
+        "category" : {
+          "sub" : "Support",
+          "top" : "INCOME"
+        },
+        "confidence" : "high",
+        "date" : "2024-03-05",
+        "description" : "Delta Transfer",
+        "economicAmountEURCents" : 10000,
+        "economicSource" : "PARENTAL_SUPPORT",
+        "economicType" : "SUPPORT",
+        "economicViewRole" : "PRIMARY",
+        "evidence" : {
+          "basis" : "Synthetic fixture row",
+          "ruleID" : "SYN-01"
+        },
+        "flags" : {
+          "financingLeg" : false,
+          "internalTransfer" : false,
+          "passThrough" : "none"
+        },
+        "historicalID" : "SYN-0003",
+        "links" : {
+          "groupID" : "GROUP-1"
+        },
+        "merchant" : "Delta Transfer",
+        "originalAmount" : {
+          "currency" : {
+            "code" : "EUR",
+            "exponent" : 0
+          },
+          "minorUnits" : 100
+        },
+        "personalAmountEURCents" : 10000,
+        "provenance" : "DIRECTLY_OBSERVED",
+        "provider" : "synthetic",
+        "rail" : "TRANSFER",
+        "rawDescription" : "SYNTHETIC DELTA TRANSFER",
+        "status" : "BOOKED"
+      },
+      {
+        "accountID" : "acct-beta",
+        "category" : {
+          "top" : "TRAVEL"
+        },
+        "confidence" : "high",
+        "date" : "2024-04-09",
+        "description" : "Gamma Travel",
+        "economicAmountEURCents" : -620,
+        "economicSource" : "EARNED",
+        "economicType" : "SPENDING",
+        "economicViewRole" : "PRIMARY",
+        "evidence" : {
+          "basis" : "Synthetic fixture row",
+          "ruleID" : "SYN-01"
+        },
+        "flags" : {
+          "financingLeg" : false,
+          "internalTransfer" : false,
+          "passThrough" : "none"
+        },
+        "historicalID" : "SYN-0004",
+        "links" : {
+          "groupID" : "GROUP-1"
+        },
+        "merchant" : "Gamma Travel",
+        "originalAmount" : {
+          "currency" : {
+            "code" : "JPY",
+            "exponent" : 0
+          },
+          "minorUnits" : -1000
+        },
+        "personalAmountEURCents" : -620,
+        "provenance" : "DIRECTLY_OBSERVED",
+        "provider" : "synthetic",
+        "rail" : "TRANSFER",
+        "rawDescription" : "SYNTHETIC GAMMA TRAVEL",
+        "status" : "BOOKED"
+      },
+      {
+        "accountID" : "acct-alpha",
+        "category" : {
+          "sub" : "Settlement",
+          "top" : "OTHER"
+        },
+        "confidence" : "high",
+        "date" : "2024-05-11",
+        "description" : "Zeta Settlement",
+        "economicAmountEURCents" : 1,
+        "economicType" : "SPENDING",
+        "economicViewRole" : "PRIMARY",
+        "evidence" : {
+          "basis" : "Synthetic fixture row",
+          "ruleID" : "SYN-01"
+        },
+        "flags" : {
+          "financingLeg" : false,
+          "internalTransfer" : false,
+          "passThrough" : "none"
+        },
+        "historicalID" : "SYN-0005",
+        "links" : {
+          "groupID" : "GROUP-1"
+        },
+        "merchant" : "Zeta Settlement",
+        "originalAmount" : {
+          "currency" : {
+            "code" : "KWD",
+            "exponent" : 3
+          },
+          "minorUnits" : 9007199254740993
+        },
+        "personalAmountEURCents" : 1,
+        "provenance" : "DIRECTLY_OBSERVED",
+        "provider" : "synthetic",
+        "rail" : "TRANSFER",
+        "rawDescription" : "SYNTHETIC ZETA SETTLEMENT",
+        "status" : "BOOKED"
+      }
+    ],
+    "sourceGaps" : [
+      {
+        "affectedSources" : [
+          "synthetic-statement"
+        ],
+        "completeness" : "NO_TRANSACTION_EVIDENCE",
+        "endMonth" : "2024-07",
+        "message" : "No synthetic statement was produced for this range.",
+        "startMonth" : "2024-06"
+      }
+    ]
+  },
+  "schemaVersion" : "2.0.0",
+  "sourceRevision" : "0000000000000000000000000000000000000200"
+}

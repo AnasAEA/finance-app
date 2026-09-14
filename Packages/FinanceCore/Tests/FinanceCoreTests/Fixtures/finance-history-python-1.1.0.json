@@ -1,0 +1,126 @@
+{
+  "archiveID": "finance-history-be1318704b63966b",
+  "contentSHA256": "be1318704b63966b7c0bf25300f5a1994ceda50174b980b4819d0c3fd40acdb6",
+  "documentKind": "finance-history-archive",
+  "payload": {
+    "accounts": [
+      {
+        "id": "bnp",
+        "name": "BNP",
+        "provider": "bnp-statement"
+      },
+      {
+        "id": "revolut",
+        "name": "Revolut",
+        "provider": "revolut-statement"
+      }
+    ],
+    "archiveCutoff": "2026-08-19",
+    "dateRange": {
+      "end": "2023-09-25",
+      "start": "2022-02-04"
+    },
+    "recordCount": 2,
+    "records": [
+      {
+        "accountID": "bnp",
+        "category": {
+          "sub": "Groceries",
+          "top": "FOOD"
+        },
+        "confidence": "medium",
+        "date": "2022-02-04",
+        "description": "grocery",
+        "economicSource": "PARENTAL_SUPPORT_SELF",
+        "economicType": "SPENDING",
+        "economicViewRole": "PRIMARY",
+        "evidence": {
+          "basis": "card purchase",
+          "ruleID": "B03"
+        },
+        "flags": {
+          "financingLeg": false,
+          "internalTransfer": false,
+          "passThrough": "partial"
+        },
+        "historicalID": "CT-BNP-00001",
+        "links": {
+          "crossInstitutionPair": "CT-RVL-00001",
+          "financingID": "link-266b2d1f22b114d9ba5ca966",
+          "purchaseID": "link-aecc3a960a81ee62f6013c16"
+        },
+        "merchant": "MONOPRIX [redacted identifier]",
+        "originalAmount": {
+          "cents": -1349,
+          "currency": "EUR"
+        },
+        "personalAmountEURCents": -1349,
+        "provenance": "DIRECTLY_OBSERVED",
+        "provider": "bnp-statement",
+        "rail": "CARD",
+        "rawDescription": "MONOPRIX [redacted identifier]",
+        "status": "BOOKED_EUR"
+      },
+      {
+        "accountID": "revolut",
+        "bookedAmountEURCents": -1349,
+        "category": {
+          "sub": "Internal_Self",
+          "top": "TRANSFERS"
+        },
+        "confidence": "medium",
+        "date": "2023-09-25",
+        "description": "internal transfer",
+        "economicAmountEURCents": -1349,
+        "economicSource": "INTERNAL_TRANSFER",
+        "economicType": "INTERNAL_TRANSFER",
+        "economicViewRole": "PRIMARY",
+        "evidence": {
+          "basis": "card purchase",
+          "ruleID": "B03"
+        },
+        "flags": {
+          "financingLeg": false,
+          "internalTransfer": true,
+          "passThrough": "none"
+        },
+        "historicalID": "CT-RVL-00001",
+        "links": {},
+        "merchant": "Transfer",
+        "originalAmount": {
+          "cents": -1349,
+          "currency": "EUR"
+        },
+        "personalAmountEURCents": 0,
+        "provenance": "DIRECTLY_OBSERVED",
+        "provider": "revolut-statement",
+        "rail": "CARD",
+        "rawDescription": "Transfer",
+        "status": "BOOKED_EUR"
+      }
+    ],
+    "sourceGaps": [
+      {
+        "affectedSources": [
+          "bnp",
+          "paypal"
+        ],
+        "completeness": "NOT_COMPUTABLE",
+        "endMonth": "2022-01",
+        "message": "Complete spending records are not available for this period.",
+        "startMonth": "2022-01"
+      },
+      {
+        "affectedSources": [
+          "paypal"
+        ],
+        "completeness": "PARTIAL",
+        "endMonth": "2022-03",
+        "message": "PayPal merchant records for part of this period are incomplete.",
+        "startMonth": "2022-02"
+      }
+    ]
+  },
+  "schemaVersion": "1.1.0",
+  "sourceRevision": "sha256:66a70d9a0061ef550985a3f371a12182bb594572b72fd02eec54bc3074a91c9b"
+}
