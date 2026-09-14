@@ -16,3 +16,8 @@ Packages/*/.build/
 
 # macOS
 .DS_Store
+
+# Local build configuration
+# Config/BankSync.xcconfig carries a placeholder host; this optional file
+# points a local build at a real deployment and must never be committed.
+Config/BankSync.local.xcconfig

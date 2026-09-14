@@ -62,8 +62,17 @@
 				FA0000000000000000000301 /* FinanceApp */,
 				FA0000000000000000000302 /* FinanceAppTests */,
 				FA0000000000000000000303 /* FinanceAppUITests */,
+				FA0000000000000000001202 /* Config */,
 				FA0000000000000000000201 /* Products */,
 			);
+			sourceTree = "<group>";
+		};
+		FA0000000000000000001202 /* Config */ = {
+			isa = PBXGroup;
+			children = (
+				FA0000000000000000001201 /* BankSync.xcconfig */,
+			);
+			path = Config;
 			sourceTree = "<group>";
 		};
 		FA0000000000000000000201 /* Products */ = {
@@ -245,6 +254,7 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		FA0000000000000000001201 /* BankSync.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = BankSync.xcconfig; sourceTree = "<group>"; };
 		FA0000000000000000000701 /* FinanceApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = FinanceApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		FA0000000000000000000702 /* FinanceAppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FinanceAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		FA0000000000000000000703 /* FinanceAppUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FinanceAppUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -340,6 +350,7 @@
 		};
 		FA0000000000000000000E01 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = FA0000000000000000001201 /* BankSync.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -349,7 +360,6 @@
 				ENABLE_PREVIEWS = YES;
 				EXCLUDED_SOURCE_FILE_NAMES = "*.md";
 				GENERATE_INFOPLIST_FILE = YES;
-				BANK_SYNC_BASE_URL = "https://finance-bank-sync.example.invalid";
 				INFOPLIST_FILE = Config/FinanceApp-Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -369,6 +379,7 @@
 		};
 		FA0000000000000000000E02 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = FA0000000000000000001201 /* BankSync.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -378,7 +389,6 @@
 				ENABLE_PREVIEWS = YES;
 				EXCLUDED_SOURCE_FILE_NAMES = "*.fixture.json *.md";
 				GENERATE_INFOPLIST_FILE = YES;
-				BANK_SYNC_BASE_URL = "https://finance-bank-sync.example.invalid";
 				INFOPLIST_FILE = Config/FinanceApp-Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;

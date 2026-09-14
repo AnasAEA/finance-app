@@ -203,16 +203,42 @@ struct BankSyncSecurityTests {
         }
     }
 
-    @Test("A cleartext, empty or unsubstituted endpoint is refused as configuration")
-    func configurationRejectsCleartext() {
+    @Test("A cleartext, empty, unsubstituted or placeholder endpoint is refused as configuration")
+    func configurationRejectsUnusableEndpoints() {
         #expect(BankSyncConfiguration.baseURL(fromValue: "http://example.com") == nil)
         #expect(BankSyncConfiguration.baseURL(fromValue: "") == nil)
         #expect(BankSyncConfiguration.baseURL(fromValue: nil) == nil)
         // A build setting that never expanded is a misconfiguration, not a host.
-        #expect(BankSyncConfiguration.baseURL(fromValue: "$(BANK_SYNC_BASE_URL)") == nil)
+        #expect(BankSyncConfiguration.baseURL(fromValue: "$(BANK_SYNC_HOST)") == nil)
+        // A scheme with no host behind it is not an endpoint either.
+        #expect(BankSyncConfiguration.baseURL(fromValue: "https://") == nil)
+        // The tracked placeholder is "not configured", not a service: .invalid
+        // is reserved so it can never resolve.
+        #expect(BankSyncConfiguration.baseURL(fromValue: "https://finance-bank-sync.example.invalid") == nil)
+        #expect(BankSyncConfiguration.baseURL(fromValue: "https://anything.invalid") == nil)
+        #expect(BankSyncConfiguration.isPlaceholder("host.example.invalid"))
+        #expect(!BankSyncConfiguration.isPlaceholder("host.example.com"))
+        // A real deployment is accepted.
         #expect(BankSyncConfiguration.baseURL(fromValue: "https://example.com") != nil)
-        // The shipped build really is configured.
-        #expect(BankSyncConfiguration.baseURL() != nil)
+    }
+
+    @Test("A checkout with no local configuration reads as not configured, and says so")
+    func trackedCheckoutIsNotConfigured() {
+        // The tracked xcconfig points at the placeholder host, so the build
+        // under test must substitute *something* …
+        let raw = Bundle.main.object(forInfoDictionaryKey: BankSyncConfiguration.infoKey) as? String
+        let value = try! #require(raw)
+        #expect(!value.hasPrefix("$("), "BANK_SYNC_HOST did not substitute")
+        #expect(value.hasPrefix("https://"), "the scheme is fixed in the Info.plist")
+        // … and, with only the tracked default in place, that resolves to no
+        // usable endpoint rather than to a host nobody owns. A developer who
+        // adds Config/BankSync.local.xcconfig gets a real URL here instead,
+        // which is the one case this may legitimately be non-nil.
+        if BankSyncConfiguration.isPlaceholder(URL(string: value)?.host() ?? "") {
+            #expect(BankSyncConfiguration.baseURL() == nil)
+        } else {
+            #expect(BankSyncConfiguration.baseURL() != nil)
+        }
     }
 
     @Test("Revocation and expiry are reported distinctly, and neither leaks detail")

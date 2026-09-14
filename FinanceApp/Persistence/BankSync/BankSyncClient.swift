@@ -20,9 +20,22 @@ enum BankSyncConfiguration {
         guard let raw, !raw.isEmpty,
               // An unsubstituted build setting must not be treated as a host.
               !raw.hasPrefix("$("),
-              let url = URL(string: raw.hasSuffix("/") ? String(raw.dropLast()) : raw)
+              let url = URL(string: raw.hasSuffix("/") ? String(raw.dropLast()) : raw),
+              let host = url.host(), !host.isEmpty,
+              !isPlaceholder(host)
         else { return nil }
         return isSecure(url) ? url : nil
+    }
+
+    /// Whether a host is the tracked placeholder rather than a deployment.
+    ///
+    /// `.invalid` is reserved by RFC 6761 precisely so that it can never
+    /// resolve, and `Config/BankSync.xcconfig` defaults to a host on it. A
+    /// checkout nobody has pointed at a service is therefore *not configured*,
+    /// which is what the app says — rather than letting every request fail at
+    /// the transport and reading as a broken service.
+    static func isPlaceholder(_ host: String) -> Bool {
+        host == "invalid" || host.hasSuffix(".invalid")
     }
 
     /// HTTPS only. `http://` is refused here rather than at the transport, so a

@@ -28,13 +28,17 @@
 	  device signature, so knowing the address grants nothing. It lives here
 	  rather than in a Swift literal because a build pointed at the wrong host
 	  should be a visibly wrong configuration file, not a line of code nobody
-	  re-reads. Substituted from the BANK_SYNC_BASE_URL build setting so a
-	  different deployment does not need a source edit.
+	  re-reads. The host comes from the BANK_SYNC_HOST build setting, which
+	  Config/BankSync.xcconfig defaults and an ignored local xcconfig may
+	  override, so a different deployment does not need a source edit.
 
-	  HTTPS only; BankSyncConfiguration refuses anything else before a signed
-	  request — and the signature with it — could go over a readable link.
+	  The https scheme is written here rather than carried in the setting, so
+	  a deployment cannot be misconfigured onto cleartext. BankSyncConfiguration
+	  still refuses anything that is not https, and refuses the placeholder
+	  host, before a signed request — and the signature with it — could go
+	  over a readable link.
 	-->
 	<key>BankSyncBaseURL</key>
-	<string>$(BANK_SYNC_BASE_URL)</string>
+	<string>https://$(BANK_SYNC_HOST)</string>
 </dict>
 </plist>

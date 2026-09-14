@@ -149,19 +149,31 @@ for value in "${FORBIDDEN_RELEASE_STRINGS[@]}"; do
     fi
 done
 
-# The endpoint is expected in Release from 2.4D on. Its absence would mean a
-# build that silently cannot sync, which is worth failing over just as loudly.
-if ! grep -aRqs -- "finance-bank-sync" "$APP"; then
-    echo "FAIL: the Release bundle carries no sync endpoint; BANK_SYNC_BASE_URL did not substitute"
+# The endpoint must have substituted. Its absence would mean a build that
+# silently cannot sync, which is worth failing over just as loudly. The host
+# itself is deliberately not pinned here: a local build may legitimately point
+# at any deployment through Config/BankSync.local.xcconfig.
+ENDPOINT=$(/usr/libexec/PlistBuddy -c "Print :BankSyncBaseURL" "$APP/Info.plist" 2>/dev/null || true)
+if [ -z "$ENDPOINT" ]; then
+    echo "FAIL: the Release bundle carries no BankSyncBaseURL"
     exit 1
 fi
+case "$ENDPOINT" in
+    *'$('*)
+        echo "FAIL: BankSyncBaseURL did not substitute: $ENDPOINT"
+        exit 1
+        ;;
+esac
 
 # The service must be reached over TLS. A cleartext URL compiled into the app
 # would send a signed request, and the signature with it, over a readable link.
-if grep -aRqs -- "http://finance-bank-sync" "$APP"; then
-    echo "FAIL: cleartext sync endpoint in the Release bundle"
-    exit 1
-fi
+case "$ENDPOINT" in
+    https://*) ;;
+    *)
+        echo "FAIL: non-https sync endpoint in the Release bundle: $ENDPOINT"
+        exit 1
+        ;;
+esac
 
 echo "PASS: no private history, sample fixture, repository documentation, bank preview, provider identity, bank secret or admin credential in Release"
 find "$APP" -maxdepth 1 -type f -o -maxdepth 1 -type d | sed "s|$APP|  FinanceApp.app|"

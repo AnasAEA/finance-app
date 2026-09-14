@@ -1,0 +1,23 @@
+// Where the bank-sync service lives.
+//
+// Only the HOST is configured here. The scheme is fixed to https in
+// FinanceApp-Info.plist, so a deployment cannot be misconfigured onto
+// cleartext, and — just as practically — an xcconfig value can never contain
+// "//", which this file format would silently read as a comment.
+//
+// The tracked default is a placeholder on the .invalid TLD, which RFC 6761
+// reserves so that it can never resolve. A fresh checkout therefore reads as
+// "not configured" rather than quietly dialling somebody else's machine, and
+// CI needs no secret to build or test.
+//
+// To point a local build at a real deployment, create the git-ignored file
+// Config/BankSync.local.xcconfig next to this one, containing one line:
+//
+//     BANK_SYNC_HOST = your-service.example.com
+//
+// Nothing tracked has to be edited, so a real endpoint cannot reach a commit
+// by accident. The optional include is last, so the local value wins.
+
+BANK_SYNC_HOST = finance-bank-sync.example.invalid
+
+#include? "BankSync.local.xcconfig"
