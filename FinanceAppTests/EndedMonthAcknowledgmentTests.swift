@@ -75,6 +75,12 @@ struct EndedMonthAcknowledgmentTests {
             day: day("2026-08-31"), amount: euro("18.00")
         )
     }
+    private var exceptionC: PeriodCheckpointException {
+        PeriodCheckpointException(
+            id: "unresolved:2026-08-14", kind: .unresolvedEvidenceLinkage,
+            day: day("2026-08-14"), amount: euro("42.50")
+        )
+    }
     private var staleA: PeriodCheckpointException {
         PeriodCheckpointException(
             id: "occurrence:rent", kind: .overdueExpectedOccurrence,
@@ -329,6 +335,174 @@ struct EndedMonthAcknowledgmentTests {
         #expect(model.hasSelection == false)
     }
 
+    // MARK: - R: reconciling local state when the month changes underneath
+    //
+    // Resolving an observation from a linked Decision removes the exception it
+    // raised while this screen stays open. E2 is right to refuse a decision
+    // about something that is gone; these pin that the interaction tidies up
+    // after itself instead of stranding the person on a blocked screen.
+
+    @Test("R1: a confirmed subject that disappears is dropped from local authority")
+    func reconcileDropsDisappearedConfirmation() throws {
+        let model = EndedMonthAcknowledgmentModel()
+        let before = try readiness(carrying: [exceptionA, exceptionB])
+        try select(exceptionA, of: before, in: model)
+        #expect(model.confirmSelection(carrying: before))
+        #expect(model.decidedSubjects.count == 1)
+
+        // The Decision behind A resolved it; the month no longer carries A.
+        #expect(model.reconcile(carrying: [exceptionB]))
+        #expect(model.decidedSubjects.isEmpty)
+        #expect(model.confirmedAcknowledgments == .noDecisions)
+
+        // And the evaluator now answers about B alone, unblocked.
+        let after = try readiness(carrying: [exceptionB],
+                                  confirmed: model.confirmedAcknowledgments)
+        #expect(!after.blockers.map(\.kind).contains(.confirmedAcknowledgmentSubjectMismatch))
+        #expect(after.disposition == .needsDecisions)
+        #expect(after.undecidedExceptions == [exceptionB])
+    }
+
+    @Test("R2: a selected subject that disappears is dropped from the selection")
+    func reconcileDropsDisappearedSelection() throws {
+        let model = EndedMonthAcknowledgmentModel()
+        let before = try readiness(carrying: [exceptionA, exceptionB])
+        try select(exceptionA, of: before, in: model)
+        #expect(model.hasSelection)
+
+        #expect(model.reconcile(carrying: [exceptionB]))
+        #expect(model.hasSelection == false)
+        // A selection was never authority, so nothing was granted by dropping it.
+        #expect(model.confirmedAcknowledgments == .noDecisions)
+        #expect(model.decidedSubjects.isEmpty)
+    }
+
+    @Test("R3: a subject changed under its identifier does not carry its decision")
+    func reconcileRefusesChangedSubject() throws {
+        let model = EndedMonthAcknowledgmentModel()
+        let before = try readiness(carrying: [exceptionA, exceptionB])
+        try select(exceptionA, of: before, in: model)
+        #expect(model.confirmSelection(carrying: before))
+
+        // Same identifier, different amount. Identity is a join, not a subject.
+        #expect(model.reconcile(carrying: [staleA, exceptionB]))
+        #expect(model.decidedSubjects.isEmpty)
+        #expect(model.confirmedAcknowledgments == .noDecisions)
+        #expect(model.confirmedAcknowledgments.confirmedAcknowledgmentIDs.isEmpty)
+
+        // The substituted subject is undecided, not inherited as acknowledged.
+        let after = try readiness(carrying: [staleA, exceptionB],
+                                  confirmed: model.confirmedAcknowledgments)
+        #expect(after.acknowledgedExceptions.isEmpty)
+        #expect(Set(after.undecidedExceptions) == Set([staleA, exceptionB]))
+    }
+
+    @Test("R4: a subject that is still exactly itself keeps its decision")
+    func reconcileKeepsIdenticalSubject() throws {
+        let model = EndedMonthAcknowledgmentModel()
+        let before = try readiness(carrying: [exceptionA, exceptionB])
+        try select(exceptionA, of: before, in: model)
+        #expect(model.confirmSelection(carrying: before))
+        let granted = model.confirmedAcknowledgments
+
+        // B was resolved. Nothing local ever referred to B, so there is
+        // nothing to drop — and A, still exactly itself, keeps its decision.
+        #expect(model.reconcile(carrying: [exceptionA]) == false)
+        #expect(model.decidedSubjects.count == 1)
+        #expect(model.confirmedAcknowledgments == granted)
+
+        let after = try readiness(carrying: [exceptionA],
+                                  confirmed: model.confirmedAcknowledgments)
+        #expect(after.acknowledgedExceptions == [exceptionA])
+        #expect(after.disposition == .readyWithAcknowledgedExceptions)
+    }
+
+    @Test("R5: an exception that appears is neither selected nor confirmed")
+    func reconcileNeverAddsAnything() throws {
+        let model = EndedMonthAcknowledgmentModel()
+        let before = try readiness(carrying: [exceptionA])
+        try select(exceptionA, of: before, in: model)
+        #expect(model.confirmSelection(carrying: before))
+
+        // B appears. Reconciliation drops nothing and grants nothing.
+        #expect(model.reconcile(carrying: [exceptionA, exceptionB]) == false)
+        #expect(model.decidedSubjects.count == 1)
+        #expect(model.hasSelection == false)
+
+        let after = try readiness(carrying: [exceptionA, exceptionB],
+                                  confirmed: model.confirmedAcknowledgments)
+        #expect(after.acknowledgedExceptions == [exceptionA])
+        #expect(after.undecidedExceptions == [exceptionB])
+        #expect(after.disposition == .needsDecisions)
+    }
+
+    @Test("R6: only the stale subset is dropped, and the rest is untouched")
+    func reconcileDropsOnlyTheStaleSubset() throws {
+        let model = EndedMonthAcknowledgmentModel()
+        let carried = [exceptionA, exceptionB, exceptionC]
+        let before = try readiness(carrying: carried)
+        try select(exceptionA, of: before, in: model)
+        try select(exceptionB, of: before, in: model)
+        #expect(model.confirmSelection(carrying: before))
+        #expect(model.decidedSubjects.count == 2)
+        // C is ticked but not confirmed, and stays that way.
+        try select(exceptionC, of: before, in: model)
+
+        // A disappears; B and C are exactly as they were.
+        #expect(model.reconcile(carrying: [exceptionB, exceptionC]))
+        #expect(model.decidedSubjects.count == 1)
+        #expect(model.confirmedAcknowledgments.confirmedAcknowledgmentIDs == [exceptionB.id])
+        #expect(model.hasSelection)
+
+        let after = try readiness(carrying: [exceptionB, exceptionC],
+                                  confirmed: model.confirmedAcknowledgments)
+        #expect(after.acknowledgedExceptions == [exceptionB])
+        #expect(after.undecidedExceptions == [exceptionC])
+        #expect(after.disposition == .needsDecisions)
+    }
+
+    @Test("R7: reconciliation settles, and readiness still comes from the evaluator")
+    func reconcileSettlesAndDefersToTheEvaluator() throws {
+        let model = EndedMonthAcknowledgmentModel()
+        let before = try readiness(carrying: [exceptionA, exceptionB])
+        try select(exceptionA, of: before, in: model)
+        #expect(model.confirmSelection(carrying: before))
+
+        // Idempotent: the first pass drops A, and no later pass drops anything
+        // or grants anything. A screen that reconciles on every read settles.
+        #expect(model.reconcile(carrying: [exceptionB]))
+        #expect(model.reconcile(carrying: [exceptionB]) == false)
+        #expect(model.reconcile(carrying: [exceptionB]) == false)
+
+        // Resolving the last exception too: the state is empty and the
+        // evaluator — not this model — is what says the month is clean.
+        #expect(model.reconcile(carrying: []) == false)
+        let clean = try readiness(carrying: [], confirmed: model.confirmedAcknowledgments)
+        #expect(clean.disposition == .readyClean)
+        #expect(EndedMonthAcknowledgmentMapper.state(for: clean) == .nothingToDecide)
+        #expect(EndedMonthAcknowledgmentMapper.section(for: clean) == nil)
+    }
+
+    @Test("R8: reconciliation is local hygiene and never rescues a real blocker")
+    func reconcileDoesNotClearBlockers() throws {
+        let model = EndedMonthAcknowledgmentModel()
+        let before = try readiness(carrying: [exceptionA])
+        try select(exceptionA, of: before, in: model)
+        #expect(model.confirmSelection(carrying: before))
+
+        // A month whose records are incomplete stays blocked after
+        // reconciliation, because acknowledgment never answered that question.
+        model.reconcile(carrying: [exceptionA])
+        let blocked = try readiness(
+            carrying: [exceptionA],
+            confirmed: model.confirmedAcknowledgments,
+            coverage: .absent
+        )
+        #expect(blocked.disposition == .blocked)
+        #expect(EndedMonthAcknowledgmentMapper.state(for: blocked) == .blocked)
+        #expect(EndedMonthAcknowledgmentMapper.section(for: blocked)?.allowsConfirmation == false)
+    }
+
     @Test("C5b: no part of a mixed valid/stale decision is applied")
     func mixedDecisionAppliesNothing() throws {
         let model = EndedMonthAcknowledgmentModel()
@@ -445,17 +619,30 @@ struct EndedMonthAcknowledgmentTests {
         #expect(callers == ["Persistence/EndedMonthAcknowledgment.swift"])
 
         let interaction = try Self.code("Persistence/EndedMonthAcknowledgment.swift")
+        // Two sites, and both are named below. `PeriodCheckpointConfirmedAcknowledgments`
+        // has no other constructor by design, so reconciliation has to restate
+        // its survivors through the same rule rather than assemble authority by
+        // hand — which is the property this guard is protecting.
         #expect(
             interaction.components(
                 separatedBy: "PeriodCheckpointAcknowledgmentConfirmation.confirm("
-            ).count - 1 == 1
+            ).count - 1 == 2
         )
-        // And it sits inside the explicit action, not in a mapper or an
-        // initializer that something else could run for a person.
+        // One is the explicit action. Neither is in a mapper or an initializer
+        // that something else could run for a person.
         let action = try #require(interaction.range(of: "func confirmSelection(carrying"))
-        let after = try #require(interaction.range(of: "func reset("))
+        let afterAction = try #require(interaction.range(of: "func reset("))
         #expect(
-            interaction[action.lowerBound..<after.lowerBound]
+            interaction[action.lowerBound..<afterAction.lowerBound]
+                .contains("PeriodCheckpointAcknowledgmentConfirmation.confirm(")
+        )
+        // The other is reconciliation, which can only ever shrink what was
+        // already decided — proved behaviourally by R5, which pins that a newly
+        // carried exception is never selected or confirmed on anyone's behalf.
+        let reconcile = try #require(interaction.range(of: "func reconcile(carrying"))
+        let afterReconcile = try #require(interaction.range(of: "func screen("))
+        #expect(
+            interaction[reconcile.lowerBound..<afterReconcile.lowerBound]
                 .contains("PeriodCheckpointAcknowledgmentConfirmation.confirm(")
         )
 

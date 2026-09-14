@@ -291,19 +291,80 @@ final class EndedMonthAcknowledgmentModel {
         }
     }
 
+    /// Drop local state for subjects the month no longer carries, and restate
+    /// the survivors as authority. Returns whether anything was dropped.
+    ///
+    /// The month can change underneath a screen that stays open — resolving an
+    /// observation from a linked Decision removes the exception it raised — and
+    /// a decision made about an exception that is gone describes nothing. E2
+    /// already refuses such authority, which is correct and stays correct; what
+    /// it cannot do is tidy up after a person who is still standing on the
+    /// screen. That is this, and it is the whole of it: local hygiene, not a
+    /// second opinion about what the evaluator decided.
+    ///
+    /// The test is the same one confirmation and E2 apply — value-equal to
+    /// exactly one carried exception — so a subject survives only while it is
+    /// still *exactly* what was decided on. A changed subject does not inherit
+    /// its predecessor's decision, a disappeared one is dropped, and an
+    /// identifier never joins anything. Nothing is ever added here: a current
+    /// exception nobody has decided on stays undecided, and no acknowledgment
+    /// is carried forward on anybody's behalf.
+    @discardableResult
+    func reconcile(carrying exceptions: [PeriodCheckpointException]) -> Bool {
+        func survives(_ subject: AcknowledgmentSubject) -> Bool {
+            exceptions.filter { $0 == subject.exception }.count == 1
+        }
+        let decided = decidedSubjects.filter(survives)
+        let selected = selectedSubjects.filter(survives)
+        guard decided.count != decidedSubjects.count
+                || selected.count != selectedSubjects.count
+        else { return false }
+
+        decidedSubjects = decided
+        selectedSubjects = selected
+        // Restated through the one authority path an explicit confirmation
+        // uses, never assembled here. Every survivor already satisfies that
+        // path's rule, so the refusal branch is unreachable; it drops the whole
+        // set rather than inventing a partial one if that ever stops being true.
+        confirmedAcknowledgments = (try? PeriodCheckpointAcknowledgmentConfirmation.confirm(
+            decisions: decided.map(\.exception),
+            carriedExceptions: exceptions
+        )) ?? .noDecisions
+        return true
+    }
+
     /// The screen's content, re-evaluated through the real checkpoint path
     /// carrying whatever has been explicitly confirmed so far.
     ///
     /// A read. It closes nothing, writes nothing and decides nothing: the
     /// disposition it reports is the evaluator's answer to the authority this
     /// interaction is holding.
+    ///
+    /// Local state is reconciled against the exceptions the month carries now
+    /// before that answer is reported. The first evaluation supplies them: E2
+    /// blocking on stale authority does not hide what the period carries, it
+    /// only refuses to apply a decision to it. When reconciliation drops
+    /// something the month is read again, so the returned screen is always the
+    /// evaluator's answer to the authority this model is actually holding.
     func screen(
         for selection: ReviewPeriodSelection, in store: FinanceStore
     ) -> EndedMonthVerificationScreen? {
         guard let verification = store.endedMonthVerification(
             selection, confirmedAcknowledgments: confirmedAcknowledgments
         ) else { return nil }
-        return EndedMonthVerificationScreen(
+        guard reconcile(carrying: verification.readiness.exceptions) else {
+            return Self.screen(from: verification)
+        }
+        guard let reconciled = store.endedMonthVerification(
+            selection, confirmedAcknowledgments: confirmedAcknowledgments
+        ) else { return nil }
+        return Self.screen(from: reconciled)
+    }
+
+    private static func screen(
+        from verification: EndedMonthVerification
+    ) -> EndedMonthVerificationScreen {
+        EndedMonthVerificationScreen(
             verification: verification.presentation,
             readinessState: EndedMonthAcknowledgmentMapper.state(for: verification.readiness),
             acknowledgment: EndedMonthAcknowledgmentMapper.section(for: verification.readiness)
@@ -322,6 +383,11 @@ final class EndedMonthAcknowledgmentModel {
         guard let verification = store.endedMonthVerification(
             selection, confirmedAcknowledgments: confirmedAcknowledgments
         ) else { return false }
+        // Reconciled here too, so the action does not depend on a read having
+        // happened first. `exceptions` is what the period carries and does not
+        // depend on the authority the evaluation was given, so the readiness
+        // below is the right thing to decide against either way.
+        reconcile(carrying: verification.readiness.exceptions)
         return confirmSelection(carrying: verification.readiness)
     }
 
