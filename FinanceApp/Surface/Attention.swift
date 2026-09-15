@@ -57,6 +57,14 @@ struct AttentionUncertainty: Hashable, Sendable {
 
 enum AttentionDestination: Hashable, Sendable {
     case planFundingNeeded
+    /// The Plan destination that already lists what is coming.
+    ///
+    /// Used for a projected risk the Funding Needed screen cannot explain,
+    /// because that screen exists to describe one payment that could not be
+    /// settled and this risk has no such payment: the reserve is simply being
+    /// spent into, or the run opened short. Offering it anyway reached a
+    /// "Funding detail unavailable" dead end.
+    case planUpcoming
     case banksAndSync
     case account(String)
     case observationReview(String)

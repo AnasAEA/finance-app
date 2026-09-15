@@ -71,20 +71,41 @@ enum AttentionPresentationMapper {
     private static func actionCard(_ candidate: AttentionCandidate) -> HomeAttentionCard? {
         switch candidate.detail {
         case let .fundingGap(fact):
+            // The engine's two risks are two different problems, and the card
+            // has to say which one this is. A deficit means money has to be
+            // found; a reserve breach means the plan stays funded and eats
+            // into the margin the person set. `fact.shortfall` means something
+            // different in each — the gap itself, or how far under the reserve
+            // the pool goes — so the sentence around it changes with the kind
+            // rather than the amount being relabelled.
             let title: String
-            switch fact.subject {
-            case let .account(_, name):
-                title = "\(name) needs \(fact.shortfall.formatted()) by \(dayText(fact.day))"
-            case .paymentPool:
-                title = "\(fact.shortfall.formatted()) funding gap by \(dayText(fact.day))"
-            default:
-                title = "\(fact.shortfall.formatted()) needed by \(dayText(fact.day))"
+            switch fact.riskKind {
+            case .poolDeficit:
+                switch fact.subject {
+                case let .account(_, name):
+                    title = "\(name) needs \(fact.shortfall.formatted()) by \(dayText(fact.day))"
+                case .paymentPool:
+                    title = "\(fact.shortfall.formatted()) funding gap by \(dayText(fact.day))"
+                default:
+                    title = "\(fact.shortfall.formatted()) needed by \(dayText(fact.day))"
+                }
+            case .belowSafetyFloor:
+                // Naming an account would imply that account is short. It is
+                // not: the pool is funded and the reserve is what is being
+                // crossed, so the subject adds nothing here.
+                title = "\(fact.shortfall.formatted()) below your safety reserve by \(dayText(fact.day))"
             }
+            // Funding Needed explains one payment that could not be settled.
+            // Without such a payment it has nothing to show and said so, so
+            // the card offers what is coming instead of a dead end. This is
+            // decided by the evidence the destination needs, not by the kind:
+            // a run that opens short has no settlement failure either.
+            let explainable = fact.settlementFailure != nil
             return HomeAttentionCard(
                 title: title,
                 detail: fact.triggerLabel.map { "For \($0)" },
-                actionTitle: "See what's needed",
-                destination: .planFundingNeeded,
+                actionTitle: explainable ? "See what's needed" : "See what's coming",
+                destination: explainable ? .planFundingNeeded : .planUpcoming,
                 isTinted: true
             )
 

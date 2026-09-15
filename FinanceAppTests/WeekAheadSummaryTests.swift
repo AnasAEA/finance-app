@@ -171,8 +171,8 @@ struct WeekAheadSummaryTests {
         // The day is the engine's own first-risk day, and the note says only
         // that — no threshold of this feature's own, and no second amount.
         #expect(store.snapshot.firstRisk?.date == summary.day)
-        #expect(summary.notes == [.planAlreadyFlagsThisDay])
-        let sentence = WeekAheadNote.planAlreadyFlagsThisDay.sentence
+        #expect(summary.notes == [.shortfallOnThisDay])
+        let sentence = WeekAheadNote.shortfallOnThisDay.sentence
         #expect(!sentence.contains("€"))
         #expect(!sentence.contains("rent"))
     }
@@ -400,7 +400,7 @@ struct WeekAheadSummaryTests {
         )
         // Every sentence the row can say, walked whole: none names an event,
         // and none asserts causation.
-        for note in [WeekAheadNote.planAlreadyFlagsThisDay, .includesUncertainIncome] {
+        for note in [WeekAheadNote.shortfallOnThisDay, .belowReserveOnThisDay, .includesUncertainIncome] {
             for forbidden in ["After ", "because", "caused by", "due to"] {
                 #expect(!note.sentence.contains(forbidden), "\(note) claimed causality")
             }

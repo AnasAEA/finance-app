@@ -164,7 +164,7 @@ extension FinanceAppSnapshot {
             cashRunway: .clear(horizonDays: 0),
             firstRisk: nil,
             lowestPoint: RiskPoint(date: asOf, projectedBalance: zero, triggerLabel: nil,
-                                    triggerAmount: nil, shortfall: nil),
+                                    triggerAmount: nil, kind: nil, shortfall: nil),
             minimumBridgeRequired: zero,
             runwayPoints: [],
             upcomingEvents: [],
@@ -342,6 +342,17 @@ struct RiskPoint: Hashable, Sendable {
     /// The largest obligation landing that day — the thing to name on screen.
     let triggerLabel: String?
     let triggerAmount: Amount?
+    /// Which kind of risk the projection reported, when this point is one.
+    ///
+    /// The engine decides this and the app carries it; nothing downstream may
+    /// re-derive it from a balance, because "below zero" and "below the
+    /// reserve you set" are different problems with different answers, and a
+    /// positive balance can be either.
+    ///
+    /// `nil` where there is no classification to report — the same rule
+    /// `shortfall` follows. A lowest point that is not the risk day has no
+    /// kind, and must not borrow one.
+    let kind: CashRiskKind?
     /// How much was missing at the moment this risk was reached.
     ///
     /// It travels with `date` because a sentence that names an amount and a
@@ -349,6 +360,22 @@ struct RiskPoint: Hashable, Sendable {
     /// `nil` where there is no risk to quantify — a lowest point that never
     /// went short has no shortfall, and must not borrow one.
     let shortfall: Amount?
+}
+
+/// Which kind of cash risk the projection found.
+///
+/// The engine's own distinction, carried across the boundary rather than
+/// recomputed: it is the difference between money running out and a buffer
+/// being spent into, and only one of them means a person has to find money.
+///
+/// Named for the two states the affordability surface already speaks about in
+/// exactly these terms, so the app has one vocabulary for one distinction.
+enum CashRiskKind: String, Hashable, Sendable {
+    /// Projected spendable cash goes below zero. There is a genuine gap.
+    case hardDeficit
+    /// Cash stays above zero but falls under the safety reserve on the plan.
+    /// Still funded; the margin is what is being consumed.
+    case reserveWarning
 }
 
 /// How long the money lasts.

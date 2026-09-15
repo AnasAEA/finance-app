@@ -391,6 +391,7 @@ struct SafeToUseExplanationTests {
             projectedBalance: .eur(-209),
             triggerLabel: "Rent",
             triggerAmount: .eur(400),
+            kind: .hardDeficit,
             shortfall: .eur(209)
         )
         return short

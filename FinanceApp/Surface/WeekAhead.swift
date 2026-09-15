@@ -42,11 +42,15 @@ struct WeekAheadSummary: Hashable, Sendable {
 /// Something the projection itself establishes about this week. Never a
 /// threshold, classification or causal claim invented here.
 enum WeekAheadNote: Hashable, Sendable {
-    /// The first cash risk the plan already reports falls on this same day.
-    /// Restated, deliberately without its amount: the attention card and the
-    /// Funding Needed screen own that figure, and a second copy on Home would
+    /// The plan already reports its first cash risk on this same day, and it
+    /// is a projected shortfall. Restated, deliberately without its amount:
+    /// the attention card owns that figure, and a second copy on Home would
     /// be a second risk system.
-    case planAlreadyFlagsThisDay
+    case shortfallOnThisDay
+    /// As above, but the plan stays funded and crosses the safety reserve.
+    /// A different problem with a different answer, which is why the row is
+    /// not allowed to say "cash risk" for both.
+    case belowReserveOnThisDay
     /// The window admits an inflow the plan does not treat as certain, so the
     /// low could be worse than shown. `PlannedEvent.certaintyLabel` is the
     /// model's own flag for this; nothing is inferred from an amount.
@@ -54,8 +58,10 @@ enum WeekAheadNote: Hashable, Sendable {
 
     var sentence: String {
         switch self {
-        case .planAlreadyFlagsThisDay:
-            "The plan already flags a cash risk on this day."
+        case .shortfallOnThisDay:
+            "The plan projects a cash shortfall on this day."
+        case .belowReserveOnThisDay:
+            "The plan projects cash below your safety reserve on this day."
         case .includesUncertainIncome:
             "It counts income the plan doesn't treat as certain, so it could be lower."
         }
@@ -139,9 +145,17 @@ extension WeekAheadSummary {
 
         // The engine attributed this day to a trigger event; this row does
         // not. All that is said is that the day the plan already flags and the
-        // day of the week's low are the same day.
-        if let risk = snapshot.firstRisk, risk.date == day {
-            notes.append(.planAlreadyFlagsThisDay)
+        // day of the week's low are the same day — and which of the engine's
+        // two risks it reported, which it also already decided.
+        //
+        // An unclassified risk says nothing at all rather than something
+        // vague: "below zero" and "below your reserve" are not interchangeable
+        // and neither may stand in for an unknown.
+        if let risk = snapshot.firstRisk, risk.date == day, let kind = risk.kind {
+            switch kind {
+            case .hardDeficit: notes.append(.shortfallOnThisDay)
+            case .reserveWarning: notes.append(.belowReserveOnThisDay)
+            }
         }
 
         let admitsUncertainIncome = snapshot.upcomingEvents.contains { event in

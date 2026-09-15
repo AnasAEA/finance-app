@@ -205,7 +205,9 @@ struct NeedsReviewView: View {
             BankSyncView()
         case let .account(id):
             AccountDetailView(accountID: id)
-        case .activityToReview, .insightsMonthVerification:
+        // Destinations no Activity row produces. The projection's risks
+        // belong to Home and Plan; Activity links evidence and payments.
+        case .activityToReview, .insightsMonthVerification, .planUpcoming:
             EmptyView()
         }
     }

@@ -942,9 +942,10 @@ struct DomainMapper {
                 projectedBalance: Self.amount(result.lowestBalance),
                 triggerLabel: result.firstRisk?.day == lowestDay ? firstRisk?.triggerLabel : nil,
                 triggerAmount: result.firstRisk?.day == lowestDay ? firstRisk?.triggerAmount : nil,
-                // Only the day the risk was actually reached has a shortfall to
-                // report. The lowest point of a run that stayed solvent has
-                // none, and is not given one.
+                // Only the day the risk was actually reached has a kind or a
+                // shortfall to report. The lowest point of a run that stayed
+                // solvent has neither, and is not given either.
+                kind: result.firstRisk?.day == lowestDay ? firstRisk?.kind : nil,
                 shortfall: result.firstRisk?.day == lowestDay ? firstRisk?.shortfall : nil
             ),
             minimumBridgeRequired: Self.amount(overview.minimumBridge),
@@ -1426,11 +1427,24 @@ struct DomainMapper {
             projectedBalance: Self.amount(balance ?? result.lowestBalance),
             triggerLabel: trigger.map { label(for: $0, document: document) } ?? risk.triggerLabel,
             triggerAmount: trigger.flatMap(eventMoney).map { Self.amount($0.magnitude) },
+            // The engine's own classification, carried rather than inferred.
+            // `projectedBalance` cannot stand in for it: a floor breach is
+            // reported while the balance is still positive.
+            kind: Self.riskKind(risk.kind),
             // Straight from the risk the engine reported, alongside its day.
             // Not recomputed here from a headroom, a pool gap or a different
             // horizon: the amount and the date are one fact about one moment.
             shortfall: Self.amount(risk.shortfall.magnitude)
         )
+    }
+
+    /// Total over the engine's kinds, so a case added there has to be answered
+    /// here rather than quietly becoming a deficit.
+    static func riskKind(_ kind: ForecastResult.FirstRisk.Kind) -> CashRiskKind {
+        switch kind {
+        case .poolDeficit: .hardDeficit
+        case .belowSafetyFloor: .reserveWarning
+        }
     }
 
     private func plannedEvents(_ input: Inputs) -> [PlannedEvent] {

@@ -272,6 +272,8 @@ private struct HomeDashboard: View {
         switch destination {
         case .planFundingNeeded:
             navigation.openPlan(.fundingNeeded)
+        case .planUpcoming:
+            navigation.openPlan(.upcoming)
         case .banksAndSync:
             navigation.showHome([.settings, .banks])
         case let .account(id):
