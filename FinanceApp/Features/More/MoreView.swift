@@ -118,15 +118,19 @@ struct DebtsView: View {
 
 // MARK: - Data & Backup
 
-/// Where importing and, later, exporting live.
+/// Where importing and exporting live.
 ///
 /// Import is offered only into an empty store. When there is already a history,
 /// the row says so rather than disappearing: a person who exported their state
 /// should be told why restoring it is refused, not left looking for the button.
+/// Export answers the other half, and refuses in the same voice — most
+/// importantly when the store could not be read, because a backup taken then
+/// would be a well-formed file holding nothing.
 struct DataAndBackupView: View {
     @Environment(FinanceStore.self) private var store
     @State private var isImporting = false
     @State private var isImportingHistory = false
+    @State private var isExporting = false
 
     var body: some View {
         List {
@@ -162,11 +166,19 @@ struct DataAndBackupView: View {
             }
 
             Section {
-                Label("Export backup", systemImage: "square.and.arrow.up")
-                    .foregroundStyle(.secondary)
-                    .badge("Coming later")
+                Button {
+                    isExporting = true
+                } label: {
+                    Label("Export backup", systemImage: "square.and.arrow.up")
+                }
+                .disabled(!store.canExportBackup)
+                .accessibilityIdentifier(DataID.exportBackup)
             } footer: {
-                Text("Exporting writes your whole financial state to a file. It is not built yet.")
+                if let blocker = store.backupBlocker {
+                    Text(blocker.message)
+                } else {
+                    Text("Writes your accounts, balances, transactions and plan to a file you keep. You see what is in it, and it is read back and checked, before it is saved anywhere.")
+                }
             }
 
             Section {
@@ -179,5 +191,6 @@ struct DataAndBackupView: View {
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $isImporting) { ImportCurrentStateView() }
         .sheet(isPresented: $isImportingHistory) { ImportHistoricalArchiveView() }
+        .sheet(isPresented: $isExporting) { ExportBackupView() }
     }
 }

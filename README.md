@@ -139,7 +139,32 @@ Rules the path enforces:
 - **No restart.** `FinanceStore` recalculates on confirmation, so Home renders
   from the imported data on the next frame.
 
-`More → Data & Backup` offers the same import. Export is not built yet.
+`Settings → Data & Privacy` offers the same import, and the other direction.
+
+### Export backup
+
+Export writes the stored document out as an interchange file and then proves
+it: the bytes are decoded and semantically validated through the *import*
+path, and re-encoded, and the file is offered only if that re-encoding is
+byte-identical. A document that decodes but is not a fixed point of the
+encoder has lost or reinterpreted something, and the loss would otherwise only
+surface on the day somebody needed the file.
+
+Every figure on the screen is counted from the document read back out of the
+file, not from the live store, so what a person is shown describes the file.
+
+Three refusals, each with its own reason:
+
+- the stored graph could not be read — the store is serving an empty plan, so
+  a backup taken now would be a well-formed file holding nothing;
+- there is no persistent store behind the facade — a preview has nothing to
+  copy;
+- there is no account — a restore requires one, so nothing here could produce
+  a file that restores.
+
+A backup carries the `FinanceDocument` and only that. The historical archive,
+local checkpoint history and the device's bank pairing live outside it by
+design, and the screen says so rather than implying a complete device copy.
 
 ### Supported schema versions
 

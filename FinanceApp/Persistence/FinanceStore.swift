@@ -1247,6 +1247,64 @@ final class FinanceStore: FinanceProviding {
         return document
     }
 
+    // MARK: - Export: backup
+
+    /// Why "Export backup" is unavailable, or `nil` when it may run.
+    ///
+    /// An unreadable store is the case this exists for. The store then serves
+    /// an empty plan, and an empty plan encodes perfectly well — so without
+    /// this gate the app would hand back a well-formed backup of nothing and
+    /// look like it had worked.
+    ///
+    /// The unreadable check comes first, unlike `importBlocker`'s order,
+    /// because an unreadable store has no context either — and "your data
+    /// could not be opened" is the sentence that situation needs, not the one
+    /// about a store with nothing behind it.
+    ///
+    /// A backup is a copy of what is on this device, so a store with no
+    /// persistent context has nothing to make one from. That covers the fixed
+    /// facade and the in-memory preview/fixture stores alike.
+    ///
+    /// The last condition is an account rather than `documentIsEmpty` or
+    /// `isEmpty`, and neither of those would be right. A restore needs at
+    /// least one account — `DocumentImporter.semanticValidate` refuses a
+    /// document without one — so an accountless store cannot produce a
+    /// restorable file whatever else it holds, and a person who has added a
+    /// goal but no account must not be told there is nothing there.
+    /// `documentIsEmpty` does not count goals or set-aside at all, and
+    /// `isEmpty` additionally consults checkpoint history, which a backup does
+    /// not carry and so cannot make one worth taking.
+    var backupBlocker: AppExportError? {
+        if storeIsUnreadable { return .storeUnreadable }
+        if isFixed || context == nil { return .storeIsReadOnly }
+        return document.accounts.isEmpty ? .nothingToExport : nil
+    }
+
+    var canExportBackup: Bool { backupBlocker == nil }
+
+    /// Reads the stored graph, writes it to interchange bytes, and proves the
+    /// bytes read back before returning them. Writes nothing and keeps nothing.
+    ///
+    /// The source is the persisted graph, not the in-memory document: a backup
+    /// is a copy of what is on disk, and reading it back through the same load
+    /// path a relaunch uses is what makes it one.
+    func exportBackup() throws -> FinanceBackup {
+        let previous = beginOperation()
+        defer { operationDate = previous }
+        if let backupBlocker { throw backupBlocker }
+        guard let day = civilToday() else { throw AppExportError.currentDayUnavailable }
+        let stored: FinanceDocument
+        do {
+            stored = try exportDocument()
+        } catch {
+            // The stored graph would not come back. It is not empty and it is
+            // not readable, which is the `storeUnreadable` situation arriving
+            // late rather than at launch.
+            throw AppExportError.storeUnreadable
+        }
+        return try DocumentExporter.backup(of: stored, on: day)
+    }
+
     // MARK: - Loading
 
     private func load() {

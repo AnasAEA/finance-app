@@ -109,3 +109,18 @@ enum InsightsID {
     /// a separate, earlier statement that stores nothing.
     static let verify = "insights.verify"
 }
+
+/// Data & Privacy's export flow.
+///
+/// Roles, never contents: `data.export.summary` is *where the file is
+/// described*, and stays that whatever the file turns out to hold. Nothing
+/// here is derived from a document, so nothing here needs a token.
+enum DataID {
+    static let exportBackup = "data.export"
+    static let exportBlocked = "data.export.blocked"
+    static let exportSummary = "data.export.summary"
+    static let exportSave = "data.export.save"
+    static let exportSaved = "data.export.saved"
+
+    static let all = [exportBackup, exportBlocked, exportSummary, exportSave, exportSaved]
+}
