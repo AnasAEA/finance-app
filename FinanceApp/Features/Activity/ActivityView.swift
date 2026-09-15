@@ -395,22 +395,30 @@ struct TransactionDetailView: View {
     let date: CalendarDay
 
     @Environment(FinanceStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
     @State private var isPicking = false
     @State private var failure: AppReconciliationError?
+    @State private var confirmsRemoval = false
+    /// Why the last removal attempt was refused. Set only by a refusal — a
+    /// successful removal leaves this alone and closes the screen instead.
+    @State private var removalFailure: AppRemovalError?
 
-    /// One live read per composition: whether this row is reconciled and, if
-    /// not, what could match it are two halves of one answer about one day.
+    /// One live read per composition: whether this row is reconciled, what
+    /// could match it, and whether it can be removed are all answers about the
+    /// same row at the same moment, and a screen that sampled them separately
+    /// could offer to remove something it had just described as matched.
     var body: some View {
         let snapshot = store.snapshot
         let reconciliation = snapshot.reconciliations[row.id]
         let candidates = reconciliation == nil ? store.matches(forTransaction: row.id) : []
-        return content(snapshot, reconciliation, candidates)
+        return content(snapshot, reconciliation, candidates, store.removalBlocker(forTransaction: row.id))
     }
 
     private func content(
         _ snapshot: FinanceAppSnapshot,
         _ reconciliation: ReconciliationSummary?,
-        _ candidates: [PaymentMatch]
+        _ candidates: [PaymentMatch],
+        _ removalBlocker: AppRemovalError?
     ) -> some View {
         List {
             Section {
@@ -491,9 +499,38 @@ struct TransactionDetailView: View {
             if let note = row.note {
                 Section("Notes") { Text(note) }
             }
+
+            removalSection(removalBlocker)
         }
         .navigationTitle("Transaction")
         .navigationBarTitleDisplayMode(.inline)
+        .confirmationDialog(
+            "Remove this transaction?",
+            isPresented: $confirmsRemoval,
+            titleVisibility: .visible
+        ) {
+            Button("Remove", role: .destructive, action: remove)
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            // Names the row being removed, so a confirmation that arrived
+            // after a mis-tap is recognisably about the wrong thing.
+            Text("\(row.title) · \(row.amount.formatted()) · \(date.formatted(date: .abbreviated, time: .omitted))")
+        }
+        .alert(
+            "Not removed",
+            isPresented: Binding(
+                get: { removalFailure != nil }, set: { if !$0 { removalFailure = nil } }
+            ),
+            presenting: removalFailure
+        ) { _ in
+            Button("OK", role: .cancel) { removalFailure = nil }
+        } message: { problem in
+            if let suggestion = problem.recoverySuggestion {
+                Text("\(problem.message)\n\n\(suggestion)")
+            } else {
+                Text(problem.message)
+            }
+        }
         .sheet(isPresented: $isPicking) {
             MatchPickerView(
                 title: "Expected payments",
@@ -516,6 +553,71 @@ struct TransactionDetailView: View {
             Button("OK", role: .cancel) { failure = nil }
         } message: { error in
             Text(error.message)
+        }
+    }
+
+    /// Removal, offered or explained — never hidden.
+    ///
+    /// A blocked row keeps the section and says why, because the question
+    /// "can I delete this?" deserves an answer either way: an action that is
+    /// simply absent reads as an app that cannot do it at all, and the
+    /// person would go looking for it somewhere else.
+    ///
+    /// `notFound` is the exception. It means the row is already gone from
+    /// under this screen, and offering to explain that is noise on a screen
+    /// that is about to be dismissed anyway.
+    @ViewBuilder
+    private func removalSection(_ blocker: AppRemovalError?) -> some View {
+        switch blocker {
+        case .none:
+            Section {
+                Button(role: .destructive) {
+                    confirmsRemoval = true
+                } label: {
+                    Label("Remove transaction", systemImage: "trash")
+                }
+                .accessibilityIdentifier(ActivityID.removeTransaction)
+            } footer: {
+                Text("Removes it from your records. Balances and totals are worked out again without it.")
+            }
+        case .notFound:
+            EmptyView()
+        case let .some(blocker):
+            Section {
+                VStack(alignment: .leading, spacing: 6) {
+                    Label(blocker.message, systemImage: "lock")
+                        .font(.subheadline)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if let suggestion = blocker.recoverySuggestion {
+                        Text(suggestion)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .padding(.vertical, 2)
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier(ActivityID.removeBlocked)
+            } header: {
+                Text("Removing")
+            }
+        }
+    }
+
+    /// Asks the store to remove it, and closes only if it did.
+    ///
+    /// The store re-checks eligibility itself, so a row that became linked
+    /// while this screen was open is refused here rather than removed. On
+    /// success there is nothing left for this screen to show, and the list
+    /// behind it has already recomputed from the store's own published state.
+    private func remove() {
+        do {
+            try store.deleteActivityRow(id: row.id)
+            dismiss()
+        } catch let problem as AppRemovalError {
+            removalFailure = problem
+        } catch {
+            removalFailure = .persistenceFailed(String(describing: error))
         }
     }
 

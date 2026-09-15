@@ -310,6 +310,11 @@ Wiring actual spend attribution is still to do.
   refuse while `FinanceStore.loadFailure` is set, so the first new entry
   cannot purge rows that failed to load but are still the only copy of them.
   An explicit `importDocument` is the one path that may replace them.
+- Removing a transaction is refused while any durable record still names it —
+  a settlement, an evidence link, another transaction's link, or a goal's
+  purchase — and nothing cascades. Only what a person entered here is
+  removable; imported evidence is not. See
+  [docs/architecture.md](docs/architecture.md) for the whole contract.
 - Import is validated before anything is written: exactly one account per
   identifier and at most one current balance per account. A duplicate fails the
   import naming the record, rather than silently keeping whichever row the

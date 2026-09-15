@@ -1420,11 +1420,77 @@ final class FinanceStore: FinanceProviding {
         recalculate()
     }
 
+    // MARK: - Removing a transaction
+
+    /// Why this transaction cannot be removed, or `nil` when it can.
+    ///
+    /// The single authority. The screen asks it to decide whether to offer the
+    /// action, and `deleteActivityRow` asks it again before doing anything, so
+    /// a row whose situation changed while it was on screen is refused rather
+    /// than removed on the strength of a stale answer.
+    ///
+    /// Every clause reads live document state and names a durable record that
+    /// would be left pointing at nothing. Two of them — the settlement and the
+    /// evidence link — FinanceCore would also refuse on the way to disk, so
+    /// checking them here turns an opaque write failure into a sentence a
+    /// person can act on. The other two it would not refuse, which is exactly
+    /// why they are checked: nothing downstream would notice.
+    ///
+    /// Order matters only for the message. The strongest statement about the
+    /// row comes first, so a transaction that is both imported evidence and
+    /// settles a payment is described as the evidence it is.
+    func removalBlocker(forTransaction id: String) -> AppRemovalError? {
+        if isFixed { return .storeIsReadOnly }
+        if storeIsUnreadable { return .storeUnreadable }
+        guard let transaction = document.transactions.first(where: { $0.id == id }) else {
+            return .notFound
+        }
+
+        // Not something this app recorded. `userConfirmed` is the grade the
+        // domain already uses for "a person explicitly stated this" — it is
+        // what a trusted rule requires of the confirmations behind it — and it
+        // is what both entry paths in this app produce. Anything else arrived
+        // as evidence from outside, and removing it here would discard a
+        // record the app cannot recreate.
+        guard transaction.provenance.evidenceGrade == .userConfirmed else {
+            return .sourceEvidence
+        }
+
+        if document.planning.settlements.contains(where: { $0.actualTransactionID == id }) {
+            return .settlesExpectedPayment
+        }
+        if document.externalEvidenceLinks.contains(where: { $0.transactionID == id }) {
+            return .linkedToBankEvidence
+        }
+        // Held by another transaction, so the direction matters: this row may
+        // link outward freely, but a refund, repayment or disposal recorded
+        // against it is a statement about *this* row that would silently
+        // change meaning if it vanished.
+        if document.transactions.contains(where: { $0.id != id && $0.linkedTransactionID == id }) {
+            return .linkedFromAnotherTransaction
+        }
+        if document.planning.plannedPurchases.contains(where: { $0.purchasedTransactionID == id }) {
+            return .recordedAsGoalPurchase
+        }
+        return nil
+    }
+
+    /// Removes one transaction, or throws the reason it may not be removed.
+    ///
+    /// Nothing cascades. A settlement, an evidence link, another transaction's
+    /// link and a goal's purchase are all records of something decided or
+    /// observed, and deleting one row is not a reason to erase any of them —
+    /// so a transaction any of them names is refused here rather than removed
+    /// with its dependants quietly deleted behind it.
     func deleteActivityRow(id: String) throws {
         let previous = beginOperation()
         defer { operationDate = previous }
-        guard !isFixed else { throw AppEntryError.storeIsReadOnly }
-        guard let index = document.transactions.firstIndex(where: { $0.id == id }) else { return }
+        // Evaluated against the state as it is now, not as the screen last saw
+        // it. A disabled button is a courtesy; this is the guarantee.
+        if let blocker = removalBlocker(forTransaction: id) { throw blocker }
+        guard let index = document.transactions.firstIndex(where: { $0.id == id }) else {
+            throw AppRemovalError.notFound
+        }
         _ = try requireCivilToday()
         let restoreTransactions = document.transactions
         let restoreBalances = document.balances
@@ -1439,7 +1505,7 @@ final class FinanceStore: FinanceProviding {
             document.transactions = restoreTransactions
             document.balances = restoreBalances
             transactionPresentation = restorePresentation
-            throw AppEntryError.persistenceFailed(String(describing: error))
+            throw AppRemovalError.persistenceFailed(String(describing: error))
         }
         recalculate()
     }

@@ -59,6 +59,13 @@ enum ActivityID {
     /// would answer a search for a pending row.
     static let pendingSection = "activity.pending-section"
 
+    /// The destructive action on one transaction, and the explanation shown in
+    /// its place when the transaction may not be removed. Outside the row
+    /// namespaces above for the same reason `pendingSection` is: neither is a
+    /// row, and neither should answer a search for one.
+    static let removeTransaction = "activity.remove-transaction"
+    static let removeBlocked = "activity.remove-blocked"
+
     /// Every prefix a row identity may legitimately begin with. The privacy
     /// regression test walks these.
     static let rowPrefixes = [

@@ -101,6 +101,46 @@ shared expense is refused rather than stored at full price, because
 `FinanceCore` has no partial-consumption model and inventing one above the
 facade would put a number in the ledger that the engine does not mean.
 
+## The removal contract
+
+A transaction is removed only when nothing durable still refers to it.
+`FinanceStore.removalBlocker(forTransaction:)` is the single authority, read
+twice: once by the screen, to decide whether to offer the action, and again
+inside `deleteActivityRow` before anything is written, so an answer that went
+stale while the screen was open cannot authorise the removal.
+
+Four durable records name a transaction by identifier, and each is a decision
+or an observation rather than bookkeeping to tidy away:
+
+| Record | Refused because |
+|---|---|
+| `ObligationSettlement.actualTransactionID` | this payment is recorded as settling an expected occurrence |
+| `ExternalEvidenceLink.transactionID` | bank evidence was decided to mean this transaction |
+| another `Transaction.linkedTransactionID` | a refund, repayment or disposal is recorded against it |
+| `PlannedPurchase.purchasedTransactionID` | a goal records it as the purchase |
+
+**Nothing cascades.** Removing a row never deletes a settlement, an evidence
+link or a decision recorded elsewhere; the removal is refused instead and the
+screen says which relationship stands in the way.
+
+The first two would also fail on the way to disk — `ReconciliationLedger` and
+`ExternalEvidenceReview` both refuse a document naming a transaction it does
+not contain — so checking them up front turns an opaque write failure into a
+sentence a person can act on. The last two have no such backstop: a refund
+whose linked expense disappears silently starts offsetting spending the
+reversal had already cancelled, because `refundOffsetsAnything` reads a missing
+link as "not reversed". That asymmetry is what the check exists for.
+
+Provenance decides the rest. Only `evidenceGrade == .userConfirmed` is
+removable — the grade the domain already requires of the confirmations behind a
+trusted rule, and the grade both of this app's entry paths produce. Imported
+and reconstructed records are evidence the app cannot recreate, so it does not
+offer to erase them.
+
+There is no correction primitive. Nothing updates a stored transaction in
+place, and removal is deliberately not paired with re-entry: delete-then-add
+would mint a new identifier and drop every relationship the old one carried.
+
 ## Currency at the entry boundary
 
 `EntryOptions` carries each account's currency exponent, and entry parses at
