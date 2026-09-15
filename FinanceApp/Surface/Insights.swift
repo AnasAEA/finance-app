@@ -318,12 +318,79 @@ enum CheckpointVerificationState: String, Hashable, Sendable, CaseIterable {
     }
 }
 
+/// A semantic axis the stored checkpoint comparison named as having moved.
+///
+/// Product vocabulary, not a canonical field name. The mapper is the only
+/// thing that produces these, from the comparison's change classes; a screen
+/// that invented one from a raw payload would be classifying the period
+/// itself.
+enum VerificationChangeDimension: String, Hashable, Sendable, CaseIterable {
+    case coverage
+    case economics
+    case budgetAttribution
+    case evidence
+    case providerState
+    case aggregateRelationship
+    case expectation
+
+    /// The one place a dimension becomes a sentence.
+    ///
+    /// Each sentence states that this projected meaning differs. None of them
+    /// claims a cause, a euro amount, or that a particular row is the one
+    /// that moved.
+    var statement: String {
+        switch self {
+        case .coverage:
+            "The records covering this month have changed."
+        case .economics:
+            "The month's recorded spending or income is different."
+        case .budgetAttribution:
+            "How spending is assigned has changed."
+        case .evidence:
+            "The month's available evidence has changed."
+        case .providerState:
+            "The bank's status for a recorded movement has changed."
+        case .aggregateRelationship:
+            "How a bank movement relates to existing records has changed."
+        case .expectation:
+            "A scheduled payment's standing has changed."
+        }
+    }
+}
+
+/// Why a previously verified month is no longer current, as the product can
+/// safely say it.
+///
+/// `dimensions` are the comparison's named axes and are never empty: a
+/// changed comparison that could not name a dimension is unsayable. Occupancy
+/// sentences are extra, and only present when previous close quality and the
+/// exceptions the month carries now together prove that issues appeared or
+/// that every previously acknowledged issue is gone. Mixed occupancy — issues
+/// then and issues now — is not a claim, because correspondence is not
+/// established here.
+///
+/// Nil on the presentation is the only representation of "nothing changed"
+/// or "we cannot say". There is no empty summary.
+struct VerificationChangeSummary: Hashable, Sendable {
+    let dimensions: [VerificationChangeDimension]
+    let occupancyStatements: [String]
+
+    /// What a screen may render, occupancy first. Never a revision, digest,
+    /// identifier or canonical field name.
+    var statements: [String] { occupancyStatements + dimensions.map(\.statement) }
+}
+
 struct PeriodVerificationPresentation: Hashable, Sendable {
     let periodLabel: String
 
     /// What the stored checkpoint history says, already mapped to product
     /// vocabulary. Never inferred from a revision count or a local flag.
     let verificationState: CheckpointVerificationState
+
+    /// Why the month moved, when the comparison proved it did. Nil for every
+    /// other verification state, including verified — unchanged months stay
+    /// quiet.
+    let changeSummary: VerificationChangeSummary?
     let decisionCount: Int
     let limitationCount: Int
     let totalsStatement: String

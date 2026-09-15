@@ -518,6 +518,10 @@ private struct InsightsPeriodView: View {
                     Text(verification.verificationState.headline)
                         .font(.headline)
                         .accessibilityIdentifier(InsightsID.verification)
+                    if let summary = verification.changeSummary {
+                        VerificationChangeExplanation(summary: summary)
+                            .accessibilityIdentifier(InsightsID.verificationChange)
+                    }
                     Text("\(verification.decisionCount) decision\(verification.decisionCount == 1 ? " is" : "s are") waiting.")
                     Text("\(verification.limitationCount) thing\(verification.limitationCount == 1 ? "" : "s") can't be confirmed.")
                     Text(verification.totalsStatement)
@@ -768,6 +772,9 @@ private struct PeriodVerificationDetailView: View {
         Section {
             Text(shown.verificationState.headline)
                 .font(.headline)
+            if let summary = shown.changeSummary {
+                VerificationChangeExplanation(summary: summary)
+            }
             if offersVerification(shown) {
                 Button("Verify month") { verifyMonth() }
                     .disabled(!canVerify(readiness))
@@ -931,6 +938,24 @@ private struct PeriodVerificationDetailView: View {
         case let .expectedPayment(payment):
             ExpectedPaymentDetailView(payment: payment)
         }
+    }
+}
+
+/// The sentences the mapper already decided. The view does not classify
+/// change, occupancy or financial meaning; it only renders them.
+private struct VerificationChangeExplanation: View {
+    let summary: VerificationChangeSummary
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            ForEach(Array(summary.statements.enumerated()), id: \.offset) { _, statement in
+                Text(statement)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .accessibilityElement(children: .combine)
     }
 }
 

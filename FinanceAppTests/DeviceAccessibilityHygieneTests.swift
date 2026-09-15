@@ -56,6 +56,7 @@ struct DeviceAccessibilityHygieneTests {
         #expect(InsightsID.scope(.month) == "insights.scope.month")
         #expect(InsightsID.showDetails == "insights.show-details")
         #expect(InsightsID.verification == "insights.verification")
+        #expect(InsightsID.verificationChange == "insights.verification-change")
         #expect(InsightsID.unresolved == "insights.unresolved")
         #expect(InsightsID.acknowledge == "insights.acknowledge")
         #expect(InsightsID.acknowledgmentState == "insights.acknowledgment-state")
@@ -157,7 +158,7 @@ struct DeviceAccessibilityHygieneTests {
     func highValueIdentifiersAreDistinct() {
         let identifiers = AppTab.allCases.map(RouteID.tab) + FundingID.all + [
             InsightsID.scopeWeek, InsightsID.scopeMonth, InsightsID.showDetails,
-            InsightsID.verification, InsightsID.unresolved,
+            InsightsID.verification, InsightsID.verificationChange, InsightsID.unresolved,
             InsightsID.acknowledge, InsightsID.acknowledgmentState,
             RouteID.insightsScope, RouteID.insightsPrevious, RouteID.insightsNext,
             RouteID.insightsSummary, RouteID.insightsCoverage,

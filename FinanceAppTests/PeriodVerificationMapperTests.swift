@@ -70,8 +70,32 @@ struct PeriodVerificationMapperTests {
         )
     }
 
+    private func defaultExceptions() -> [PeriodCheckpointException] {
+        [
+            PeriodCheckpointException(
+                id: "observation-unknown",
+                kind: .unknownBookedEconomics,
+                day: day("2026-08-07"),
+                amount: euro("-24.00")
+            ),
+            PeriodCheckpointException(
+                id: "uncategorized:2026-08",
+                kind: .uncategorizedEconomicSpending,
+                amount: euro("18.00")
+            ),
+            PeriodCheckpointException(
+                id: "observation-aggregate",
+                kind: .aggregateEvidenceModelLimitation,
+                aggregateBasis: .structuralCandidateOnly,
+                day: day("2026-08-09"),
+                amount: euro("-40.00")
+            ),
+        ]
+    }
+
     private func readiness(
         projection: SemanticPeriodProjection? = nil,
+        exceptions: [PeriodCheckpointException]? = nil,
         baselineComparison: PeriodCheckpointBaselineComparison = .unavailable(.noBaselinePersistence)
     ) throws -> PeriodCheckpointReadiness {
         PeriodCheckpointEvaluator.evaluate(
@@ -80,29 +104,22 @@ struct PeriodVerificationMapperTests {
                 kind: .monthly,
                 asOf: day("2026-09-03"),
                 review: try review(),
-                exceptions: [
-                    PeriodCheckpointException(
-                        id: "observation-unknown",
-                        kind: .unknownBookedEconomics,
-                        day: day("2026-08-07"),
-                        amount: euro("-24.00")
-                    ),
-                    PeriodCheckpointException(
-                        id: "uncategorized:2026-08",
-                        kind: .uncategorizedEconomicSpending,
-                        amount: euro("18.00")
-                    ),
-                    PeriodCheckpointException(
-                        id: "observation-aggregate",
-                        kind: .aggregateEvidenceModelLimitation,
-                        aggregateBasis: .structuralCandidateOnly,
-                        day: day("2026-08-09"),
-                        amount: euro("-40.00")
-                    ),
-                ],
+                exceptions: exceptions ?? defaultExceptions(),
                 projection: projection,
                 baselineComparison: baselineComparison
             )
+        )
+    }
+
+    private func present(
+        exceptions: [PeriodCheckpointException]? = nil,
+        baselineComparison: PeriodCheckpointBaselineComparison
+    ) throws -> PeriodVerificationPresentation {
+        PeriodVerificationMapper.present(
+            try readiness(exceptions: exceptions, baselineComparison: baselineComparison),
+            periodLabel: "August 2026",
+            observations: [observation()],
+            expectedPayments: []
         )
     }
 
@@ -118,6 +135,7 @@ struct PeriodVerificationMapperTests {
         )
         #expect(presentation.verificationState == .notVerified)
         #expect(presentation.verificationState.headline == "Not verified yet.")
+        #expect(presentation.changeSummary == nil)
     }
 
     @Test("P3: an unchanged stored checkpoint is verified")
@@ -131,6 +149,7 @@ struct PeriodVerificationMapperTests {
             )
             #expect(presentation.verificationState == .verified)
             #expect(presentation.verificationState.headline == "Verified.")
+            #expect(presentation.changeSummary == nil)
         }
     }
 
@@ -148,6 +167,11 @@ struct PeriodVerificationMapperTests {
         )
         #expect(presentation.verificationState == .changedSinceVerification)
         #expect(presentation.verificationState.headline == "Changes since verification.")
+        let summary = try #require(presentation.changeSummary)
+        #expect(summary.dimensions.contains(.economics))
+        #expect(
+            summary.statements.contains("The month's recorded spending or income is different.")
+        )
     }
 
     @Test("P5: every comparison that settles nothing fails closed to unavailable")
@@ -176,6 +200,7 @@ struct PeriodVerificationMapperTests {
             #expect(
                 presentation.verificationState.headline == "Verification status unavailable."
             )
+            #expect(presentation.changeSummary == nil, "\(comparison) claimed a change")
         }
     }
 
@@ -210,6 +235,7 @@ struct PeriodVerificationMapperTests {
             $0.detail.contains("Arithmetic is not proof")
                 && $0.detail.contains("no new expense should be created")
         })
+        #expect(presentation.changeSummary == nil)
     }
 
     @Test("Verification presentation is independent of semantic projection")
@@ -259,5 +285,184 @@ struct PeriodVerificationMapperTests {
         ] {
             #expect(!visible.contains(forbidden), "\(forbidden)")
         }
+    }
+
+    // MARK: - Change summary
+
+    @Test("An unchanged month has no change summary")
+    func unchangedHasNoChangeSummary() throws {
+        let presentation = try present(
+            exceptions: [],
+            baselineComparison: .unchangedSinceClose(previousQuality: .clean)
+        )
+        #expect(presentation.verificationState == .verified)
+        #expect(presentation.changeSummary == nil)
+    }
+
+    @Test("A clean close whose economics moved names that dimension, not occupancy")
+    func economicsChangeOnAStillCleanMonth() throws {
+        let presentation = try present(
+            exceptions: [],
+            baselineComparison: .changedSinceClose(
+                previousQuality: .clean, changes: .init(.economicsChanged)
+            )
+        )
+        let summary = try #require(presentation.changeSummary)
+        #expect(summary.dimensions == [.economics])
+        #expect(summary.occupancyStatements.isEmpty)
+        #expect(summary.statements == [
+            "The month's recorded spending or income is different."
+        ])
+    }
+
+    @Test("A clean close followed by a new booked movement says so")
+    func newExceptionAfterACleanClose() throws {
+        let presentation = try present(
+            exceptions: [
+                PeriodCheckpointException(
+                    id: "observation-unknown",
+                    kind: .unknownBookedEconomics,
+                    day: day("2026-08-07"),
+                    amount: euro("-24.00")
+                )
+            ],
+            baselineComparison: .changedSinceClose(
+                previousQuality: .clean, changes: .init(.evidenceChanged)
+            )
+        )
+        let summary = try #require(presentation.changeSummary)
+        #expect(summary.occupancyStatements == ["1 bank movement now needs review."])
+        #expect(summary.dimensions == [.evidence])
+        #expect(summary.statements.first == "1 bank movement now needs review.")
+    }
+
+    @Test("Several new booked movements use the plural")
+    func severalNewBankMovements() throws {
+        let presentation = try present(
+            exceptions: [
+                PeriodCheckpointException(
+                    id: "observation-a",
+                    kind: .unknownBookedEconomics,
+                    day: day("2026-08-07"),
+                    amount: euro("-12.00")
+                ),
+                PeriodCheckpointException(
+                    id: "observation-b",
+                    kind: .unknownBookedEconomics,
+                    day: day("2026-08-08"),
+                    amount: euro("-8.00")
+                ),
+            ],
+            baselineComparison: .changedSinceClose(
+                previousQuality: .clean, changes: .init(.evidenceChanged)
+            )
+        )
+        let summary = try #require(presentation.changeSummary)
+        #expect(summary.occupancyStatements == ["2 bank movements now need review."])
+    }
+
+    @Test("A close that carried exceptions, now carrying none, says they are gone")
+    func disappearedExceptionsAfterAnAcknowledgedClose() throws {
+        let presentation = try present(
+            exceptions: [],
+            baselineComparison: .changedSinceClose(
+                previousQuality: .withExceptions, changes: .init(.evidenceChanged)
+            )
+        )
+        let summary = try #require(presentation.changeSummary)
+        #expect(summary.occupancyStatements == [
+            "Previously acknowledged items are no longer present."
+        ])
+        #expect(summary.dimensions == [.evidence])
+    }
+
+    @Test("Issues then and issues now do not invent correspondence")
+    func mixedOccupancyDoesNotClaimPrecision() throws {
+        let presentation = try present(
+            baselineComparison: .changedSinceClose(
+                previousQuality: .withExceptions, changes: .init(.economicsChanged)
+            )
+        )
+        let summary = try #require(presentation.changeSummary)
+        #expect(summary.occupancyStatements.isEmpty)
+        #expect(summary.dimensions == [.economics])
+        let visible = summary.statements.joined(separator: " ").lowercased()
+        #expect(!visible.contains("now needs review"))
+        #expect(!visible.contains("no longer present"))
+        #expect(!visible.contains("observation-unknown"))
+        #expect(!visible.contains("uncategorized:2026-08"))
+    }
+
+    @Test("A same-id current exception is not treated as the previous subject")
+    func sameIdentifierIsNotSemanticIdentity() throws {
+        let presentation = try present(
+            exceptions: [
+                PeriodCheckpointException(
+                    id: "observation-unknown",
+                    kind: .unknownBookedEconomics,
+                    day: day("2026-08-07"),
+                    amount: euro("-99.00")
+                )
+            ],
+            baselineComparison: .changedSinceClose(
+                previousQuality: .withExceptions, changes: .init(.evidenceChanged)
+            )
+        )
+        let summary = try #require(presentation.changeSummary)
+        #expect(summary.occupancyStatements.isEmpty)
+        let visible = summary.statements.joined(separator: " ")
+        #expect(!visible.contains("observation-unknown"))
+        #expect(!visible.lowercased().contains("now needs review"))
+        #expect(!visible.lowercased().contains("identical"))
+    }
+
+    @Test("Every change class maps to product copy and never names itself")
+    func everyChangeClassHasProductCopy() throws {
+        #expect(PeriodCheckpointChangeClass.allCases.count == VerificationChangeDimension.allCases.count)
+        for changeClass in PeriodCheckpointChangeClass.allCases {
+            let presentation = try present(
+                exceptions: [],
+                baselineComparison: .changedSinceClose(
+                    previousQuality: .clean, changes: .init(changeClass)
+                )
+            )
+            let summary = try #require(presentation.changeSummary)
+            #expect(summary.dimensions.count == 1, "\(changeClass)")
+            #expect(summary.occupancyStatements.isEmpty, "\(changeClass)")
+            let visible = summary.statements.joined(separator: " ").lowercased()
+            #expect(!visible.contains(changeClass.rawValue.lowercased()), "\(changeClass)")
+            #expect(!visible.contains("changedsinceclose"))
+            #expect(!visible.contains("revision"))
+            #expect(!visible.contains("predecessor"))
+            #expect(!visible.contains("digest"))
+            #expect(!visible.contains("canonical"))
+        }
+    }
+
+    @Test("Several dimensions keep comparison rank and do not dump identifiers")
+    func multipleDimensionsKeepRank() throws {
+        let presentation = try present(
+            exceptions: [],
+            baselineComparison: .changedSinceClose(
+                previousQuality: .clean,
+                changes: .init(.expectationChanged, .economicsChanged, .evidenceChanged)
+            )
+        )
+        let summary = try #require(presentation.changeSummary)
+        #expect(summary.dimensions == [.economics, .evidence, .expectation])
+        #expect(summary.statements == [
+            "The month's recorded spending or income is different.",
+            "The month's available evidence has changed.",
+            "A scheduled payment's standing has changed.",
+        ])
+    }
+
+    @Test("Unavailable comparison never claims specific changes")
+    func unavailableComparisonHasNoSummary() throws {
+        let presentation = try present(
+            baselineComparison: .unavailable(.baselineProjectionUnreadable)
+        )
+        #expect(presentation.verificationState == .unavailable)
+        #expect(presentation.changeSummary == nil)
     }
 }

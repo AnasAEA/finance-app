@@ -25,13 +25,14 @@ struct EndedMonthVerification {
 
 /// Read-only verification presentation for an ended period.
 ///
-/// Reads safe claims, blockers and exceptions, and — since the checkpoint
-/// writer landed — `PeriodCheckpointReadiness.baselineComparison`, so the
-/// screens can state what the stored checkpoint history says. That is the one
-/// claim this widening admits, and it is read-only: the mapper still never
-/// consults `projection` or `disposition`, never stores anything, never
-/// constructs a `PeriodCheckpointRevision`, never classifies close policy and
-/// never reaches the acknowledgment matcher.
+/// Reads safe claims, blockers and exceptions, and `PeriodCheckpointReadiness.baselineComparison`,
+/// so the screens can state what the stored checkpoint history says and —
+/// when that comparison proved the month moved — which named dimensions
+/// moved, plus occupancy the previous close quality and current exceptions
+/// can actually prove. It is still read-only: the mapper never consults
+/// `projection` or `disposition`, never stores anything, never constructs a
+/// `PeriodCheckpointRevision`, never classifies close policy and never
+/// reaches the acknowledgment matcher.
 enum PeriodVerificationMapper {
 
     /// The product's reading of one baseline comparison.
@@ -176,6 +177,10 @@ enum PeriodVerificationMapper {
         return PeriodVerificationPresentation(
             periodLabel: periodLabel,
             verificationState: verificationState(for: readiness.baselineComparison),
+            changeSummary: changeSummary(
+                for: readiness.baselineComparison,
+                exceptions: readiness.exceptions
+            ),
             decisionCount: decisions.count,
             limitationCount: limitations.count,
             totalsStatement: totals,
@@ -188,6 +193,99 @@ enum PeriodVerificationMapper {
             decisions: decisions,
             limitations: limitations
         )
+    }
+
+    /// Why the month moved, when the comparison proved it did.
+    ///
+    /// Dimensions come from the comparison's change classes, one for one.
+    /// Occupancy is a coarser fact: a clean close followed by any current
+    /// exception means those issues appeared; a close that carried exceptions
+    /// followed by none means they are gone. A close that carried exceptions
+    /// and a month that still carries some does not establish correspondence,
+    /// so it produces no occupancy sentence — identifiers are not identity.
+    static func changeSummary(
+        for comparison: PeriodCheckpointBaselineComparison,
+        exceptions: [PeriodCheckpointException]
+    ) -> VerificationChangeSummary? {
+        guard case let .changedSinceClose(previousQuality, changes) = comparison else {
+            return nil
+        }
+        return VerificationChangeSummary(
+            dimensions: changes.classes.map(dimension(from:)),
+            occupancyStatements: occupancyStatements(
+                previousQuality: previousQuality,
+                exceptions: exceptions
+            )
+        )
+    }
+
+    private static func dimension(
+        from changeClass: PeriodCheckpointChangeClass
+    ) -> VerificationChangeDimension {
+        switch changeClass {
+        case .coverageChanged: .coverage
+        case .economicsChanged: .economics
+        case .budgetAttributionChanged: .budgetAttribution
+        case .evidenceChanged: .evidence
+        case .providerStateChanged: .providerState
+        case .aggregateRelationshipChanged: .aggregateRelationship
+        case .expectationChanged: .expectation
+        }
+    }
+
+    private static func occupancyStatements(
+        previousQuality: PeriodCheckpointQuality,
+        exceptions: [PeriodCheckpointException]
+    ) -> [String] {
+        switch previousQuality {
+        case .clean:
+            guard !exceptions.isEmpty else { return [] }
+            return newIssueStatements(exceptions)
+        case .withExceptions:
+            guard exceptions.isEmpty else { return [] }
+            return ["Previously acknowledged items are no longer present."]
+        }
+    }
+
+    private static func newIssueStatements(
+        _ exceptions: [PeriodCheckpointException]
+    ) -> [String] {
+        var bankMovements = 0
+        var scheduledPayments = 0
+        var otherLimitations = 0
+        for exception in exceptions {
+            switch exception.kind {
+            case .unknownBookedEconomics:
+                bankMovements += 1
+            case .overdueExpectedOccurrence:
+                scheduledPayments += 1
+            case .uncategorizedEconomicSpending,
+                 .aggregateEvidenceModelLimitation,
+                 .providerStatusConflict,
+                 .unresolvedEvidenceLinkage,
+                 .unresolvedEconomicClassification,
+                 .unresolvedIncomeClassificationOrOwnership,
+                 .acceptedReconciliationAmountDifference:
+                otherLimitations += 1
+            }
+        }
+        var statements: [String] = []
+        switch bankMovements {
+        case 0: break
+        case 1: statements.append("1 bank movement now needs review.")
+        default: statements.append("\(bankMovements) bank movements now need review.")
+        }
+        switch scheduledPayments {
+        case 0: break
+        case 1: statements.append("1 scheduled payment now needs attention.")
+        default: statements.append("\(scheduledPayments) scheduled payments now need attention.")
+        }
+        switch otherLimitations {
+        case 0: break
+        case 1: statements.append("A new limitation affects this month.")
+        default: statements.append("New limitations affect this month.")
+        }
+        return statements
     }
 
     private static func unrouted(

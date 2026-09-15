@@ -103,6 +103,7 @@ enum InsightsID {
 
     static let showDetails = "insights.show-details"
     static let verification = "insights.verification"
+    static let verificationChange = "insights.verification-change"
     static let unresolved = "insights.unresolved"
 
     /// The explicit acknowledgment action on the ended-month verification

@@ -146,14 +146,33 @@ struct CheckpointVerificationPresentationTests {
     }
 
     /// The presentation a screen would render, read fresh through production.
-    private func state(
+    private func presentation(
         in store: FinanceStore
-    ) throws -> CheckpointVerificationState {
+    ) throws -> PeriodVerificationPresentation {
         guard let verification = store.endedMonthVerification(Self.selection) else {
             Issue.record("expected an ended-month verification")
             throw Failure.noVerification
         }
-        return verification.presentation.verificationState
+        return verification.presentation
+    }
+
+    private func state(
+        in store: FinanceStore
+    ) throws -> CheckpointVerificationState {
+        try presentation(in: store).verificationState
+    }
+
+    private func acceptEverything(
+        _ acknowledgment: EndedMonthAcknowledgmentModel,
+        in store: FinanceStore
+    ) throws {
+        guard let screen = acknowledgment.screen(for: Self.selection, in: store),
+              let section = screen.acknowledgment, !section.rows.isEmpty else {
+            Issue.record("expected acknowledgeable rows")
+            throw Failure.noVerification
+        }
+        for row in section.rows { acknowledgment.toggle(row) }
+        #expect(acknowledgment.confirmSelection(for: Self.selection, in: store))
     }
 
     private func revisionRows(_ harness: Harness) throws -> [StoredPeriodCheckpointRevision] {
@@ -169,6 +188,7 @@ struct CheckpointVerificationPresentationTests {
         let harness = try Harness(document: Self.cleanDocument())
         #expect(try state(in: harness.store) == .notVerified)
         #expect(CheckpointVerificationState.notVerified.headline == "Not verified yet.")
+        #expect(try presentation(in: harness.store).changeSummary == nil)
         #expect(try revisionRows(harness).isEmpty)
     }
 
@@ -186,6 +206,7 @@ struct CheckpointVerificationPresentationTests {
 
         #expect(try state(in: harness.store) == .verified)
         #expect(CheckpointVerificationState.verified.headline == "Verified.")
+        #expect(try presentation(in: harness.store).changeSummary == nil)
         #expect(try revisionRows(harness).count == 1)
     }
 
@@ -209,6 +230,13 @@ struct CheckpointVerificationPresentationTests {
             CheckpointVerificationState.changedSinceVerification.headline
                 == "Changes since verification."
         )
+        let summary = try #require(try presentation(in: reopened).changeSummary)
+        #expect(summary.dimensions.contains(.economics))
+        #expect(summary.occupancyStatements.isEmpty)
+        #expect(
+            summary.statements.contains("The month's recorded spending or income is different.")
+        )
+        assertNoCheckpointMetadata(summary)
         // Reading never appends.
         #expect(try revisionRows(harness).count == 1)
     }
@@ -233,6 +261,7 @@ struct CheckpointVerificationPresentationTests {
         }
 
         #expect(try state(in: changed) == .verified)
+        #expect(try presentation(in: changed).changeSummary == nil)
         // The reading follows the newest checkpoint, and the old one is kept.
         #expect(try revisionRows(harness).count == 2)
     }
@@ -323,6 +352,7 @@ struct CheckpointVerificationPresentationTests {
         // read the same mapped presentation, which is the point of counting
         // them — a second headline built any other way would not be here.
         #expect(try CheckpointWriteSource.count("verificationState.headline", in: view) >= 1)
+        #expect(try CheckpointWriteSource.count("changeSummary", in: view) >= 1)
         // Every headline lives on the presentation state, and none of them is
         // spelled out in the view.
         for state in CheckpointVerificationState.allCases {
@@ -330,6 +360,12 @@ struct CheckpointVerificationPresentationTests {
                 try CheckpointWriteSource.count("<string> \(state.headline) </string>", in: view) == 0,
                 "the view spells out \(state.headline)"
             )
+        }
+        for forbidden in [
+            "PeriodCheckpointChangeClass", "economicsChanged", "coverageChanged",
+            "PeriodCheckpointRevision", "baselineComparison",
+        ] {
+            #expect(!view.contains(forbidden), "the view classifies \(forbidden)")
         }
     }
 
@@ -374,6 +410,157 @@ struct CheckpointVerificationPresentationTests {
                 PeriodVerificationMapper.verificationState(for: comparison) != .verified,
                 "\(comparison) claimed verified"
             )
+        }
+    }
+
+    // MARK: - Change summary through the production read path
+
+    @Test("A new unreviewed movement after a clean close is named as new")
+    func newExceptionAfterCleanClose() throws {
+        let harness = try Harness(document: Self.cleanDocument())
+        guard case .storedFirstClose = harness.store.writeEndedMonthCheckpoint(Self.selection) else {
+            Issue.record("expected a first close")
+            return
+        }
+        try harness.replace(Self.exceptionDocument())
+        let changed = try harness.reopen()
+
+        let shown = try presentation(in: changed)
+        #expect(shown.verificationState == .changedSinceVerification)
+        let summary = try #require(shown.changeSummary)
+        #expect(summary.occupancyStatements == ["1 bank movement now needs review."])
+        #expect(shown.decisions.contains { $0.destination != nil })
+        assertNoCheckpointMetadata(summary)
+    }
+
+    @Test("Resolving a previously acknowledged exception is named as gone")
+    func disappearedExceptionAfterAcknowledgedClose() throws {
+        let harness = try Harness(document: Self.exceptionDocument())
+        let acknowledgment = EndedMonthAcknowledgmentModel()
+        try acceptEverything(acknowledgment, in: harness.store)
+        guard case .storedFirstClose = harness.store.writeEndedMonthCheckpoint(
+            Self.selection,
+            confirmedAcknowledgments: acknowledgment.confirmedAcknowledgments
+        ) else {
+            Issue.record("expected a first close")
+            return
+        }
+        try harness.replace(Self.cleanDocument())
+        let changed = try harness.reopen()
+
+        let shown = try presentation(in: changed)
+        #expect(shown.verificationState == .changedSinceVerification)
+        let summary = try #require(shown.changeSummary)
+        #expect(summary.occupancyStatements == [
+            "Previously acknowledged items are no longer present."
+        ])
+        assertNoCheckpointMetadata(summary)
+    }
+
+    @Test("A still-present exception plus new economics does not claim the exception is new")
+    func mixedOccupancyThroughProductionRead() throws {
+        let harness = try Harness(document: Self.exceptionDocument())
+        let acknowledgment = EndedMonthAcknowledgmentModel()
+        try acceptEverything(acknowledgment, in: harness.store)
+        guard case .storedFirstClose = harness.store.writeEndedMonthCheckpoint(
+            Self.selection,
+            confirmedAcknowledgments: acknowledgment.confirmedAcknowledgments
+        ) else {
+            Issue.record("expected a first close")
+            return
+        }
+
+        var moved = Self.exceptionDocument()
+        moved.transactions = [
+            Transaction(
+                id: "tx-extra",
+                date: Day(year: 2026, month: 8, day: 20),
+                kind: .income,
+                legs: [AccountLeg(accountID: "bank", amount: Self.euro(3_300))],
+                factivity: .observed
+            )
+        ]
+        try harness.replace(moved)
+        let changed = try harness.reopen()
+
+        let shown = try presentation(in: changed)
+        #expect(shown.verificationState == .changedSinceVerification)
+        let summary = try #require(shown.changeSummary)
+        #expect(summary.occupancyStatements.isEmpty)
+        #expect(summary.dimensions.contains(.economics))
+        let visible = summary.statements.joined(separator: " ").lowercased()
+        #expect(!visible.contains("now needs review"))
+        #expect(!visible.contains("no longer present"))
+        #expect(!visible.contains("observation"))
+        assertNoCheckpointMetadata(summary)
+    }
+
+    @Test("Changing an exception's subject under the same identifier is not identity")
+    func sameIdentifierChangedSubjectIsNotIdentical() throws {
+        let harness = try Harness(document: Self.exceptionDocument())
+        let acknowledgment = EndedMonthAcknowledgmentModel()
+        try acceptEverything(acknowledgment, in: harness.store)
+        guard case .storedFirstClose = harness.store.writeEndedMonthCheckpoint(
+            Self.selection,
+            confirmedAcknowledgments: acknowledgment.confirmedAcknowledgments
+        ) else {
+            Issue.record("expected a first close")
+            return
+        }
+
+        var moved = Self.exceptionDocument()
+        moved.externalObservations = [
+            ExternalObservation(
+                id: "observation", bindingID: "binding", provider: .bnp,
+                identity: .durable, status: .booked, creditDebitIndicator: .debit,
+                amount: Self.euro(-9_500), bookingDate: Day(year: 2026, month: 8, day: 15),
+                eligibleForEconomicActual: true,
+                observedAt: Date(timeIntervalSince1970: 1_000)
+            )
+        ]
+        try harness.replace(moved)
+        let changed = try harness.reopen()
+
+        let shown = try presentation(in: changed)
+        #expect(shown.verificationState == .changedSinceVerification)
+        let summary = try #require(shown.changeSummary)
+        #expect(summary.occupancyStatements.isEmpty)
+        let visible = summary.statements.joined(separator: " ")
+        #expect(!visible.contains("observation"))
+        #expect(!visible.lowercased().contains("now needs review"))
+        #expect(!visible.lowercased().contains("identical"))
+        assertNoCheckpointMetadata(summary)
+    }
+
+    @Test("Successful reverify clears the change summary through fresh repository state")
+    func reverifyClearsTheChangeSummary() throws {
+        let harness = try Harness(document: Self.cleanDocument())
+        guard case .storedFirstClose = harness.store.writeEndedMonthCheckpoint(Self.selection) else {
+            Issue.record("expected a first close")
+            return
+        }
+        try harness.replace(Self.cleanDocument(incomeMinor: 9_500))
+        let changed = try harness.reopen()
+        #expect(try presentation(in: changed).changeSummary != nil)
+
+        guard case .storedReverify = changed.writeEndedMonthCheckpoint(Self.selection) else {
+            Issue.record("expected a reverify")
+            return
+        }
+        #expect(try state(in: changed) == .verified)
+        #expect(try presentation(in: changed).changeSummary == nil)
+        #expect(try presentation(in: try harness.reopen()).changeSummary == nil)
+    }
+
+    private func assertNoCheckpointMetadata(_ summary: VerificationChangeSummary) {
+        let visible = summary.statements.joined(separator: " ").lowercased()
+        for forbidden in [
+            "revision", "predecessor", "digest", "canonical", "checkpoint",
+            "baseline", "uuid", "changedsinceclose", "economicschanged",
+            "coveragechanged", "evidencechanged", "withexceptions",
+            "previousquality", "periodcheckpoint",
+        ] {
+            #expect(!visible.contains(forbidden), "leaked \(forbidden)")
         }
     }
 
