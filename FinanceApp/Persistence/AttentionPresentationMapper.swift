@@ -26,11 +26,11 @@ enum AttentionPresentationMapper {
             home = .indeterminate(uncertainty(for: failedKeys))
         case .actionsAvailable:
             if let primary, isActBand(primary.kind),
-               let card = actionCard(primary) {
+               let card = actionCard(primary, snapshot: snapshot) {
                 home = .act(card, reviewCount: reviewCount)
             } else if let month = state.actionableCandidates.first(where: {
                 $0.kind == .monthReadyToClose
-            }), let card = actionCard(month) {
+            }), let card = actionCard(month, snapshot: snapshot) {
                 // Funding, bank connection and drift stay more urgent. When
                 // none of those is the Home card, an ended month that needs
                 // verification is the one meaningful next action.
@@ -68,7 +68,10 @@ enum AttentionPresentationMapper {
         }
     }
 
-    private static func actionCard(_ candidate: AttentionCandidate) -> HomeAttentionCard? {
+    private static func actionCard(
+        _ candidate: AttentionCandidate,
+        snapshot: FinanceAppSnapshot
+    ) -> HomeAttentionCard? {
         switch candidate.detail {
         case let .fundingGap(fact):
             // The engine's two risks are two different problems, and the card
@@ -92,8 +95,16 @@ enum AttentionPresentationMapper {
             case .belowSafetyFloor:
                 // Naming an account would imply that account is short. It is
                 // not: the pool is funded and the reserve is what is being
-                // crossed, so the subject adds nothing here.
-                title = "\(fact.shortfall.formatted()) below your safety reserve by \(dayText(fact.day))"
+                // crossed, so the subject adds nothing here. The configured
+                // floor is named when it is the same currency as the gap,
+                // because "below your safety reserve" without the amount
+                // leaves the person to guess which floor they set.
+                if let reserve = snapshot.safetyReserve,
+                   reserve.currencyCode == fact.shortfall.currencyCode {
+                    title = "\(fact.shortfall.formatted()) below your \(reserve.formatted()) safety reserve by \(dayText(fact.day))"
+                } else {
+                    title = "\(fact.shortfall.formatted()) below your safety reserve by \(dayText(fact.day))"
+                }
             }
             // Funding Needed explains one payment that could not be settled.
             // Without such a payment it has nothing to show and said so, so

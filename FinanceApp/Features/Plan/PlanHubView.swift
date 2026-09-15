@@ -1,8 +1,7 @@
 import SwiftUI
 
 /// Planning starts as a choice of task, not as a runway chart. Each concept has
-/// one management home below this list and all four routes fit in the first
-/// ordinary iPhone viewport.
+/// one management home below this list.
 struct PlanView: View {
     @Environment(FinanceStore.self) private var store
 
@@ -24,6 +23,15 @@ struct PlanView: View {
                 )
             }
             .accessibilityIdentifier(RouteID.planBudget)
+
+            NavigationLink(value: PlanRoute.safetyReserve) {
+                PlanHubRow(
+                    title: "Safety reserve",
+                    detail: Self.reserveDetail(snapshot),
+                    value: snapshot.safetyReserve?.formatted()
+                )
+            }
+            .accessibilityIdentifier(RouteID.planReserve)
 
             NavigationLink(value: PlanRoute.upcoming) {
                 PlanHubRow(
@@ -59,6 +67,12 @@ struct PlanView: View {
     private static func budgetDetail(_ snapshot: FinanceAppSnapshot) -> String {
         let budget = snapshot.everydayBudget
         return budget.isEmpty ? "No ceiling this month" : budget.headlineCaption
+    }
+
+    private static func reserveDetail(_ snapshot: FinanceAppSnapshot) -> String {
+        snapshot.safetyReserve == nil
+            ? "Cash you want to keep as a buffer"
+            : "Cash the plan should not fall below"
     }
 
     private static func upcomingDetail(_ snapshot: FinanceAppSnapshot) -> String {

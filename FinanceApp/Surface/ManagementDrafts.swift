@@ -55,6 +55,7 @@ enum AppManagementError: Error, Hashable, Sendable {
     case inactivePreferredAccount
     case unknownBudget
     case invalidBudgetAmount
+    case invalidSafetyReserve
     case duplicateBudgetCategory(String)
     case unknownPlannedPurchase
     case unknownSinkingFund
@@ -77,6 +78,7 @@ enum AppManagementError: Error, Hashable, Sendable {
         case .inactivePreferredAccount: "Choose an active preferred receiving account."
         case .unknownBudget: "That budget line is no longer available."
         case .invalidBudgetAmount: "Enter a target of zero or more, in euro."
+        case .invalidSafetyReserve: "Enter a reserve of zero or more, in euro."
         case let .duplicateBudgetCategory(name):
             "\(name) already counts towards another budget line. A category can only feed one."
         case .unknownPlannedPurchase: "That planned purchase is no longer available."

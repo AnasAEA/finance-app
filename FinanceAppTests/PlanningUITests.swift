@@ -173,6 +173,8 @@ struct PlanningUITests {
         #expect(PlanningControlID.fundSave == "fund.save")
         #expect(PlanningControlID.affordabilityOverall == "afford.overall")
         #expect(PlanningControlID.affordabilityRisk == "afford.risk")
+        #expect(PlanningControlID.reserveAmount == "reserve.amount")
+        #expect(PlanningControlID.reserveSave == "reserve.save")
     }
 
     // MARK: - Goal CRUD

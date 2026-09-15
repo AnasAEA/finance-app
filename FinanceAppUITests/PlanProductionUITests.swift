@@ -138,6 +138,35 @@ final class PlanProductionUITests: XCTestCase {
         XCTAssertTrue(row("Camera").label.localizedCaseInsensitiveContains("set aside"))
     }
 
+    func testSafetyReserveEditUpdatesTheScreen() {
+        launchPlan(arguments: ["-useEmptyPreview"], route: "reserve")
+        XCTAssertTrue(app.navigationBars["Safety reserve"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["No safety reserve"].exists)
+        XCTAssertTrue(app.staticTexts["Cash you want to keep untouched as a buffer."].exists)
+        XCTAssertFalse(app.staticTexts["Lowest projected cash"].exists)
+
+        let field = app.textFields["reserve.amount"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        field.tap()
+        field.typeText("400")
+        app.buttons["reserve.save"].tap()
+        if app.alerts["Not saved"].waitForExistence(timeout: 1) {
+            XCTFail(app.alerts["Not saved"].staticTexts.allElementsBoundByIndex.map(\.label).joined(separator: " — "))
+        }
+
+        XCTAssertTrue(
+            app.staticTexts.matching(
+                NSPredicate(format: "label CONTAINS '400'")
+            ).firstMatch.waitForExistence(timeout: 5)
+        )
+        XCTAssertFalse(app.staticTexts["No safety reserve"].exists)
+        XCTAssertTrue(
+            app.staticTexts["Today's projection hasn't finished, so this screen won't guess how cash sits against the reserve."]
+                .waitForExistence(timeout: 5)
+        )
+        XCTAssertFalse(app.staticTexts["Lowest projected cash"].exists)
+    }
+
     func testCriticalIdentifiersArePresent() {
         launchPlan(arguments: ["-useEmptyPreview"], route: "goals")
         XCTAssertTrue(app.buttons["plan.goals.add"].exists)
@@ -163,10 +192,16 @@ final class PlanProductionUITests: XCTestCase {
             "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXL"
         ]
         app.launch()
-        XCTAssertTrue(app.buttons["plan.budget"].waitForExistence(timeout: 8))
-        XCTAssertTrue(app.buttons["plan.upcoming"].exists)
-        XCTAssertTrue(app.buttons["plan.goals"].exists)
-        XCTAssertTrue(app.buttons["plan.afford.open"].exists)
+        XCTAssertTrue(app.navigationBars["Plan"].waitForExistence(timeout: 8))
+        for id in ["plan.budget", "plan.reserve", "plan.upcoming", "plan.goals", "plan.afford.open"] {
+            let row = app.buttons[id]
+            var hops = 0
+            while !row.exists && hops < 10 {
+                app.swipeUp()
+                hops += 1
+            }
+            XCTAssertTrue(row.waitForExistence(timeout: 5), "missing \(id)")
+        }
     }
 
     private func launchPlan(arguments: [String], route: String? = nil) {
@@ -183,6 +218,7 @@ final class PlanProductionUITests: XCTestCase {
             case "goals": "Goals & Set Aside"
             case "upcoming": "Upcoming"
             case "budget": "Budget"
+            case "reserve": "Safety reserve"
             case "affordability": "Can I afford this?"
             default: "Plan"
             }

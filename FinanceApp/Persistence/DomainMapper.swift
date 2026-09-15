@@ -976,7 +976,9 @@ struct DomainMapper {
                 lastIncomeAccountID: input.lastIncomeAccountID
             ),
             plannedPurchases: plannedPurchases(document),
-            sinkingFunds: sinkingFunds(document)
+            sinkingFunds: sinkingFunds(document),
+            safetyReserve: document.planning.safetyFloor.map(Self.amount),
+            firstBelowReserveDate: result.firstBelowSafetyFloorDate.map(Self.civilDay)
         )
     }
 
@@ -1056,6 +1058,10 @@ struct DomainMapper {
         )
         shell.plannedPurchases = plannedPurchases(document)
         shell.sinkingFunds = sinkingFunds(document)
+        // The configured floor exists whether or not a projection ran. The
+        // first-below date does not: without a run there is no day to name.
+        shell.safetyReserve = document.planning.safetyFloor.map(Self.amount)
+        shell.firstBelowReserveDate = nil
         return shell
     }
 
@@ -1225,7 +1231,9 @@ struct DomainMapper {
         }
         return AffordabilityPresentation(
             overall: overall,
-            why: verdict.reasons.compactMap(affordabilityWhy),
+            why: verdict.reasons.compactMap {
+                affordabilityWhy($0, safetyReserve: document.planning.safetyFloor.map(Self.amount))
+            },
             ledgerCash: Self.amount(verdict.cash.ledgerPool),
             reserved: Self.amount(verdict.cash.reserved),
             unreservedCash: Self.amount(verdict.cash.unreservedPool),
@@ -1333,7 +1341,7 @@ struct DomainMapper {
         }
     }
 
-    func affordabilityWhy(_ reason: AffordabilityReason) -> String? {
+    func affordabilityWhy(_ reason: AffordabilityReason, safetyReserve: Amount? = nil) -> String? {
         switch reason {
         case .ineligibleCurrencyOrRail:
             "This payment cannot settle in that currency on that rail. Nothing is converted to cover it."
@@ -1368,7 +1376,11 @@ struct DomainMapper {
         case .insufficientUnreservedCash:
             "Unreserved cash does not cover this."
         case .newFloorBreach:
-            "Cash would dip below the safety reserve, without going negative."
+            if let safetyReserve {
+                "Cash would dip below the \(safetyReserve.formatted()) safety reserve, without going negative."
+            } else {
+                "Cash would dip below the safety reserve, without going negative."
+            }
         case .dependsOnExcludedIncome:
             "This only works if income that is not in the normal plan actually arrives."
         case .sinkingFundDoesNotFullyCover:

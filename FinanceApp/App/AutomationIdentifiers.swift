@@ -89,6 +89,21 @@ enum FundingID {
     static let all = [trigger, date, due, covered, stillNeeded, paymentAccount, explanation]
 }
 
+/// The Safety reserve decision surface: the configured floor, how projected
+/// cash sits against it, and the amount field that changes the policy.
+enum SafetyReserveID {
+    static let screen = "reserve.screen"
+    static let amount = "reserve.current"
+    static let meaning = "reserve.meaning"
+    static let lowest = "reserve.lowest"
+    static let comparison = "reserve.comparison"
+    static let unavailable = "reserve.unavailable"
+
+    static let all = [
+        screen, amount, meaning, lowest, comparison, unavailable,
+    ]
+}
+
 /// The Safe to Use explanation: the headline restated, the two terms of the
 /// subtraction that produced it, and the route on to what is committed.
 ///

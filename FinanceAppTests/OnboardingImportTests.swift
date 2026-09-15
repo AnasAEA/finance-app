@@ -323,6 +323,7 @@ struct ImportCurrentStateTests {
         #expect(reopened.snapshot.accountCash == CurrentStateExport.expectedElectronicLiquidity)
         #expect(reopened.snapshot.debts.count == 1)
         #expect(reopened.snapshot.commitments.flatMap(\.lines).count == 3)
+        #expect(reopened.snapshot.safetyReserve == Amount(minorUnits: 5_000, currencyCode: "EUR"))
     }
 
     @Test("An export written to another schema version is refused")

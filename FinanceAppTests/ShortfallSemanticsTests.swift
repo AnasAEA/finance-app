@@ -325,7 +325,8 @@ struct ShortfallSemanticsTests {
             Issue.record("expected the funding candidate to stay primary")
             return
         }
-        #expect(card.title.lowercased().contains("below your safety reserve"))
+        #expect(card.title.lowercased().contains("below your"))
+        #expect(card.title.lowercased().contains("safety reserve"))
         #expect(!card.title.lowercased().contains("funding gap"))
 
         // The week's row reads the kind, not an amount, and today is the low.

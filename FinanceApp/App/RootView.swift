@@ -45,6 +45,7 @@ enum HomeRoute: Hashable {
 enum PlanRoute: Hashable {
     case fundingNeeded
     case budget
+    case safetyReserve
     case upcoming
     case goals
     case affordability
@@ -95,6 +96,7 @@ enum RouteID {
 
     static let planBudget = "plan.budget"
     static let planFundingNeeded = "plan.funding-needed"
+    static let planReserve = "plan.reserve"
     static let planUpcoming = "plan.upcoming"
     static let planGoals = "plan.goals"
     static let planAfford = PlanningControlID.openAffordability
@@ -204,6 +206,7 @@ final class AppNavigation {
         // screen deterministically, and navigates only.
         case "fundingNeeded": navigation.openPlan(.fundingNeeded)
         case "budget": navigation.openPlan(.budget)
+        case "reserve": navigation.openPlan(.safetyReserve)
         case "upcoming": navigation.openPlan(.upcoming)
         case "goals": navigation.openPlan(.goals)
         case "affordability": navigation.openPlan(.affordability)
@@ -377,7 +380,7 @@ struct HomeRouteDestination: View {
     }
 }
 
-/// The Plan hub's four destinations. Each one is a push, including the
+/// The Plan hub's destinations. Each one is a push, including the
 /// affordability check: it collects input, explains itself and returns a
 /// verdict, which is a task, not a glance.
 struct PlanRouteDestination: View {
@@ -389,6 +392,8 @@ struct PlanRouteDestination: View {
             FundingNeededView()
         case .budget:
             BudgetDetailView()
+        case .safetyReserve:
+            SafetyReserveView()
         case .upcoming:
             UpcomingView()
         case .goals:

@@ -181,6 +181,8 @@ enum PlanningControlID {
     static let goalSave = "goal.save"
     static let fundName = "fund.name"
     static let fundSave = "fund.save"
+    static let reserveAmount = "reserve.amount"
+    static let reserveSave = "reserve.save"
 }
 
 enum PaymentRailChoice: String, CaseIterable, Identifiable, Hashable, Sendable {

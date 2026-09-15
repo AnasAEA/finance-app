@@ -1642,6 +1642,32 @@ final class FinanceStore: FinanceProviding {
         recalculate()
     }
 
+    /// Sets or clears the operating floor for the spendable euro pool.
+    ///
+    /// Planning policy only: the forecast uses this as the cash floor it
+    /// should not fall below. It does not move balances, rewrite history, or
+    /// change Safe to Use. Nil means no floor is configured.
+    func setSafetyReserve(_ amount: Amount?) throws {
+        let previous = beginOperation()
+        defer { operationDate = previous }
+        guard !isFixed else { throw AppManagementError.storeIsReadOnly }
+        if let amount {
+            guard !amount.isNegative, amount.currencyCode == Currency.eur.code else {
+                throw AppManagementError.invalidSafetyReserve
+            }
+        }
+        _ = try requireCivilToday()
+        let restore = document.planning.safetyFloor
+        document.planning.safetyFloor = amount.map(DomainMapper.money)
+        do {
+            try persistCurrentDocument()
+        } catch {
+            document.planning.safetyFloor = restore
+            throw AppManagementError.persistenceFailed(String(describing: error))
+        }
+        recalculate()
+    }
+
     /// Creates or updates one budget line, and records that the person agreed
     /// to its target.
     func saveBudgetLine(_ draft: BudgetLineDraft) throws {
@@ -3519,6 +3545,8 @@ final class FinanceStore: FinanceProviding {
             empty.horizonDays = forecastHorizonDays
             empty.plannedPurchases = mapper.plannedPurchases(document)
             empty.sinkingFunds = mapper.sinkingFunds(document)
+            empty.safetyReserve = document.planning.safetyFloor.map(DomainMapper.amount)
+            empty.firstBelowReserveDate = nil
             return SnapshotEvaluationContext(
                 snapshot: empty.withBanking(banking), projection: .notRequired
             )

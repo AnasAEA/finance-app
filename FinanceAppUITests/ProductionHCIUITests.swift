@@ -257,7 +257,7 @@ final class ProductionHCIUITests: XCTestCase {
         ]
         app.launchArguments = arguments
         app.launch()
-        let ids = ["plan.budget", "plan.upcoming", "plan.goals", "plan.afford.open"]
+        let ids = ["plan.budget", "plan.reserve", "plan.upcoming", "plan.goals", "plan.afford.open"]
         for id in ids {
             let row = app.buttons[id]
             var hops = 0

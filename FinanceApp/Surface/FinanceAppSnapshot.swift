@@ -132,6 +132,20 @@ struct FinanceAppSnapshot: Hashable, Sendable {
 
     var plannedPurchases: [PlannedPurchaseSummary] = []
     var sinkingFunds: [SinkingFundSummary] = []
+
+    /// Operating floor for the spendable euro pool. Copied from
+    /// `document.planning.safetyFloor`. Nil means none is configured — the
+    /// plan then does not warn about dipping into a buffer.
+    ///
+    /// This is planning policy, not a balance, not money set aside, and not
+    /// Safe to Use. Changing it does not move cash.
+    var safetyReserve: Amount? = nil
+
+    /// First day the post-event pool fell strictly below `safetyReserve`.
+    /// Nil when no reserve is configured, the projection never breached it,
+    /// or no projection ran. Copied from the engine; never inferred from a
+    /// lowest-point date.
+    var firstBelowReserveDate: CalendarDay? = nil
 }
 
 extension FinanceAppSnapshot {

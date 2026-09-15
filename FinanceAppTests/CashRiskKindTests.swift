@@ -217,7 +217,9 @@ struct CashRiskKindTests {
         // The old copy read "50,00 € funding gap by Sep 6" while the person
         // held 350,00 € and needed nothing. Nothing is needed, and the card
         // may not say it is.
-        #expect(card.title.lowercased().contains("below your safety reserve"))
+        #expect(card.title.lowercased().contains("below your"))
+        #expect(card.title.lowercased().contains("safety reserve"))
+        #expect(card.title.contains("400,00") || card.title.contains("400.00"))
         #expect(!card.title.lowercased().contains("funding gap"))
         #expect(!card.title.lowercased().contains("needs"))
         #expect(!card.title.lowercased().contains("needed"))
