@@ -12,6 +12,10 @@ struct MoneyText: View {
     /// Tints the figure by direction. Off by default: most numbers on the
     /// screen are neither good nor bad.
     var colorBySign = false
+    /// An explicit tint, for a figure whose meaning is not its sign — "short
+    /// by 256,00 €" is a bad number written as a positive one. Wins over
+    /// `colorBySign`; nil leaves both off.
+    var tint: Color?
 
     @ScaledMetric(relativeTo: .largeTitle) private var scale: CGFloat = 1
 
@@ -19,13 +23,14 @@ struct MoneyText: View {
         Text(amount.formatted(showsSign: showsSign))
             .font(.money(size * scale, weight: weight))
             .monospacedDigit()
-            .foregroundStyle(tint)
+            .foregroundStyle(resolvedTint)
             .lineLimit(1)
             .minimumScaleFactor(0.6)
             .accessibilityLabel(amount.accessibleDescription())
     }
 
-    private var tint: Color {
+    private var resolvedTint: Color {
+        if let tint { return tint }
         guard colorBySign else { return .primary }
         if amount.isNegative { return Theme.Role.negative }
         if amount.isPositive { return Theme.Role.positive }
@@ -79,6 +84,8 @@ struct LedgerRow: View {
     var caption: String?
     var emphasis: Bool = false
     var colorBySign = false
+    /// See `MoneyText.tint`.
+    var valueTint: Color?
 
     var body: some View {
         HStack(alignment: .firstTextBaseline) {
@@ -93,7 +100,7 @@ struct LedgerRow: View {
             Spacer(minLength: 12)
             MoneyText(amount: value, size: emphasis ? 19 : 17,
                       weight: emphasis ? .semibold : .regular,
-                      colorBySign: colorBySign)
+                      colorBySign: colorBySign, tint: valueTint)
         }
         .accessibilityElement(children: .combine)
     }

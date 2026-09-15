@@ -29,6 +29,9 @@ enum ActivitySection: String, Hashable, CaseIterable, Identifiable {
 /// Destinations pushed from Home. Settings is one of them — a gear, not a tab,
 /// because configuring the app is not a daily question.
 enum HomeRoute: Hashable {
+    /// Why the headline is the figure it is. A drill-down, never a card: the
+    /// person asks for it by tapping the number they are already looking at.
+    case safeToUse
     case accounts
     case account(String)
     case settings
@@ -200,6 +203,7 @@ final class AppNavigation {
         case "upcoming": navigation.openPlan(.upcoming)
         case "goals": navigation.openPlan(.goals)
         case "affordability": navigation.openPlan(.affordability)
+        case "safeToUse": navigation.showHome([.safeToUse])
         case "accounts": navigation.showHome([.accounts])
         case "settings": navigation.showHome([.settings])
         case "banks": navigation.showHome([.settings, .banks])
@@ -349,6 +353,8 @@ struct HomeRouteDestination: View {
 
     var body: some View {
         switch route {
+        case .safeToUse:
+            SafeToUseExplanationView()
         case .accounts:
             AccountsView()
         case .account(let id):

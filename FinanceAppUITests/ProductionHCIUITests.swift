@@ -32,6 +32,30 @@ final class ProductionHCIUITests: XCTestCase {
         XCTAssertFalse(app.buttons["Add a transaction"].exists)
     }
 
+    /// Home's headline is now the way in to its own explanation, and the
+    /// explanation reaches the Plan destination that owns the obligations
+    /// rather than listing them a second time.
+    func testHomeSafeToUseOpensItsExplanation() {
+        launch()
+        XCTAssertTrue(app.navigationBars["Home"].waitForExistence(timeout: 8))
+        let headline = app.descendants(matching: .any)["home.safe"]
+        XCTAssertTrue(headline.waitForExistence(timeout: 5))
+        headline.tap()
+
+        XCTAssertTrue(app.navigationBars["Safe to Use"].waitForExistence(timeout: 8))
+        // The subtraction, each term separately addressable.
+        XCTAssertTrue(app.descendants(matching: .any)["safe.cash"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.descendants(matching: .any)["safe.committed"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["safe.result"].exists)
+        XCTAssertTrue(app.staticTexts["How it's worked out"].exists)
+
+        let onward = revealIdentifier("safe.see-committed", as: .any)
+        onward.tap()
+        XCTAssertTrue(app.navigationBars["Upcoming"].waitForExistence(timeout: 8))
+        // One Upcoming, reached from Plan — not a copy owned by the drill-down.
+        XCTAssertEqual(app.navigationBars.matching(identifier: "Upcoming").count, 1)
+    }
+
     func testInsightsOpensAndOffersWeekAndMonth() {
         launch()
         // The tab identifiers are put on the bar once it exists, so wait for

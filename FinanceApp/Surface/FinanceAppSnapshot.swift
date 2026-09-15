@@ -46,6 +46,18 @@ struct FinanceAppSnapshot: Hashable, Sendable {
     /// already exceed the money available, zero otherwise. `safeToSpend` is
     /// never negative, so the two coexist and say different things.
     var rawShortfall: Amount
+    /// The obligations already committed inside `safeToSpendWindowDays`, as a
+    /// positive figure — the amount subtracted from `accountCash` to reach
+    /// `safeToSpend`.
+    ///
+    /// The engine has always computed it and the snapshot used to drop it,
+    /// which left the headline unexplainable: Home could print the money
+    /// available and the money safe to use and say nothing about the
+    /// difference between them. Carried so the product can name the
+    /// subtraction rather than re-derive it — relocations, withdrawals and
+    /// disposals are *not* in here, and variable budget spending is not
+    /// either.
+    var committedOutflows: Amount
 
     // MARK: Risk
 
@@ -148,6 +160,7 @@ extension FinanceAppSnapshot {
             safeToSpendReason: .unconstrained,
             safeToSpendWindowDays: 0,
             rawShortfall: zero,
+            committedOutflows: zero,
             cashRunway: .clear(horizonDays: 0),
             firstRisk: nil,
             lowestPoint: RiskPoint(date: asOf, projectedBalance: zero, triggerLabel: nil,

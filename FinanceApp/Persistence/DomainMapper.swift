@@ -932,6 +932,7 @@ struct DomainMapper {
                     ? overview.safeToSpend.rawHeadroom
                     : Money(minorUnits: 0, currency: overview.safeToSpend.rawHeadroom.currency)
             ),
+            committedOutflows: Self.amount(overview.committedOutflowsNext),
             cashRunway: result.firstNegativeDate == nil
                 ? .clear(horizonDays: result.cashRunwayDays)
                 : .endsIn(days: result.cashRunwayDays),

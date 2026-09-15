@@ -89,6 +89,33 @@ enum FundingID {
     static let all = [trigger, date, due, covered, stillNeeded, paymentAccount, explanation]
 }
 
+/// The Safe to Use explanation: the headline restated, the two terms of the
+/// subtraction that produced it, and the route on to what is committed.
+///
+/// Each figure is addressable on its own, because an automation that means to
+/// read the committed total must not be able to pass by reading the whole
+/// screen as one utterance.
+enum SafeToUseID {
+    /// The screen itself. Deliberately not `home.safe.why`: an identifier that
+    /// has `home.safe` as a prefix invites a match against Home's headline,
+    /// and the two are different elements on different screens.
+    static let screen = "safe.screen"
+    static let headline = "safe.headline"
+    static let summary = "safe.summary"
+    static let cash = "safe.cash"
+    static let committed = "safe.committed"
+    static let result = "safe.result"
+    static let setAside = "safe.set-aside"
+    static let notCounted = "safe.not-counted"
+    static let seeCommitted = "safe.see-committed"
+    static let unavailable = "safe.unavailable"
+
+    static let all = [
+        screen, headline, summary, cash, committed, result,
+        setAside, notCounted, seeCommitted, unavailable,
+    ]
+}
+
 /// Insights controls that a physical navigation has to address by name.
 enum InsightsID {
     static let scopeWeek = "insights.scope.week"

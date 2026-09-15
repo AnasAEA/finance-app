@@ -91,24 +91,43 @@ private struct HomeDashboard: View {
     /// the zero stays and the shortfall is said underneath it: those are two
     /// different facts, and replacing the first with the second would answer a
     /// question nobody asked.
+    ///
+    /// Tapping it asks the second question — why that figure — which is a
+    /// drill-down rather than a card, because a person who already trusts the
+    /// number should not have to read its arithmetic every morning.
     private func safeToUse(_ attention: AttentionPresentation) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("SAFE TO USE")
-                .font(.eyebrow)
-                .foregroundStyle(snapshot.safeToSpendReason.isShortfall ? Theme.Role.negative : .secondary)
-            MoneyText(amount: snapshot.safeToSpend, size: 34, weight: .bold)
-            if !primaryFundingCardIsShowing(attention) {
-                Text(snapshot.safeToSpendReason.explanation)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+        Button {
+            navigation.openHome(.safeToUse)
+        } label: {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 6) {
+                    Text("SAFE TO USE")
+                        .font(.eyebrow)
+                        .foregroundStyle(snapshot.safeToSpendReason.isShortfall ? Theme.Role.negative : .secondary)
+                    Image(systemName: "info.circle")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .accessibilityHidden(true)
+                }
+                MoneyText(amount: snapshot.safeToSpend, size: 34, weight: .bold)
+                if !primaryFundingCardIsShowing(attention) {
+                    Text(snapshot.safeToSpendReason.explanation)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 4)
+            .contentShape(Rectangle())
         }
-        .padding(.vertical, 4)
+        .buttonStyle(.plain)
         // The identifier belongs to the combined element, not to the figure
         // inside it: a name on a child of a combined element is inherited by
         // the combination as well, and `home.safe` resolved to two elements.
         .accessibilityElement(children: .combine)
+        .accessibilityHint("Shows how this amount is worked out")
+        .accessibilityAddTraits(.isButton)
         .accessibilityIdentifier(RouteID.homeSafeToUse)
     }
 

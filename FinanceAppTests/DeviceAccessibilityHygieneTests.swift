@@ -156,7 +156,8 @@ struct DeviceAccessibilityHygieneTests {
 
     @Test("No two high-value identifiers collide, and none is a prefix of another")
     func highValueIdentifiersAreDistinct() {
-        let identifiers = AppTab.allCases.map(RouteID.tab) + FundingID.all + [
+        let identifiers = AppTab.allCases.map(RouteID.tab) + FundingID.all
+            + SafeToUseID.all + [
             InsightsID.scopeWeek, InsightsID.scopeMonth, InsightsID.showDetails,
             InsightsID.verification, InsightsID.verificationChange, InsightsID.unresolved,
             InsightsID.acknowledge, InsightsID.acknowledgmentState,
