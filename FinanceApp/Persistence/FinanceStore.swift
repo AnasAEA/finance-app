@@ -2407,14 +2407,13 @@ final class FinanceStore: FinanceProviding {
         guard selection.scope == .month, computed.calendarInterval.end < computed.asOf else {
             return nil
         }
+        let period = SemanticInterval(computed.result.interval)
+        let kind = computed.result.kind
+        let tip = checkpoints.latestRevision(inPeriod: period, kind: kind)
         let input = endedMonthCompositionInput(
             computed,
             confirmedAcknowledgments: confirmedAcknowledgments,
-            checkpointBaseline: PeriodCheckpointBaselineReader.source(
-                from: checkpoints,
-                period: SemanticInterval(computed.result.interval),
-                kind: computed.result.kind
-            )
+            checkpointBaseline: PeriodCheckpointBaselineReader.source(for: tip)
         )
         let readiness = AttentionComposition.readiness(for: input)
         return EndedMonthVerification(
@@ -2423,16 +2422,21 @@ final class FinanceStore: FinanceProviding {
                 readiness,
                 periodLabel: input.periodLabel,
                 observations: snapshot.syncedObservations,
-                expectedPayments: snapshot.expectedPayments
+                expectedPayments: snapshot.expectedPayments,
+                correspondence: PeriodVerificationCorrespondence.explain(
+                    previous: tip,
+                    current: readiness
+                )
             )
         )
     }
 
     /// Shared facts for the ended-month preview and the write action.
     ///
-    /// The baseline source is supplied: the preview still reads the repository
-    /// through `PeriodCheckpointBaselineReader.source(from:)`, and the write
-    /// action passes `source(for:)` of the one tip it already observed.
+    /// The baseline source is supplied. The preview reads the exact tip once
+    /// and passes `source(for:)` into composition and correspondence; the
+    /// write action still passes `source(for:)` of the one tip it already
+    /// observed.
     private func endedMonthCompositionInput(
         _ computed: ComputedReview,
         confirmedAcknowledgments: PeriodCheckpointConfirmedAcknowledgments,

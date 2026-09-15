@@ -363,11 +363,12 @@ enum VerificationChangeDimension: String, Hashable, Sendable, CaseIterable {
 ///
 /// `dimensions` are the comparison's named axes and are never empty: a
 /// changed comparison that could not name a dimension is unsayable. Occupancy
-/// sentences are extra, and only present when previous close quality and the
-/// exceptions the month carries now together prove that issues appeared or
-/// that every previously acknowledged issue is gone. Mixed occupancy — issues
-/// then and issues now — is not a claim, because correspondence is not
-/// established here.
+/// sentences are extra, and only present when they are proved: a clean close
+/// followed by current exceptions, a close that carried exceptions followed
+/// by none, or — when issues remain on both sides — unique appeared and
+/// disappeared subjects established by exact correspondence. Matched
+/// surviving subjects are not announced; they remain in the ordinary
+/// current list. Ambiguous subjects produce no occupancy sentence.
 ///
 /// Nil on the presentation is the only representation of "nothing changed"
 /// or "we cannot say". There is no empty summary.
@@ -378,6 +379,34 @@ struct VerificationChangeSummary: Hashable, Sendable {
     /// What a screen may render, occupancy first. Never a revision, digest,
     /// identifier or canonical field name.
     var statements: [String] { occupancyStatements + dimensions.map(\.statement) }
+}
+
+/// Kind buckets for uniquely appeared or disappeared exception subjects.
+///
+/// Counts only. A screen never sees an exception, an identifier or a
+/// matcher result. Zero in every field means nothing unique was proved.
+struct VerificationExceptionKindCounts: Hashable, Sendable {
+    var bankMovements: Int
+    var scheduledPayments: Int
+    var otherLimitations: Int
+
+    var isEmpty: Bool {
+        bankMovements == 0 && scheduledPayments == 0 && otherLimitations == 0
+    }
+}
+
+/// Unique exception correspondence for a changed month that still carries
+/// issues, as the product may say it.
+///
+/// Appeared subjects are current and unmatched. Disappeared subjects were
+/// acknowledged on the previous close and are no longer carried. There is
+/// no field for a matched survivor: those stay in Decisions and Limitations
+/// and are not re-announced.
+struct VerificationExceptionCorrespondence: Hashable, Sendable {
+    let appeared: VerificationExceptionKindCounts
+    let disappeared: VerificationExceptionKindCounts
+
+    var isEmpty: Bool { appeared.isEmpty && disappeared.isEmpty }
 }
 
 struct PeriodVerificationPresentation: Hashable, Sendable {

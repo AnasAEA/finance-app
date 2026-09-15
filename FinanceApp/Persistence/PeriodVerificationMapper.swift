@@ -32,7 +32,8 @@ struct EndedMonthVerification {
 /// can actually prove. It is still read-only: the mapper never consults
 /// `projection` or `disposition`, never stores anything, never constructs a
 /// `PeriodCheckpointRevision`, never classifies close policy and never
-/// reaches the acknowledgment matcher.
+/// reaches the acknowledgment matcher. Mixed-exception occupancy arrives as
+/// an already-mapped correspondence value, or not at all.
 enum PeriodVerificationMapper {
 
     /// The product's reading of one baseline comparison.
@@ -58,7 +59,8 @@ enum PeriodVerificationMapper {
         _ readiness: PeriodCheckpointReadiness,
         periodLabel: String,
         observations: [SyncedObservationItem],
-        expectedPayments: [ExpectedPayment]
+        expectedPayments: [ExpectedPayment],
+        correspondence: VerificationExceptionCorrespondence? = nil
     ) -> PeriodVerificationPresentation {
         let observationsByID = Dictionary(
             uniqueKeysWithValues: observations.map { ($0.id, $0) }
@@ -179,7 +181,8 @@ enum PeriodVerificationMapper {
             verificationState: verificationState(for: readiness.baselineComparison),
             changeSummary: changeSummary(
                 for: readiness.baselineComparison,
-                exceptions: readiness.exceptions
+                exceptions: readiness.exceptions,
+                correspondence: correspondence
             ),
             decisionCount: decisions.count,
             limitationCount: limitations.count,
@@ -198,14 +201,15 @@ enum PeriodVerificationMapper {
     /// Why the month moved, when the comparison proved it did.
     ///
     /// Dimensions come from the comparison's change classes, one for one.
-    /// Occupancy is a coarser fact: a clean close followed by any current
+    /// Occupancy is proved separately: a clean close followed by any current
     /// exception means those issues appeared; a close that carried exceptions
-    /// followed by none means they are gone. A close that carried exceptions
-    /// and a month that still carries some does not establish correspondence,
-    /// so it produces no occupancy sentence — identifiers are not identity.
+    /// followed by none means they are gone; a mixed month uses unique
+    /// appeared and disappeared subjects when correspondence supplied them,
+    /// and stays silent when it did not. Identifiers are not identity.
     static func changeSummary(
         for comparison: PeriodCheckpointBaselineComparison,
-        exceptions: [PeriodCheckpointException]
+        exceptions: [PeriodCheckpointException],
+        correspondence: VerificationExceptionCorrespondence? = nil
     ) -> VerificationChangeSummary? {
         guard case let .changedSinceClose(previousQuality, changes) = comparison else {
             return nil
@@ -214,7 +218,8 @@ enum PeriodVerificationMapper {
             dimensions: changes.classes.map(dimension(from:)),
             occupancyStatements: occupancyStatements(
                 previousQuality: previousQuality,
-                exceptions: exceptions
+                exceptions: exceptions,
+                correspondence: correspondence
             )
         )
     }
@@ -235,55 +240,72 @@ enum PeriodVerificationMapper {
 
     private static func occupancyStatements(
         previousQuality: PeriodCheckpointQuality,
-        exceptions: [PeriodCheckpointException]
+        exceptions: [PeriodCheckpointException],
+        correspondence: VerificationExceptionCorrespondence?
     ) -> [String] {
         switch previousQuality {
         case .clean:
             guard !exceptions.isEmpty else { return [] }
-            return newIssueStatements(exceptions)
+            return appearedStatements(PeriodVerificationCorrespondence.counts(exceptions))
         case .withExceptions:
-            guard exceptions.isEmpty else { return [] }
-            return ["Previously acknowledged items are no longer present."]
+            if exceptions.isEmpty {
+                return ["Previously acknowledged items are no longer present."]
+            }
+            guard let correspondence, !correspondence.isEmpty else { return [] }
+            return appearedStatements(correspondence.appeared)
+                + disappearedStatements(correspondence.disappeared)
         }
     }
 
-    private static func newIssueStatements(
-        _ exceptions: [PeriodCheckpointException]
+    private static func appearedStatements(
+        _ counts: VerificationExceptionKindCounts
     ) -> [String] {
-        var bankMovements = 0
-        var scheduledPayments = 0
-        var otherLimitations = 0
-        for exception in exceptions {
-            switch exception.kind {
-            case .unknownBookedEconomics:
-                bankMovements += 1
-            case .overdueExpectedOccurrence:
-                scheduledPayments += 1
-            case .uncategorizedEconomicSpending,
-                 .aggregateEvidenceModelLimitation,
-                 .providerStatusConflict,
-                 .unresolvedEvidenceLinkage,
-                 .unresolvedEconomicClassification,
-                 .unresolvedIncomeClassificationOrOwnership,
-                 .acceptedReconciliationAmountDifference:
-                otherLimitations += 1
-            }
-        }
         var statements: [String] = []
-        switch bankMovements {
+        switch counts.bankMovements {
         case 0: break
         case 1: statements.append("1 bank movement now needs review.")
-        default: statements.append("\(bankMovements) bank movements now need review.")
+        default: statements.append("\(counts.bankMovements) bank movements now need review.")
         }
-        switch scheduledPayments {
+        switch counts.scheduledPayments {
         case 0: break
         case 1: statements.append("1 scheduled payment now needs attention.")
-        default: statements.append("\(scheduledPayments) scheduled payments now need attention.")
+        default: statements.append("\(counts.scheduledPayments) scheduled payments now need attention.")
         }
-        switch otherLimitations {
+        switch counts.otherLimitations {
         case 0: break
         case 1: statements.append("A new limitation affects this month.")
         default: statements.append("New limitations affect this month.")
+        }
+        return statements
+    }
+
+    private static func disappearedStatements(
+        _ counts: VerificationExceptionKindCounts
+    ) -> [String] {
+        var statements: [String] = []
+        switch counts.bankMovements {
+        case 0: break
+        case 1: statements.append("A previously acknowledged bank movement is no longer present.")
+        default:
+            statements.append(
+                "\(counts.bankMovements) previously acknowledged bank movements are no longer present."
+            )
+        }
+        switch counts.scheduledPayments {
+        case 0: break
+        case 1: statements.append("A previously acknowledged scheduled payment is no longer present.")
+        default:
+            statements.append(
+                "\(counts.scheduledPayments) previously acknowledged scheduled payments are no longer present."
+            )
+        }
+        switch counts.otherLimitations {
+        case 0: break
+        case 1: statements.append("A previously acknowledged limitation is no longer present.")
+        default:
+            statements.append(
+                "\(counts.otherLimitations) previously acknowledged limitations are no longer present."
+            )
         }
         return statements
     }

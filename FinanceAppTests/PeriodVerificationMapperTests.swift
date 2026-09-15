@@ -113,13 +113,15 @@ struct PeriodVerificationMapperTests {
 
     private func present(
         exceptions: [PeriodCheckpointException]? = nil,
-        baselineComparison: PeriodCheckpointBaselineComparison
+        baselineComparison: PeriodCheckpointBaselineComparison,
+        correspondence: VerificationExceptionCorrespondence? = nil
     ) throws -> PeriodVerificationPresentation {
         PeriodVerificationMapper.present(
             try readiness(exceptions: exceptions, baselineComparison: baselineComparison),
             periodLabel: "August 2026",
             observations: [observation()],
-            expectedPayments: []
+            expectedPayments: [],
+            correspondence: correspondence
         )
     }
 
@@ -391,6 +393,82 @@ struct PeriodVerificationMapperTests {
         #expect(!visible.contains("no longer present"))
         #expect(!visible.contains("observation-unknown"))
         #expect(!visible.contains("uncategorized:2026-08"))
+    }
+
+    @Test("Unique mixed correspondence names appeared and disappeared subjects")
+    func mixedCorrespondenceNamesUniqueShifts() throws {
+        let presentation = try present(
+            baselineComparison: .changedSinceClose(
+                previousQuality: .withExceptions, changes: .init(.evidenceChanged)
+            ),
+            correspondence: VerificationExceptionCorrespondence(
+                appeared: VerificationExceptionKindCounts(
+                    bankMovements: 1, scheduledPayments: 0, otherLimitations: 0
+                ),
+                disappeared: VerificationExceptionKindCounts(
+                    bankMovements: 1, scheduledPayments: 0, otherLimitations: 0
+                )
+            )
+        )
+        let summary = try #require(presentation.changeSummary)
+        #expect(summary.occupancyStatements == [
+            "1 bank movement now needs review.",
+            "A previously acknowledged bank movement is no longer present.",
+        ])
+        #expect(!summary.occupancyStatements.contains { $0.lowercased().contains("still") })
+    }
+
+    @Test("Correspondence does not rewrite decisions, limitations or verification state")
+    func correspondenceDoesNotAlterTheCurrentScreen() throws {
+        let baseline: PeriodCheckpointBaselineComparison = .changedSinceClose(
+            previousQuality: .withExceptions, changes: .init(.economicsChanged)
+        )
+        let without = try present(baselineComparison: baseline)
+        let with = try present(
+            baselineComparison: baseline,
+            correspondence: VerificationExceptionCorrespondence(
+                appeared: VerificationExceptionKindCounts(
+                    bankMovements: 1, scheduledPayments: 0, otherLimitations: 0
+                ),
+                disappeared: VerificationExceptionKindCounts(
+                    bankMovements: 0, scheduledPayments: 0, otherLimitations: 0
+                )
+            )
+        )
+        #expect(with.verificationState == without.verificationState)
+        #expect(with.decisions == without.decisions)
+        #expect(with.limitations == without.limitations)
+        #expect(with.decisionCount == without.decisionCount)
+        #expect(with.limitationCount == without.limitationCount)
+        #expect(with.totalsStatement == without.totalsStatement)
+        #expect(with.changeSummary?.occupancyStatements != without.changeSummary?.occupancyStatements)
+    }
+
+    @Test("A clean previous close ignores mixed correspondence")
+    func cleanOccupancyIgnoresCorrespondence() throws {
+        let presentation = try present(
+            exceptions: [
+                PeriodCheckpointException(
+                    id: "observation-unknown",
+                    kind: .unknownBookedEconomics,
+                    day: day("2026-08-07"),
+                    amount: euro("-24.00")
+                )
+            ],
+            baselineComparison: .changedSinceClose(
+                previousQuality: .clean, changes: .init(.evidenceChanged)
+            ),
+            correspondence: VerificationExceptionCorrespondence(
+                appeared: VerificationExceptionKindCounts(
+                    bankMovements: 0, scheduledPayments: 1, otherLimitations: 0
+                ),
+                disappeared: VerificationExceptionKindCounts(
+                    bankMovements: 3, scheduledPayments: 0, otherLimitations: 0
+                )
+            )
+        )
+        let summary = try #require(presentation.changeSummary)
+        #expect(summary.occupancyStatements == ["1 bank movement now needs review."])
     }
 
     @Test("A same-id current exception is not treated as the previous subject")

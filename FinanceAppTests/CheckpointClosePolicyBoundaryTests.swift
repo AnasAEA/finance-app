@@ -205,8 +205,8 @@ struct CheckpointClosePolicyBoundaryTests {
 
     @Test("FZ6/FZ7/FZ8/FZ9: no production write, close, re-verify, compare-and-append or matcher")
     func noProductionWritePathExists() throws {
-        let approvedStoreCaller = "Persistence/EndedMonthCheckpointWriter.swift"
         let storagePrimitive = "Persistence/PeriodCheckpointRepository.swift"
+        let approvedMatcherCaller = "Persistence/PeriodVerificationCorrespondence.swift"
         let neverInProduction = [
             "compareAndAppend",
             "rehydratingStoredSnapshot", "PeriodCheckpointAcknowledgmentMatcher",
@@ -218,12 +218,19 @@ struct CheckpointClosePolicyBoundaryTests {
         where file.path != storagePrimitive {
             let code = try Self.code(file.path)
             for forbidden in neverInProduction where code.contains(forbidden) {
+                if file.path == approvedMatcherCaller,
+                   forbidden == "PeriodCheckpointAcknowledgmentMatcher" {
+                    continue
+                }
                 offenders.append("\(file.path): \(forbidden)")
             }
         }
         #expect(offenders.isEmpty, "a production write or matcher path exists: \(offenders)")
         // The single-authorized-writer guard itself lives once, in
         // EndedMonthCheckpointWriteTests ("W22"); this case owns the scan above.
+        let matcher = try Self.code(approvedMatcherCaller)
+        #expect(matcher.contains("PeriodCheckpointAcknowledgmentMatcher.match("))
+        #expect(!matcher.contains("carryForwardCandidate"))
     }
 
     @Test("The repository still offers no close, re-verify or compare-and-append")

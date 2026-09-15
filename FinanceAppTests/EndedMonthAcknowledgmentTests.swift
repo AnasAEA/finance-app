@@ -941,10 +941,15 @@ struct EndedMonthAcknowledgmentTests {
     /// Store calls are permitted in exactly one named production file, and
     /// revision construction remains permitted in exactly one other.
     ///
-    /// Store, compare-and-append, matcher and the frozen close/reverify
-    /// function names stay forbidden everywhere but the storage primitive —
-    /// except the one approved writer, `Persistence/EndedMonthCheckpointWriter.swift`,
-    /// which may contain the store call and nothing else from that list.
+    /// Store, compare-and-append and the frozen close/reverify function names
+    /// stay forbidden everywhere but the storage primitive — except the one
+    /// approved writer, `Persistence/EndedMonthCheckpointWriter.swift`, which
+    /// may contain the store call and nothing else from that list.
+    ///
+    /// The matcher is permitted in exactly one named file,
+    /// `Persistence/PeriodVerificationCorrespondence.swift`, as a read-only
+    /// explanation caller. It may not appear anywhere else, and that file
+    /// may not mention carry-forward identifiers.
     ///
     /// `PeriodCheckpointRevision(` remains permitted only in
     /// `Persistence/CheckpointClosePolicy.swift`. The writer consumes a
@@ -963,6 +968,7 @@ struct EndedMonthAcknowledgmentTests {
 
         let storagePrimitive = "Persistence/PeriodCheckpointRepository.swift"
         let approvedStoreCaller = "Persistence/EndedMonthCheckpointWriter.swift"
+        let approvedMatcherCaller = "Persistence/PeriodVerificationCorrespondence.swift"
         let policyBoundary = "Persistence/CheckpointClosePolicy.swift"
 
         var offenders: [String] = []
@@ -971,6 +977,10 @@ struct EndedMonthAcknowledgmentTests {
         ]) where file.path != storagePrimitive {
             let code = try Self.code(file.path)
             for forbidden in neverInProduction where code.contains(forbidden) {
+                if file.path == approvedMatcherCaller,
+                   forbidden == "PeriodCheckpointAcknowledgmentMatcher" {
+                    continue
+                }
                 offenders.append("\(file.path): \(forbidden)")
             }
             guard file.path != policyBoundary else { continue }
@@ -989,6 +999,11 @@ struct EndedMonthAcknowledgmentTests {
         // matches nothing: the policy file exists and does construct a
         // revision. If it stops doing so, the exception must go with it.
         #expect(try Self.code(policyBoundary).contains("PeriodCheckpointRevision("))
+
+        let matcher = try Self.code(approvedMatcherCaller)
+        #expect(matcher.contains("PeriodCheckpointAcknowledgmentMatcher.match("))
+        #expect(!matcher.contains("carryForwardCandidate"))
+        #expect(!matcher.contains("PeriodCheckpointConfirmedAcknowledgments"))
     }
 
     // MARK: - Reading the product's own source

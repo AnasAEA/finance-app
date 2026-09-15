@@ -87,6 +87,28 @@ struct CheckpointVerificationPresentationTests {
         return document
     }
 
+    /// Several unreviewed booked observations in ended August, no ledger rows.
+    private static func unreviewedObservations(
+        _ rows: [(id: String, amount: Int64, day: Int)]
+    ) -> FinanceDocument {
+        var document = cleanDocument()
+        document.transactions = []
+        document.externalObservations = rows.map { row in
+            ExternalObservation(
+                id: row.id, bindingID: "binding", provider: .bnp,
+                identity: .durable, status: .booked, creditDebitIndicator: .debit,
+                amount: euro(row.amount),
+                bookingDate: Day(year: 2026, month: 8, day: row.day),
+                eligibleForEconomicActual: true,
+                observedAt: Date(timeIntervalSince1970: 1_000)
+            )
+        }
+        document.observationResolutions = rows.map {
+            ExternalObservationResolution(observationID: $0.id, state: .unreviewed)
+        }
+        return document
+    }
+
     private static func coverageMetadata() -> AppPersistenceMetadata {
         var metadata = AppPersistenceMetadata.empty
         metadata.authoritativeLiveCoverage = [
@@ -524,12 +546,79 @@ struct CheckpointVerificationPresentationTests {
         let shown = try presentation(in: changed)
         #expect(shown.verificationState == .changedSinceVerification)
         let summary = try #require(shown.changeSummary)
-        #expect(summary.occupancyStatements.isEmpty)
-        let visible = summary.statements.joined(separator: " ")
+        // E1 sees two different subjects, not one row that stayed itself.
+        #expect(summary.occupancyStatements.contains("1 bank movement now needs review."))
+        #expect(summary.occupancyStatements.contains(
+            "A previously acknowledged bank movement is no longer present."
+        ))
+        let visible = summary.statements.joined(separator: " ").lowercased()
         #expect(!visible.contains("observation"))
-        #expect(!visible.lowercased().contains("now needs review"))
-        #expect(!visible.lowercased().contains("identical"))
+        #expect(!visible.contains("identical"))
+        #expect(!visible.contains("still present"))
         assertNoCheckpointMetadata(summary)
+
+        let fresh = EndedMonthAcknowledgmentModel()
+        #expect(fresh.confirmedAcknowledgments == .noDecisions)
+        #expect(fresh.selectedSubjects.isEmpty)
+        guard let screen = fresh.screen(for: Self.selection, in: changed) else {
+            Issue.record("expected a verification screen")
+            return
+        }
+        #expect(screen.readinessState == .needsDecisions(remaining: 1))
+    }
+
+    @Test("Previous A/B and current B/C names A gone and C new, and does not pre-confirm B")
+    func mixedAppearedAndDisappearedThroughProductionRead() throws {
+        let harness = try Harness(document: Self.unreviewedObservations([
+            ("obs-a", -2_000, 12),
+            ("obs-b", -3_000, 18),
+        ]))
+        let acknowledgment = EndedMonthAcknowledgmentModel()
+        try acceptEverything(acknowledgment, in: harness.store)
+        guard case .storedFirstClose = harness.store.writeEndedMonthCheckpoint(
+            Self.selection,
+            confirmedAcknowledgments: acknowledgment.confirmedAcknowledgments
+        ) else {
+            Issue.record("expected a first close")
+            return
+        }
+
+        var moved = Self.unreviewedObservations([
+            ("obs-a", -2_000, 12),
+            ("obs-b", -3_000, 18),
+            ("obs-c", -1_500, 22),
+        ])
+        moved.observationResolutions = [
+            ExternalObservationResolution(observationID: "obs-a", state: .noEconomicEffect),
+            ExternalObservationResolution(observationID: "obs-b", state: .unreviewed),
+            ExternalObservationResolution(observationID: "obs-c", state: .unreviewed),
+        ]
+        try harness.replace(moved)
+        let changed = try harness.reopen()
+
+        let shown = try presentation(in: changed)
+        #expect(shown.verificationState == .changedSinceVerification)
+        let summary = try #require(shown.changeSummary)
+        #expect(summary.occupancyStatements.contains("1 bank movement now needs review."))
+        #expect(summary.occupancyStatements.contains(
+            "A previously acknowledged bank movement is no longer present."
+        ))
+        #expect(shown.decisionCount == 2)
+        let visible = summary.statements.joined(separator: " ").lowercased()
+        #expect(!visible.contains("obs-a"))
+        #expect(!visible.contains("obs-b"))
+        #expect(!visible.contains("obs-c"))
+        #expect(!visible.contains("still present"))
+        assertNoCheckpointMetadata(summary)
+
+        let fresh = EndedMonthAcknowledgmentModel()
+        #expect(fresh.confirmedAcknowledgments == .noDecisions)
+        #expect(fresh.selectedSubjects.isEmpty)
+        guard let screen = fresh.screen(for: Self.selection, in: changed) else {
+            Issue.record("expected a verification screen")
+            return
+        }
+        #expect(screen.readinessState == .needsDecisions(remaining: 2))
     }
 
     @Test("Successful reverify clears the change summary through fresh repository state")
