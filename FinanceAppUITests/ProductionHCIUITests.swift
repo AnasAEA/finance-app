@@ -55,6 +55,23 @@ final class ProductionHCIUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["Insights"].exists)
     }
 
+    func testHomeReviewMonthOpensCanonicalVerificationDetail() {
+        launch(variant: "positive")
+        XCTAssertTrue(app.navigationBars["Home"].waitForExistence(timeout: 8))
+        let attention = app.descendants(matching: .any)["home.attention"]
+        XCTAssertTrue(attention.waitForExistence(timeout: 5))
+        XCTAssertTrue(
+            app.staticTexts["Review month"].waitForExistence(timeout: 5)
+                || attention.label.contains("Review month")
+        )
+        attention.tap()
+        XCTAssertTrue(app.navigationBars["What's unresolved"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["Not verified yet."].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.navigationBars.matching(identifier: "What's unresolved").count, 1)
+        XCTAssertFalse(app.staticTexts["Close checkpoint"].exists)
+        XCTAssertFalse(app.staticTexts["Reverify revision"].exists)
+    }
+
     func testHomeOpensAccountsAndSettings() {
         launch()
         app.buttons["home.cash"].tap()

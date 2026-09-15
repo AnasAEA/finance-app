@@ -296,6 +296,107 @@ struct AttentionExperienceStoreTests {
         #expect(uncertain.heroIsAvailable)
     }
 
+    @Test("An ended month that needs verification becomes the Home action")
+    func monthVerificationBecomesHomeAction() {
+        let snapshot = FinanceAppSnapshot.empty(asOf: CalendarDay(year: 2026, month: 9, day: 3))
+        let sources = available.recording(.periodCheckpointBaseline, .available)
+        let neverClosed = AttentionCoordinator.evaluate(
+            proposals: [
+                AttentionCandidateProposal(
+                    kind: .monthReadyToClose,
+                    identity: "close:2026-08-01",
+                    subject: .period(label: "August 2026"),
+                    detail: .periodClose(changed: false, monthOffset: -1),
+                    dependencies: [.periodReview, .periodCheckpointBaseline]
+                )
+            ],
+            availability: sources
+        )
+        let never = AttentionPresentationMapper.present(
+            neverClosed, snapshot: snapshot, heroIsAvailable: true
+        )
+        guard case let .act(card, _) = never.home else {
+            Issue.record("expected a Home action")
+            return
+        }
+        #expect(card.title == "August 2026 isn't verified yet.")
+        #expect(card.actionTitle == "Review month")
+        #expect(
+            card.destination
+                == .insightsMonthVerification(ReviewPeriodSelection(scope: .month, offset: -1))
+        )
+
+        let changedState = AttentionCoordinator.evaluate(
+            proposals: [
+                AttentionCandidateProposal(
+                    kind: .monthReadyToClose,
+                    identity: "close:2026-08-01",
+                    subject: .period(label: "August 2026"),
+                    detail: .periodClose(changed: true, monthOffset: -1),
+                    dependencies: [.periodReview, .periodCheckpointBaseline]
+                )
+            ],
+            availability: sources
+        )
+        let changed = AttentionPresentationMapper.present(
+            changedState, snapshot: snapshot, heroIsAvailable: true
+        )
+        guard case let .act(changedCard, _) = changed.home else {
+            Issue.record("expected a changed-month Home action")
+            return
+        }
+        #expect(changedCard.title == "August 2026 changed since verification.")
+        #expect(changedCard.actionTitle == "Review changes")
+    }
+
+    @Test("A funding gap stays in front of month verification")
+    func fundingGapOutranksMonthVerificationOnHome() {
+        let snapshot = FinanceAppSnapshot.empty(asOf: CalendarDay(year: 2026, month: 9, day: 3))
+        let gap = RequiredFundingGapFact(
+            riskKind: .poolDeficit,
+            day: CalendarDay(year: 2026, month: 9, day: 12),
+            shortfall: .eur(75),
+            triggerLabel: "Test payment",
+            triggerEventID: "event-payment",
+            subject: .paymentPool(eligibleAccountIDs: [], currencyCode: "EUR"),
+            settlementFailure: SettlementFailureFact(
+                day: CalendarDay(year: 2026, month: 9, day: 12),
+                requested: .eur(100),
+                settled: .eur(25),
+                unsettled: .eur(75),
+                eligibleAccountIDs: []
+            )
+        )
+        let state = AttentionCoordinator.evaluate(
+            proposals: [
+                AttentionCandidateProposal(
+                    kind: .requiredFundingGap,
+                    identity: "risk@2026-09-12",
+                    subject: gap.subject,
+                    detail: .fundingGap(gap),
+                    dependencies: [.forecastProjection, .currentAccountTruth]
+                ),
+                AttentionCandidateProposal(
+                    kind: .monthReadyToClose,
+                    identity: "close:2026-08-01",
+                    subject: .period(label: "August 2026"),
+                    detail: .periodClose(changed: false, monthOffset: -1),
+                    dependencies: [.periodReview, .periodCheckpointBaseline]
+                )
+            ],
+            availability: available.recording(.periodCheckpointBaseline, .available)
+        )
+        let presentation = AttentionPresentationMapper.present(
+            state, snapshot: snapshot, heroIsAvailable: true
+        )
+        guard case let .act(card, _) = presentation.home else {
+            Issue.record("expected the funding card")
+            return
+        }
+        #expect(card.destination == .planFundingNeeded)
+        #expect(card.actionTitle == "See what's needed")
+    }
+
     @Test("Review count is pre-cap and excludes aggregate and pending work")
     func reviewCountIsTruthfulBeyondSecondaryCap() {
         var snapshot = FinanceAppSnapshot.empty(asOf: CalendarDay(year: 2026, month: 9, day: 3))

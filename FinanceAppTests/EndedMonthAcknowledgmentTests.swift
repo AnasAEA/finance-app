@@ -233,10 +233,8 @@ struct EndedMonthAcknowledgmentTests {
         let homePath = store[start.lowerBound..<end.lowerBound]
         #expect(homePath.contains("AttentionComposition.Input("))
         #expect(!homePath.contains("confirmedAcknowledgments"))
-
-        // Home still cannot reach `monthReadyToClose` at all: it hands the
-        // composition no review, which blocks the checkpoint outright.
-        #expect(homePath.contains("review: nil"))
+        #expect(!homePath.contains("writeEndedMonthCheckpoint"))
+        #expect(!homePath.contains("PeriodCheckpointConfirmedAcknowledgments"))
     }
 
     // MARK: - C — first-time confirmation

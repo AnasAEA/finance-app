@@ -3625,30 +3625,45 @@ final class FinanceStore: FinanceProviding {
             ).hasUsableAmount ? nil : account.id
         })
         let currentPeriod = ReviewInterval.month(asOf.monthKey)
+        // Home's current-attention domain stays on today. The ended-month
+        // verification proposal, when there is one, is about the most recently
+        // ended calendar month — the same period Insights opens at offset -1.
+        let endedSelection = ReviewPeriodSelection(scope: .month, offset: -1)
+        let endedReview = computeReview(endedSelection)
+        let checkpointPeriod: ReviewInterval
+        let checkpointReview: ReviewResult?
+        let checkpointLabel: String
+        if let ended = endedReview, ended.result.interval.end < asOf {
+            checkpointPeriod = ended.result.interval
+            checkpointReview = ended.result
+            checkpointLabel = ReviewPresentationMapper.monthLabel(
+                ended.result.interval.start.monthKey
+            )
+        } else {
+            checkpointPeriod = currentPeriod
+            checkpointReview = nil
+            checkpointLabel = ReviewPresentationMapper.monthLabel(asOf.monthKey)
+        }
         let output = AttentionComposition.evaluate(
             AttentionComposition.Input(
                 document: document,
                 asOf: asOf,
                 accountNames: accountNames,
                 forecast: evaluation.forecast,
-                review: nil,
+                review: checkpointReview,
                 occurrences: expectedOccurrences(),
                 observations: evaluation.snapshot.syncedObservations,
                 freshness: freshness,
                 accountsWithoutUsableAmount: unavailableAccounts,
                 categoryKeys: categoryKeysByTransaction,
-                // The running month's own history, by exact period and kind.
-                // Normally empty — nothing writes a checkpoint yet — and an
-                // empty read is the established fact "never closed", not a
-                // missing source.
                 checkpointBaseline: PeriodCheckpointBaselineReader.source(
                     from: checkpoints,
-                    period: SemanticInterval(currentPeriod),
+                    period: SemanticInterval(checkpointPeriod),
                     kind: .monthly
                 ),
-                period: currentPeriod,
+                period: checkpointPeriod,
                 periodKind: .monthly,
-                periodLabel: ReviewPresentationMapper.monthLabel(asOf.monthKey)
+                periodLabel: checkpointLabel
             )
         )
         return AttentionPresentationMapper.present(

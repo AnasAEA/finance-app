@@ -62,6 +62,8 @@ enum AttentionDestination: Hashable, Sendable {
     case observationReview(String)
     case expectedPayment(ExpectedPayment)
     case activityToReview
+    /// The canonical Insights ended-month verification detail for this period.
+    case insightsMonthVerification(ReviewPeriodSelection)
 }
 
 struct ActivityAttentionPresentation: Hashable, Sendable {

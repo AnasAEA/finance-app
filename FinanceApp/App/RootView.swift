@@ -47,6 +47,12 @@ enum PlanRoute: Hashable {
     case affordability
 }
 
+/// Destinations pushed onto Insights. The verification detail is the same
+/// screen Insights already owns; this is only how Home asks to open it.
+enum InsightsRoute: Hashable {
+    case monthVerification(ReviewPeriodSelection)
+}
+
 /// Accessibility identifiers for the primary routes.
 ///
 /// Named in one place so a navigation test asserts the route a person can
@@ -130,6 +136,11 @@ final class AppNavigation {
     var activitySection: ActivitySection = .transactions
     var homePath = NavigationPath()
     var planPath = NavigationPath()
+    var insightsPath = NavigationPath()
+    /// When Home (or a launch argument) asks Insights to show a period, that
+    /// selection is applied once the tab is visible. Nil means Insights keeps
+    /// the period the person last chose.
+    var insightsSelection: ReviewPeriodSelection?
     /// Add lives in the Activity toolbar; the sheet itself is presented once, at
     /// the root, so it survives a tab switch underneath it.
     var isAddingTransaction = false
@@ -162,6 +173,17 @@ final class AppNavigation {
     func openToReview() {
         activitySection = .toReview
         selectedTab = .activity
+    }
+
+    /// Switch to Insights on the given month and push the canonical
+    /// verification detail. Replaces any Insights path so a second Home tap
+    /// cannot stack two copies of the same month.
+    func openInsightsVerification(_ selection: ReviewPeriodSelection) {
+        selectedTab = .insights
+        insightsSelection = selection
+        var next = NavigationPath()
+        next.append(InsightsRoute.monthVerification(selection))
+        insightsPath = next
     }
 
     static func make(from launch: LaunchOptions) -> AppNavigation {
@@ -292,7 +314,7 @@ struct RootView: View {
             }
             .tag(AppTab.plan)
 
-            NavigationStack {
+            NavigationStack(path: $navigation.insightsPath) {
                 InsightsView()
             }
             // A record being examined, not a dashboard chart: the tab set is

@@ -28,6 +28,13 @@ enum AttentionPresentationMapper {
             if let primary, isActBand(primary.kind),
                let card = actionCard(primary) {
                 home = .act(card, reviewCount: reviewCount)
+            } else if let month = state.actionableCandidates.first(where: {
+                $0.kind == .monthReadyToClose
+            }), let card = actionCard(month) {
+                // Funding, bank connection and drift stay more urgent. When
+                // none of those is the Home card, an ended month that needs
+                // verification is the one meaningful next action.
+                home = .act(card, reviewCount: reviewCount)
             } else {
                 home = .reviewOnly(reviewCount: reviewCount)
             }
@@ -99,7 +106,26 @@ enum AttentionPresentationMapper {
                 isTinted: true
             )
 
-        case .bookedEvidence, .overdueOccurrence, .periodClose:
+        case let .periodClose(changed, monthOffset):
+            let label: String
+            if case let .period(periodLabel) = candidate.subject {
+                label = periodLabel
+            } else {
+                label = "This month"
+            }
+            return HomeAttentionCard(
+                title: changed
+                    ? "\(label) changed since verification."
+                    : "\(label) isn't verified yet.",
+                detail: nil,
+                actionTitle: changed ? "Review changes" : "Review month",
+                destination: .insightsMonthVerification(
+                    ReviewPeriodSelection(scope: .month, offset: monthOffset)
+                ),
+                isTinted: false
+            )
+
+        case .bookedEvidence, .overdueOccurrence:
             return nil
         }
     }

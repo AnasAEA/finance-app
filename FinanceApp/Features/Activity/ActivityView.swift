@@ -205,7 +205,7 @@ struct NeedsReviewView: View {
             BankSyncView()
         case let .account(id):
             AccountDetailView(accountID: id)
-        case .activityToReview:
+        case .activityToReview, .insightsMonthVerification:
             EmptyView()
         }
     }

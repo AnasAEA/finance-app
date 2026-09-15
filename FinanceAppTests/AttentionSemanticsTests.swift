@@ -46,7 +46,7 @@ struct AttentionSemanticsTests {
             kind: kind,
             identity: identity,
             subject: .period(label: "test"),
-            detail: .periodClose(quality: "clean"),
+            detail: .periodClose(changed: false, monthOffset: -1),
             dependencies: dependencies,
             compromisedDependencies: compromises,
             isActionable: actionable,
@@ -1083,15 +1083,11 @@ struct AttentionSemanticsTests {
         #expect(readiness.disposition == .readyClean)
 
         // …and no Home action follows, because this request read no checkpoint
-        // history, so nothing establishes that it has not already been closed.
-        let proposal = AttentionFactAdapters.monthReadyToClose(from: readiness, periodLabel: "August")
-        let state = AttentionCoordinator.evaluate(
-            proposals: [proposal!], availability: currentSourcesAvailable
-        )
-        #expect(state.primary == nil)
+        // history. An unavailable comparison is not a verification CTA.
         #expect(
-            state.suppressed.first?.eligibility
-                == .suppressedBecauseSourceUnavailable(.periodCheckpointBaseline)
+            AttentionFactAdapters.monthReadyToClose(
+                from: readiness, asOf: day("2026-09-03"), periodLabel: "August"
+            ) == nil
         )
         #expect(!readiness.baselineComparison.isEstablished)
     }
@@ -1112,7 +1108,9 @@ struct AttentionSemanticsTests {
             )
         )
         #expect(readiness.disposition == .readyClean)
-        return AttentionFactAdapters.monthReadyToClose(from: readiness, periodLabel: "August")
+        return AttentionFactAdapters.monthReadyToClose(
+            from: readiness, asOf: day("2026-09-03"), periodLabel: "August"
+        )
     }
 
     @Test("P10: a month already current against its checkpoint proposes no close")
@@ -1133,14 +1131,25 @@ struct AttentionSemanticsTests {
                 .changedSinceClose(previousQuality: .clean, changes: .init(.economicsChanged))
             ) != nil
         )
-        // Nor does an inconclusive comparison silence it: only proven
-        // currentness does.
+    }
+
+    @Test("An unavailable or indeterminate comparison offers no verification action")
+    func unavailableComparisonDoesNotProposeClose() throws {
         #expect(
             try closeProposal(
                 .indeterminate(previousQuality: .clean, blockers: .init(.sourceGap))
-            ) != nil
+            ) == nil
         )
-        #expect(try closeProposal(.unavailable(.noBaselinePersistence)) != nil)
+        #expect(try closeProposal(.unavailable(.noBaselinePersistence)) == nil)
+        #expect(
+            try closeProposal(
+                .requiresReverification(
+                    previousQuality: .clean,
+                    storedFormatToken: "v0",
+                    comparisonFormat: .v1
+                )
+            ) == nil
+        )
     }
 
     @Test("A blocked or undecided period offers no close proposal")
@@ -1152,7 +1161,59 @@ struct AttentionSemanticsTests {
                 review: try realReview(.month(MonthKey(year: 2026, month: 8)))
             )
         )
-        #expect(AttentionFactAdapters.monthReadyToClose(from: blocked, periodLabel: "August") == nil)
+        #expect(
+            AttentionFactAdapters.monthReadyToClose(
+                from: blocked, asOf: day("2026-08-15"), periodLabel: "August"
+            ) == nil
+        )
+    }
+
+    @Test("A never-closed month that still needs decisions still proposes review")
+    func neverClosedMonthNeedingDecisionsStillProposes() throws {
+        let readiness = PeriodCheckpointEvaluator.evaluate(
+            PeriodCheckpointRequest(
+                period: .month(MonthKey(year: 2026, month: 8)),
+                kind: .monthly,
+                asOf: day("2026-09-03"),
+                review: try realReview(.month(MonthKey(year: 2026, month: 8))),
+                exceptions: [
+                    PeriodCheckpointException(
+                        id: "obs-booked",
+                        kind: .unknownBookedEconomics,
+                        day: day("2026-08-07"),
+                        amount: euro("-7.99")
+                    )
+                ],
+                baselineComparison: .notPreviouslyClosed
+            )
+        )
+        #expect(readiness.disposition == .needsDecisions)
+        let proposal = try #require(
+            AttentionFactAdapters.monthReadyToClose(
+                from: readiness, asOf: day("2026-09-03"), periodLabel: "August 2026"
+            )
+        )
+        guard case let .periodClose(changed, offset) = proposal.detail else {
+            Issue.record("expected a period-close detail")
+            return
+        }
+        #expect(changed == false)
+        #expect(offset == -1)
+    }
+
+    @Test("A changed proposal names Review-changes occupancy, not identity")
+    func changedProposalCarriesChangedFlag() throws {
+        let proposal = try #require(
+            try closeProposal(
+                .changedSinceClose(previousQuality: .clean, changes: .init(.economicsChanged))
+            )
+        )
+        guard case let .periodClose(changed, offset) = proposal.detail else {
+            Issue.record("expected a period-close detail")
+            return
+        }
+        #expect(changed == true)
+        #expect(offset == -1)
     }
 
     // MARK: - Real-shape composition

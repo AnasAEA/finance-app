@@ -311,7 +311,11 @@ enum AttentionCandidateDetail: Hashable, Sendable {
     case drift(CurrentAccountDriftFact)
     case bookedEvidence(amount: Amount, day: CalendarDay?)
     case overdueOccurrence(amount: Amount, expectedDay: CalendarDay)
-    case periodClose(quality: String)
+    /// An ended month the person should open in Insights. `changed` is
+    /// whether stored history already accepted a close that current state
+    /// has moved away from. `monthOffset` is the Insights month picker
+    /// offset for that period, never a revision number.
+    case periodClose(changed: Bool, monthOffset: Int)
 }
 
 // MARK: - Proposals and candidates

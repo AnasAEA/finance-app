@@ -9,6 +9,7 @@ import SwiftUI
 /// interesting.
 struct InsightsView: View {
     @Environment(FinanceStore.self) private var store
+    @Environment(AppNavigation.self) private var navigation
 
     @State private var selection = LaunchOptions.current.insightsSelection
         ?? ReviewPeriodSelection()
@@ -26,14 +27,35 @@ struct InsightsView: View {
         // A period the store cannot review is reported as exactly that. The
         // screen never falls back to a clean or empty review of it, and never
         // moves to a different period it could have shown instead.
-        if let review = store.review(selection) {
-            InsightsPeriodView(
-                review: review,
-                selection: $selection,
-                refreshGeneration: $refreshGeneration
-            )
-        } else {
-            InsightsUnavailablePeriodView(selection: $selection)
+        Group {
+            if let review = store.review(selection) {
+                InsightsPeriodView(
+                    review: review,
+                    selection: $selection,
+                    refreshGeneration: $refreshGeneration
+                )
+            } else {
+                InsightsUnavailablePeriodView(selection: $selection)
+            }
+        }
+        .navigationDestination(for: InsightsRoute.self) { route in
+            switch route {
+            case let .monthVerification(target):
+                if let verification = store.endedMonthVerification(target)?.presentation {
+                    PeriodVerificationDetailView(
+                        verification: verification,
+                        selection: target,
+                        refreshGeneration: $refreshGeneration
+                    )
+                } else {
+                    Text("This period cannot be reviewed.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .onChange(of: navigation.insightsSelection, initial: true) { _, new in
+            if let new { selection = new }
         }
     }
 }

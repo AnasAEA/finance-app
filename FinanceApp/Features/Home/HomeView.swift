@@ -258,6 +258,8 @@ private struct HomeDashboard: View {
             navigation.showHome([.accounts, .account(id)])
         case .observationReview, .expectedPayment, .activityToReview:
             navigation.openToReview()
+        case let .insightsMonthVerification(selection):
+            navigation.openInsightsVerification(selection)
         }
     }
 

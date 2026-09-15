@@ -225,7 +225,7 @@ enum AttentionComposition {
         )
 
         if let close = AttentionFactAdapters.monthReadyToClose(
-            from: readiness, periodLabel: input.periodLabel
+            from: readiness, asOf: input.asOf, periodLabel: input.periodLabel
         ) {
             proposals.append(close)
         }

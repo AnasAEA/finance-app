@@ -384,27 +384,53 @@ enum AttentionFactAdapters {
     /// current-attention domain requires, today's answer stays determinate
     /// either way. That is refinement A.
     ///
-    /// Refinement B: a month whose comparison proves it is already current
-    /// carries nothing left to close, so it proposes nothing. Only
-    /// `.unchangedSinceClose` proves that. A period never closed, one that has
-    /// moved since its close, and every comparison that settles neither are all
-    /// still ready to close and still propose — suppressing on "a checkpoint
-    /// exists" rather than on "current state matches it" would silence exactly
-    /// the months that most need closing again.
+    /// A Home entry into the canonical Insights verification flow, not a
+    /// close action. Only a conclusive "never closed" or "moved since close"
+    /// reading proposes; an unchanged month stays quiet, and an unavailable
+    /// or indeterminate comparison never offers a fake CTA. Blockers that
+    /// mean the period cannot be opened as ended-month verification suppress
+    /// the proposal. Needing decisions does not: that is why the person
+    /// should open the month.
     static func monthReadyToClose(
         from readiness: PeriodCheckpointReadiness,
+        asOf: Day,
         periodLabel: String
     ) -> AttentionCandidateProposal? {
-        guard readiness.disposition.isReady else { return nil }
-        if case .unchangedSinceClose = readiness.baselineComparison { return nil }
+        if readiness.blockers.contains(where: { Self.unverifiableBlockers.contains($0.kind) }) {
+            return nil
+        }
+        let changed: Bool
+        switch readiness.baselineComparison {
+        case .unchangedSinceClose:
+            return nil
+        case .notPreviouslyClosed:
+            changed = false
+        case .changedSinceClose:
+            changed = true
+        case .unavailable, .indeterminate, .requiresReverification:
+            return nil
+        }
         return AttentionCandidateProposal(
             kind: .monthReadyToClose,
             identity: "close:\(readiness.period.start.isoString)",
             subject: .period(label: periodLabel),
-            detail: .periodClose(quality: readiness.quality.rawValue),
+            detail: .periodClose(
+                changed: changed,
+                monthOffset: monthOffset(asOf: asOf, period: readiness.period)
+            ),
             dependencies: [.periodReview, .periodCheckpointBaseline],
             orderingDay: DomainMapper.civilDay(readiness.period.end)
         )
+    }
+
+    private static let unverifiableBlockers: Set<PeriodCheckpointBlockerKind> = [
+        .invalidPeriod, .periodNotEnded, .reviewUnavailable, .reviewPeriodMismatch,
+    ]
+
+    private static func monthOffset(asOf: Day, period: SemanticInterval) -> Int {
+        let from = asOf.monthKey
+        let to = period.start.monthKey
+        return (to.year * 12 + to.month) - (from.year * 12 + from.month)
     }
 
     // MARK: - Checkpoint exceptions
