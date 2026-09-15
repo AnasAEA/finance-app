@@ -138,7 +138,7 @@ struct PlanLedgerPresentationTests {
         // Three different true numbers, three different questions. None of them
         // may stand in for another on screen.
         #expect(unfunded != projection.closing.magnitude)
-        #expect(unfunded != snapshot.firstRisk?.shortfall)
+        #expect(unfunded != snapshot.firstRisk?.riskAmount)
         #expect(unfunded != snapshot.safeToSpendReason.shortfallAmount)
     }
 
@@ -149,7 +149,9 @@ struct PlanLedgerPresentationTests {
         let snapshot = store.snapshot
         let statement = try #require(PlanningTotals.shortfall(from: snapshot))
         let risk = try #require(snapshot.firstRisk)
-        let missing = try #require(risk.shortfall)
+        // The statement is built from a classified funding deficit, so
+        // this is the field it has to agree with.
+        let missing = try #require(risk.fundingDeficit)
         let day = try #require(statement.date)
 
         #expect(statement == .dated(amount: missing, date: risk.date))

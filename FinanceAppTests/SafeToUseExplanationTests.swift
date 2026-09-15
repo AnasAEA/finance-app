@@ -392,7 +392,7 @@ struct SafeToUseExplanationTests {
             triggerLabel: "Rent",
             triggerAmount: .eur(400),
             kind: .hardDeficit,
-            shortfall: .eur(209)
+            riskAmount: .eur(209)
         )
         return short
     }

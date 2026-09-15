@@ -164,7 +164,7 @@ extension FinanceAppSnapshot {
             cashRunway: .clear(horizonDays: 0),
             firstRisk: nil,
             lowestPoint: RiskPoint(date: asOf, projectedBalance: zero, triggerLabel: nil,
-                                    triggerAmount: nil, kind: nil, shortfall: nil),
+                                    triggerAmount: nil, kind: nil, riskAmount: nil),
             minimumBridgeRequired: zero,
             runwayPoints: [],
             upcomingEvents: [],
@@ -353,13 +353,43 @@ struct RiskPoint: Hashable, Sendable {
     /// `shortfall` follows. A lowest point that is not the risk day has no
     /// kind, and must not borrow one.
     let kind: CashRiskKind?
-    /// How much was missing at the moment this risk was reached.
+    /// The magnitude the projection reported for this risk.
+    ///
+    /// **Its meaning depends on `kind`, and it is not "money that is
+    /// missing".** For `.hardDeficit` it is the gap itself — the unsettled
+    /// remainder of the payment that could not be met, or how far below zero
+    /// the pool went. For `.reserveWarning` it is `reserve − projected pool`:
+    /// a distance from a line the person chose, while every obligation is
+    /// still being paid.
+    ///
+    /// Read it through `fundingDeficit` or `reserveGap` rather than directly.
+    /// It was called `shortfall`, and a caller took it at its word: a person
+    /// holding 300,00 € against a 450,00 € reserve, whose projection never
+    /// went near zero, was told their balance was about to fall short.
     ///
     /// It travels with `date` because a sentence that names an amount and a
     /// day must take both from the same computation over the same horizon.
     /// `nil` where there is no risk to quantify — a lowest point that never
-    /// went short has no shortfall, and must not borrow one.
-    let shortfall: Amount?
+    /// went short has none, and must not borrow one.
+    let riskAmount: Amount?
+}
+
+extension RiskPoint {
+
+    /// Money that is actually missing, and nothing else.
+    ///
+    /// `nil` for a reserve breach and for an unclassified risk, so a caller
+    /// that needs a funding deficit cannot silently receive a distance from a
+    /// reserve instead. A sentence about being short has to come from here.
+    var fundingDeficit: Amount? {
+        kind == .hardDeficit ? riskAmount : nil
+    }
+
+    /// How far under the reserve the plan goes, and nothing else. `nil` for a
+    /// genuine deficit, where the reserve is no longer the point.
+    var reserveGap: Amount? {
+        kind == .reserveWarning ? riskAmount : nil
+    }
 }
 
 /// Which kind of cash risk the projection found.

@@ -99,7 +99,10 @@ struct CashRiskKindTests {
         // The balance is positive. Any rule that read the kind off the sign
         // would have called this solvent and said nothing.
         #expect(risk.projectedBalance.isPositive)
-        #expect(risk.shortfall == Amount.eur(50))
+        #expect(risk.riskAmount == Amount.eur(50))
+        #expect(risk.reserveGap == Amount.eur(50))
+        // Not money that is missing: nothing is.
+        #expect(risk.fundingDeficit == nil)
     }
 
     @Test("No risk carries no kind")
@@ -130,7 +133,7 @@ struct CashRiskKindTests {
         #expect(risk.date == CalendarDay(year: 2026, month: 9, day: 6))
         #expect(snapshot.lowestPoint.date == CalendarDay(year: 2026, month: 9, day: 20))
         #expect(snapshot.lowestPoint.kind == nil)
-        #expect(snapshot.lowestPoint.shortfall == nil)
+        #expect(snapshot.lowestPoint.riskAmount == nil)
     }
 
     @Test("First risk stays the engine's earliest, never the worst")
@@ -328,7 +331,7 @@ struct CashRiskKindTests {
             date: CalendarDay(year: 2026, month: 9, day: 6),
             projectedBalance: .eur(350),
             triggerLabel: "Gym", triggerAmount: .eur(150),
-            kind: nil, shortfall: .eur(50)
+            kind: nil, riskAmount: .eur(50)
         )
         let summary = WeekAheadSummary.make(from: snapshot, isAvailable: true)
 

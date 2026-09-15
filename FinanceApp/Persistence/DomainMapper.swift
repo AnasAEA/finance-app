@@ -946,7 +946,7 @@ struct DomainMapper {
                 // shortfall to report. The lowest point of a run that stayed
                 // solvent has neither, and is not given either.
                 kind: result.firstRisk?.day == lowestDay ? firstRisk?.kind : nil,
-                shortfall: result.firstRisk?.day == lowestDay ? firstRisk?.shortfall : nil
+                riskAmount: result.firstRisk?.day == lowestDay ? firstRisk?.riskAmount : nil
             ),
             minimumBridgeRequired: Self.amount(overview.minimumBridge),
             runwayPoints: result.dailyBalances.map {
@@ -1434,7 +1434,8 @@ struct DomainMapper {
             // Straight from the risk the engine reported, alongside its day.
             // Not recomputed here from a headroom, a pool gap or a different
             // horizon: the amount and the date are one fact about one moment.
-            shortfall: Self.amount(risk.shortfall.magnitude)
+            // What that amount *means* travels in `kind` beside it.
+            riskAmount: Self.amount(risk.shortfall.magnitude)
         )
     }
 

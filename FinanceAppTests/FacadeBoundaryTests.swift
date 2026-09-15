@@ -44,7 +44,7 @@ struct FacadeBoundaryTests {
         snapshot.firstRisk = RiskPoint(
             date: day, projectedBalance: Amount.eur(85.00).negated,
             triggerLabel: "Housing", triggerAmount: .eur(350.00),
-            kind: .hardDeficit, shortfall: .eur(85.00)
+            kind: .hardDeficit, riskAmount: .eur(85.00)
         )
         snapshot.minimumBridgeRequired = .eur(85.00)
         snapshot.runwayPoints = [RunwayPoint(date: day, balance: .eur(396.00))]

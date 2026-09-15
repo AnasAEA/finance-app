@@ -179,7 +179,7 @@ struct AttentionExperienceStoreTests {
         let funding = try #require(store.attentionPresentation.fundingNeeded)
         #expect(runCount == 1)
         #expect(store.snapshotEvaluation.forecast?.firstRisk == risk)
-        #expect(store.snapshot.firstRisk?.shortfall?.minorUnits == risk.shortfall.minorUnits)
+        #expect(store.snapshot.firstRisk?.riskAmount?.minorUnits == risk.shortfall.minorUnits)
         #expect(store.snapshot.firstRisk?.date == DomainMapper.civilDay(risk.day))
         #expect(funding.unsettled.minorUnits == risk.shortfall.minorUnits)
         #expect(funding.day == DomainMapper.civilDay(risk.day))

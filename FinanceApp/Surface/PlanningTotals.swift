@@ -102,12 +102,18 @@ enum PlanningTotals {
         guard snapshot.safeToSpendReason.isShortfall else { return nil }
         // The forecast found the day, and reported what was missing when it
         // arrived. One object, one moment, one sentence.
-        if let risk = snapshot.firstRisk, let missing = risk.shortfall {
+        //
+        // `fundingDeficit`, never the raw risk amount: the first risk may be a
+        // reserve breach, whose magnitude is a distance from a line the person
+        // chose and whose day is a day nothing goes wrong on. Quoting either
+        // told a funded person they were about to fall short.
+        if let risk = snapshot.firstRisk, let missing = risk.fundingDeficit {
             return .dated(amount: missing, date: risk.date)
         }
-        // No risk day inside the horizon: committed payments still outrun the
-        // money available, and that is worth saying — with its own window, and
-        // deliberately without a date rather than borrowing one.
+        // No *deficit* day inside the horizon: committed payments still outrun
+        // the money available, and that is worth saying — with its own window,
+        // and deliberately without a date rather than borrowing one. A reserve
+        // breach lands here too, and is left to the surfaces that own it.
         guard let deficit = snapshot.safeToSpendReason.shortfallAmount else { return nil }
         return .undated(amount: deficit, withinDays: snapshot.safeToSpendWindowDays)
     }
@@ -128,6 +134,11 @@ enum PlanningTotals {
 
 /// The one sentence Home says about running short, as a value rather than a
 /// string, so that what it claims can be tested without a screen.
+///
+/// Both cases carry money that is genuinely missing: `.dated` comes from a
+/// classified funding deficit, `.undated` from the committed-outflow headroom.
+/// A reserve gap can reach neither, which is the invariant that keeps this
+/// type's name honest.
 enum ShortfallStatement: Hashable, Sendable {
     /// The forecast reached a risk on a known day and reported the gap at that
     /// moment. Both halves come from that one risk point.
