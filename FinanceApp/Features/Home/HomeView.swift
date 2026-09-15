@@ -68,6 +68,7 @@ private struct HomeDashboard: View {
             Section { attentionAnswer(attention) }
             cashSection(freshness)
             Section {
+                weekAhead(attention)
                 nextSevenDays(attention)
             } header: {
                 HStack {
@@ -283,6 +284,41 @@ private struct HomeDashboard: View {
     }
 
     // MARK: - Next 7 days
+
+    /// What the week does to the money, above the list of what happens in it.
+    ///
+    /// Projected *cash* — the pool at each day's close — and deliberately not
+    /// a second Safe to Use: the headline answers what can be used now, this
+    /// answers where the balance goes if the plan happens. Neither is derived
+    /// from the other and the two are not expected to reconcile.
+    ///
+    /// Absent whenever the projection cannot support the claim. A week with no
+    /// projected points produces no minimum rather than a zero.
+    @ViewBuilder
+    private func weekAhead(_ attention: AttentionPresentation) -> some View {
+        if let week = WeekAheadSummary.make(from: snapshot, isAvailable: attention.heroIsAvailable) {
+            VStack(alignment: .leading, spacing: 6) {
+                LedgerRow(
+                    label: WeekAheadSummary.title,
+                    value: week.low,
+                    caption: week.dayText,
+                    emphasis: true,
+                    // Calm unless the pool is actually projected below zero.
+                    // A balance that merely falls is not a warning.
+                    valueTint: week.low.isNegative ? Theme.Role.negative : nil
+                )
+                ForEach(week.notes, id: \.self) { note in
+                    Text(note.sentence)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .padding(.vertical, 2)
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier(RouteID.homeWeekLow)
+        }
+    }
 
     @ViewBuilder
     private func nextSevenDays(_ attention: AttentionPresentation) -> some View {

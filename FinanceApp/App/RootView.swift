@@ -80,6 +80,10 @@ enum RouteID {
     static let homeUpcoming = "home.upcoming"
     static let homeReview = "home.review"
     static let homeUpcomingAll = "home.upcoming.all"
+    /// Hyphenated, not `home.week.low`: `homeWeekEvent` owns the
+    /// `home.week.<id>` space, and a row that could collide with an event id
+    /// is a row an automation can address by accident.
+    static let homeWeekLow = "home.week-low"
     static func homeWeekEvent(_ id: String) -> String { "home.week.\(id)" }
     static let homeSettings = "home.settings"
 

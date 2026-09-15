@@ -194,6 +194,33 @@ final class ProductionHCIUITests: XCTestCase {
         reveal("Debts & arrears")
     }
 
+    /// The week's answer sits above the week's events, is not counted as one
+    /// of them, and hands over to the Upcoming that Plan already owns.
+    func testHomeWeekSummaryLeadsTheSectionAndReachesUpcoming() {
+        launch()
+        XCTAssertTrue(app.navigationBars["Home"].waitForExistence(timeout: 8))
+
+        let summary = app.descendants(matching: .any)["home.week-low"]
+        XCTAssertTrue(summary.waitForExistence(timeout: 5))
+        XCTAssertTrue(summary.label.contains("Lowest projected cash"))
+        // It says cash. Safe to Use is a different question on the same
+        // screen and the two must not read as one number.
+        XCTAssertFalse(summary.label.lowercased().contains("safe to use"))
+
+        // It is not an event row: the approved Next 7 days density counts
+        // only `home.week.<id>` and this identifier stays out of that space.
+        let eventRows = app.descendants(matching: .any).matching(
+            NSPredicate(format: "identifier BEGINSWITH 'home.week.'")
+        )
+        for index in 0..<eventRows.count {
+            XCTAssertNotEqual(eventRows.element(boundBy: index).identifier, "home.week-low")
+        }
+
+        app.buttons["home.upcoming.all"].tap()
+        XCTAssertTrue(app.navigationBars["Upcoming"].waitForExistence(timeout: 8))
+        XCTAssertEqual(app.navigationBars.matching(identifier: "Upcoming").count, 1)
+    }
+
     func testHomeWeekRowsScrollClearOfTheTabBar() {
         for variant in ["full", "healthySync", "positive"] {
             launch(variant: variant)
