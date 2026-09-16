@@ -15,7 +15,15 @@ enum AttentionPresentationMapper {
         let activity = activity(state, snapshot: snapshot)
         let reviewCount = activity.decisions.count + activity.paymentsToConfirm.count
         let primary = state.primary
-        let funding = primary.flatMap { fundingNeeded($0, snapshot: snapshot) }
+        // Plan's explanation of a settleable gap, not Home's primary card.
+        // Home may occupy the ACT slot with a bank connection or a drift
+        // while a funding gap is still in `actionableCandidates`. Plan
+        // already reads that candidate for its status; the Funding Needed
+        // screen has to read the same one, or "See what's needed" opens
+        // an empty page.
+        let funding = planFundingCandidate(in: state).flatMap {
+            fundingNeeded($0, snapshot: snapshot)
+        }
 
         let home: HomeAttentionPresentation
         switch state.outcome {
@@ -92,10 +100,8 @@ enum AttentionPresentationMapper {
         snapshot: FinanceAppSnapshot,
         fundingIsEstablished: Bool
     ) -> PlanStatusPresentation {
-        if let fact = state.actionableCandidates.lazy.compactMap({ candidate -> RequiredFundingGapFact? in
-            guard case let .fundingGap(fact) = candidate.detail else { return nil }
-            return fact
-        }).first {
+        if let candidate = planFundingCandidate(in: state),
+           case let .fundingGap(fact) = candidate.detail {
             switch fact.riskKind {
             case .poolDeficit: return deficitStatus(fact)
             case .belowSafetyFloor: return reserveStatus(fact, snapshot: snapshot)
@@ -417,6 +423,19 @@ enum AttentionPresentationMapper {
     }
 
     // MARK: - Funding needed
+
+    /// The cash-risk candidate Plan is talking about, whether or not Home
+    /// made it the primary card.
+    ///
+    /// Eligibility can demote a funding gap to secondary when a bank
+    /// connection or a drift is the thing a person has to deal with first.
+    /// `actionableCandidates` still carries it; `primary` does not.
+    private static func planFundingCandidate(in state: AttentionState) -> AttentionCandidate? {
+        state.actionableCandidates.first { candidate in
+            if case .fundingGap = candidate.detail { return true }
+            return false
+        }
+    }
 
     private static func fundingNeeded(
         _ candidate: AttentionCandidate,

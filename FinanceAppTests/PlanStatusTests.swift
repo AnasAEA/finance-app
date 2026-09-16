@@ -279,6 +279,76 @@ struct PlanStatusTests {
         #expect(reserve.action?.destination != .planFundingNeeded)
     }
 
+    /// The dead-end this feature exists to close.
+    ///
+    /// Home may occupy the ACT slot with a bank connection while a settleable
+    /// funding gap is still in `actionableCandidates`. Plan already named that
+    /// gap and offered "See what's needed". The explanation used to read only
+    /// Home's primary card, so the route opened an empty page. Both the
+    /// status and the explanation now read the same candidate.
+    @Test("A bank task on Home does not empty Plan's funding explanation")
+    func fundingExplanationDoesNotDependOnBeingHomePrimary() throws {
+        let day = CalendarDay(year: 2026, month: 9, day: 6)
+        let gap = RequiredFundingGapFact(
+            riskKind: .poolDeficit,
+            day: day,
+            shortfall: .eur(200),
+            triggerLabel: "Rent",
+            triggerEventID: "event-rent",
+            subject: .account(id: "current", name: "Current"),
+            settlementFailure: SettlementFailureFact(
+                day: day,
+                requested: .eur(300),
+                settled: .eur(100),
+                unsettled: .eur(200),
+                eligibleAccountIDs: ["current"]
+            )
+        )
+        let fundingCandidate = AttentionCandidate(
+            proposal: AttentionCandidateProposal(
+                kind: .requiredFundingGap,
+                identity: "risk@2026-09-06",
+                subject: gap.subject,
+                detail: .fundingGap(gap),
+                dependencies: [.forecastProjection, .currentAccountTruth]
+            ),
+            eligibility: .secondaryOnlyBecauseDependencyCompromised(.currentAccountTruth)
+        )
+        let authorityCandidate = AttentionCandidate(
+            proposal: try #require(AttentionFactAdapters.authority(from: .needsAttention)),
+            eligibility: .eligible
+        )
+        let presentation = AttentionPresentationMapper.present(
+            AttentionState(
+                primary: authorityCandidate,
+                secondary: [fundingCandidate],
+                actionableCandidates: [authorityCandidate, fundingCandidate],
+                suppressed: [],
+                outcome: .actionsAvailable
+            ),
+            snapshot: .empty(asOf: CalendarDay(year: 2026, month: 9, day: 3)),
+            heroIsAvailable: true,
+            planFundingIsEstablished: true
+        )
+
+        guard case let .act(card, _) = presentation.home else {
+            Issue.record("expected Home to raise the bank task, got \(presentation.home)")
+            return
+        }
+        #expect(card.destination == .banksAndSync)
+
+        #expect(presentation.plan.kind == .fundingGap)
+        #expect(presentation.plan.action?.destination == .planFundingNeeded)
+        #expect(presentation.plan.detail?.contains("Rent") == true)
+
+        let funding = try #require(presentation.fundingNeeded)
+        #expect(funding.trigger == "Rent")
+        #expect(funding.requested == .eur(300))
+        #expect(funding.settled == .eur(100))
+        #expect(funding.unsettled == .eur(200))
+        #expect(funding.day == day)
+    }
+
     @Test("The marked payment is the engine's trigger, not the largest row")
     func theMarkedEventIsTheEnginesOwn() throws {
         // Two obligations. The one that breaks the plan is the earlier, smaller
@@ -354,6 +424,32 @@ struct PlanStatusTests {
         #expect(card.destination == .planUpcoming)
         #expect(presentation.plan.action?.destination == .planSafetyReserve)
         #expect(presentation.plan.kind == .reserveWarning)
+    }
+
+    /// The ordinary day the four tabs were built to hold at once: a bank
+    /// connection that needs a person, and a payment the plan cannot cover.
+    /// Home is allowed to talk about the bank. Plan is not allowed to lose
+    /// the explanation of the payment.
+    @Test("A populated day still explains the gap when Home is on the bank")
+    func aPopulatedDayKeepsTheFundingExplanation() throws {
+        let store = FinanceStore.hciPrototypePreview(variant: "full")
+        let presentation = store.currentPresentation().attention
+
+        guard case let .act(card, _) = presentation.home else {
+            Issue.record("expected Home to raise the bank task, got \(presentation.home)")
+            return
+        }
+        #expect(card.destination == .banksAndSync)
+
+        #expect(presentation.plan.kind == .fundingGap)
+        #expect(presentation.plan.action?.destination == .planFundingNeeded)
+        let funding = try #require(presentation.fundingNeeded)
+        #expect(funding.trigger != nil)
+        #expect(funding.unsettled.isPositive)
+        #expect(
+            funding.requested.minorUnits - funding.settled.minorUnits
+                == funding.unsettled.minorUnits
+        )
     }
 
     // MARK: - Derived, never stored

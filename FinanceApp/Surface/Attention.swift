@@ -8,6 +8,11 @@ struct AttentionPresentation: Hashable, Sendable {
     let home: HomeAttentionPresentation
     let actionableReviewCount: Int
     let activity: ActivityAttentionPresentation
+    /// Plan's explanation of a settleable funding gap, when one exists.
+    ///
+    /// Composed from the same funding candidate the Plan status reads — not
+    /// from Home's primary card. A bank connection can occupy Home while
+    /// money is still missing; the explanation has to survive that.
     let fundingNeeded: FundingNeededPresentation?
     /// The exact canonical forecast event already summarized by the primary
     /// funding card. Home excludes only this event from its seven-day list.
