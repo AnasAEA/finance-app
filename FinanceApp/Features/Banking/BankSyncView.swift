@@ -41,7 +41,15 @@ struct BankSyncView: View {
                 accountsSection(remoteAccounts)
                 deviceSection
             }
-            trustedAutomationSection
+            // Omitted rather than shown as unavailable: this screen already
+            // says, at the top and in as many words, that the build has no
+            // sync service. A second card repeating it under a different
+            // heading would be noise. Settings → Automation is the screen a
+            // person reaches while actually looking for this control, and that
+            // one does explain its absence.
+            if store.pairingState.canReceiveBankEvidence {
+                trustedAutomationSection
+            }
         }
         .navigationTitle("Banks & Sync")
         .task {

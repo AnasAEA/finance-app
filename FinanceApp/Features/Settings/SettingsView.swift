@@ -31,7 +31,10 @@ struct SettingsView: View {
                     settingsRow(
                         "Automation",
                         systemImage: "checkmark.shield",
-                        detail: "\(snapshot.trustedRules.count) trusted rule\(snapshot.trustedRules.count == 1 ? "" : "s")"
+                        detail: Self.automationDetail(
+                            ruleCount: snapshot.trustedRules.count,
+                            pairing: store.pairingState
+                        )
                     )
                 }
                 .accessibilityIdentifier(RouteID.settingsAutomation)
@@ -95,6 +98,21 @@ struct SettingsView: View {
         }
     }
 
+    /// The one line under "Automation".
+    ///
+    /// A rule count invites a person into a screen whose main control cannot do
+    /// anything on a build with no sync service — Trusted Automation only ever
+    /// acts as the last phase of a bank-evidence import, and no import can
+    /// happen here. It says the same thing the Banks & Sync row says in the
+    /// same words, because it is the same fact about the same build.
+    ///
+    /// Internal rather than private so a test can assert the sentence itself
+    /// rather than the state that produced it.
+    static func automationDetail(ruleCount: Int, pairing: BankPairingState) -> String {
+        guard pairing.canReceiveBankEvidence else { return "Not available on this build" }
+        return "\(ruleCount) trusted rule\(ruleCount == 1 ? "" : "s")"
+    }
+
     private func settingsRow(_ title: String, systemImage: String, detail: String) -> some View {
         HStack(spacing: 12) {
             Image(systemName: systemImage)
@@ -114,32 +132,27 @@ struct SettingsView: View {
 
 /// The master switch and the rules it can apply are one control surface. The
 /// existing store methods remain the only mutation boundary.
+///
+/// The switch is offered only where it can do something. Trusted Automation has
+/// exactly one effect: after a bank-evidence import lands, it may resolve rows
+/// that import made newly eligible. It never reprocesses a queue — the footer
+/// below has always said so — so on a build with no sync service, where no
+/// import can ever happen, the toggle is a control with no reachable outcome.
+///
+/// Nothing is written when it is unavailable. The stored preference is a
+/// device-local `StoredEntryPreferences` value, untouched by this screen and by
+/// a restore, so a build that later gains a sync service finds the person's
+/// choice exactly as they left it.
 struct AutomationView: View {
     @Environment(FinanceStore.self) private var store
     @State private var failure: String?
 
     var body: some View {
         List {
-            Section {
-                Toggle(
-                    "Trusted Automation",
-                    isOn: Binding(
-                        get: { store.trustedAutomationEnabled },
-                        set: { enabled in
-                            do {
-                                try store.setTrustedAutomationEnabled(enabled)
-                            } catch {
-                                failure = "The setting could not be saved."
-                            }
-                        }
-                    )
-                )
-                if let diagnostic = store.trustedAutomationDiagnostic {
-                    Label(diagnostic, systemImage: "exclamationmark.triangle")
-                        .foregroundStyle(Theme.Role.caution)
-                }
-            } footer: {
-                Text("Only rules you explicitly approved. Risky types stay in To Review. Turning this on does not process the current queue.")
+            if store.pairingState.canReceiveBankEvidence {
+                automationSwitch
+            } else {
+                unavailable
             }
 
             Section {
@@ -161,6 +174,67 @@ struct AutomationView: View {
             Text(failure ?? "")
         }
     }
+
+    @ViewBuilder
+    private var automationSwitch: some View {
+        Section {
+            Toggle(
+                "Trusted Automation",
+                isOn: Binding(
+                    get: { store.trustedAutomationEnabled },
+                    set: { enabled in
+                        do {
+                            try store.setTrustedAutomationEnabled(enabled)
+                        } catch {
+                            failure = "The setting could not be saved."
+                        }
+                    }
+                )
+            )
+            if let diagnostic = store.trustedAutomationDiagnostic {
+                Label(diagnostic, systemImage: "exclamationmark.triangle")
+                    .foregroundStyle(Theme.Role.caution)
+            }
+        } footer: {
+            Text("Only rules you explicitly approved. Risky types stay in To Review. Turning this on does not process the current queue.")
+        }
+    }
+
+    /// Said here rather than on Banks & Sync, because this is the screen a
+    /// person reaches while looking for this control.
+    ///
+    /// The second line appears only for somebody who had already turned it on,
+    /// and exists so that "unavailable" cannot be read as "we switched your
+    /// setting off". Nothing on this path writes.
+    @ViewBuilder
+    private var unavailable: some View {
+        Section {
+            // "Trusted Automation unavailable" is too long for the title of a
+            // `ContentUnavailableView`, which gives its title one line and
+            // truncates it — measured on the phone as "Trusted Automation
+            // una…". The screen is already called Automation, so the title is
+            // short and the description names the control in its first words.
+            ContentUnavailableView(
+                "Automation unavailable",
+                systemImage: "checkmark.shield",
+                description: Text(Self.unavailableReason(wasEnabled: store.trustedAutomationEnabled))
+            )
+            .accessibilityIdentifier(AutomationID.unavailable)
+        }
+    }
+
+    /// Internal rather than private so a test can assert the claim, including
+    /// the promise that a stored preference survives.
+    static func unavailableReason(wasEnabled: Bool) -> String {
+        let reason = "Trusted Automation acts on bank activity as it arrives. Bank sync is not configured for this build, so none can."
+        guard wasEnabled else { return reason }
+        return "\(reason) Your choice to turn it on is kept, and applies again if this build gains bank sync."
+    }
+}
+
+/// The Automation screen's one addressable region.
+enum AutomationID {
+    static let unavailable = "automation.unavailable"
 }
 
 struct AppSettingsView: View {

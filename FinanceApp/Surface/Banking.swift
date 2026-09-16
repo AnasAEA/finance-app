@@ -382,4 +382,21 @@ enum BankPairingState: Hashable, Sendable {
     case paired
     /// The backend no longer recognises this device; the person pairs again.
     case revoked
+
+    /// Whether bank evidence could ever reach this build.
+    ///
+    /// **Capability, not connection**, and the two must not be collapsed.
+    /// `notConfigured` means the build was never given a sync service, so no
+    /// evidence can arrive however the person behaves — nothing in the app can
+    /// change that answer. `unpaired` and `revoked` mean the capability is
+    /// there and the device is not currently connected to it, which a pairing
+    /// code fixes.
+    ///
+    /// This gates what is *offered*, never what the store does. Trusted
+    /// Automation's execution path is deliberately independent of pairing:
+    /// `processTrustedRules` is reachable from any store, and the whole trusted
+    /// rules suite drives it on stores that are `notConfigured`. Turning this
+    /// into a store-level refusal would change automation semantics and break
+    /// that, which is why it lives here and is read by views alone.
+    var canReceiveBankEvidence: Bool { self != .notConfigured }
 }
