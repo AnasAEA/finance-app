@@ -145,7 +145,10 @@ final class ProductionHCIUITests: XCTestCase {
 
         app.buttons["To Review"].tap()
         XCTAssertTrue(app.staticTexts["Needs a Decision"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.descendants(matching: .any)["activity.pending-section"].exists)
+        // Scrolled to rather than assumed on screen: the queue's length is a
+        // product decision, and a row that now states its own decision is
+        // taller than one that stated only a merchant.
+        _ = revealIdentifier("activity.pending-section", as: .any)
         let target = revealIdentifier(AutomationTokenMirror.pending("pending-snapshot"), as: .any)
         XCTAssertNotEqual(target.elementType, .button)
         let lastPending = app.descendants(matching: .any)[AutomationTokenMirror.pending("pending-third")]
@@ -346,7 +349,7 @@ final class ProductionHCIUITests: XCTestCase {
                 AutomationTokenMirror.decision("obs-paypal-unresolved")
             ].exists
         )
-        XCTAssertTrue(app.staticTexts["Nothing to decide here."].exists)
+        reveal("Nothing to decide here.")
         XCTAssertFalse(app.buttons["review.matchExisting"].exists)
         XCTAssertFalse(app.buttons["review.createExpense"].exists)
         XCTAssertFalse(app.buttons["Mark no economic effect"].exists)
@@ -370,6 +373,55 @@ final class ProductionHCIUITests: XCTestCase {
         revealIdentifier("review.createExpense", as: .button).tap()
         XCTAssertTrue(app.buttons["review.createExpenseAnyway"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["This may already be recorded"].exists)
+    }
+
+    /// The queue warns before the decision, not after it.
+    ///
+    /// The duplicate conflict was stated only on the review screen, so the one
+    /// thing a person needed to know before creating a second expense was the
+    /// one thing they could not see until they had opened the item. The row
+    /// now carries it, and the review screen still owns the full explanation.
+    func testDecisionRowWarnsAboutADuplicateBeforeItIsOpened() {
+        launch(variant: "exactExisting", tab: "activity", section: "toReview")
+        let row = app.descendants(matching: .any)[AutomationTokenMirror.decision("obs-streaming")]
+        XCTAssertTrue(row.waitForExistence(timeout: 8))
+
+        // The row combines its children, so the warning is part of the one
+        // label a person — and VoiceOver — actually receives.
+        XCTAssertTrue(
+            row.label.contains("May already be recorded"),
+            "row read \(row.label)"
+        )
+
+        // Naming the risk resolves nothing: the item is still in the queue and
+        // the review screen still demands the same explicit decision.
+        row.tap()
+        XCTAssertTrue(
+            app.descendants(matching: .any)["review.duplicate.warning"]
+                .waitForExistence(timeout: 5)
+        )
+        XCTAssertTrue(revealIdentifier("review.matchExisting", as: .button).exists)
+    }
+
+    /// Two pieces of evidence, two different questions, and the queue says so.
+    func testDecisionRowsNameTheKindOfDecision() {
+        launch(variant: "full", tab: "activity", section: "toReview")
+        let atm = app.descendants(matching: .any)[AutomationTokenMirror.decision("obs-atm")]
+        XCTAssertTrue(atm.waitForExistence(timeout: 8))
+
+        // Cash out of a machine is account movement, not spending. Before
+        // this, the row said only "CASH MACHINE · Card wallet · Mar 5".
+        XCTAssertTrue(atm.label.contains("ATM / cash movement"), "row read \(atm.label)")
+
+        let unresolved = app.descendants(matching: .any)[
+            AutomationTokenMirror.decision("obs-paypal-unresolved")
+        ]
+        if unresolved.exists {
+            XCTAssertFalse(
+                unresolved.label.contains("ATM / cash movement"),
+                "two different decisions are reading the same way"
+            )
+        }
     }
 
     func testPendingRowsStayReadableAtAccessibilityXLInDarkMode() {

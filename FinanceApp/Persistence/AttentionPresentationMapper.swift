@@ -350,7 +350,14 @@ enum AttentionPresentationMapper {
                         title: observation.displayMerchant,
                         subtitle: "\(observation.providerAccountName) · \(day.map(dayText) ?? "Date unavailable")",
                         amount: amount,
-                        destination: .observationReview(id)
+                        destination: .observationReview(id),
+                        // The engine's own reading, not a second opinion about
+                        // it. Absent when there is no suggestion, because a
+                        // queue that always prints a line would have to invent
+                        // one for the evidence it cannot interpret — and that
+                        // is exactly the evidence a person must look at.
+                        decision: observation.primarySuggestion?.title,
+                        caution: caution(for: observation)
                     )
                 )
 
@@ -446,6 +453,20 @@ enum AttentionPresentationMapper {
             beforeThen: before,
             footer: "This is what the projection expects. It doesn't decide where the money should come from."
         )
+    }
+
+    /// Which warning the row carries when the evidence carries more than one.
+    ///
+    /// The order is `inboxPriority`'s, not a new judgment: that property tests
+    /// `hasProviderStatusWarning` before anything else, so a record the
+    /// provider has changed outranks a possible duplicate here too. Evidence
+    /// the bank is no longer sure about makes every other question premature.
+    private static func caution(
+        for observation: SyncedObservationItem
+    ) -> ActivityReviewCaution? {
+        if observation.hasProviderStatusWarning { return .providerChangedRecord }
+        if observation.duplicateConflict != nil { return .mayAlreadyBeRecorded }
+        return nil
     }
 
     private static func dayText(_ day: CalendarDay) -> String {

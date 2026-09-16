@@ -128,8 +128,10 @@ final class DeviceAccessibilityUITests: XCTestCase {
         assertRowIdentitiesAreOpaque()
 
         // The section header is outside the row namespace, so it never answers
-        // a search for a pending row.
-        XCTAssertTrue(app.descendants(matching: .any)["activity.pending-section"].exists)
+        // a search for a pending row. Scrolled to rather than assumed on
+        // screen: how far down it sits depends on how much each decision row
+        // above it has to say.
+        _ = revealIdentifier("activity.pending-section")
     }
 
     func testActivityFiltersResolvesExactlyOnce() {

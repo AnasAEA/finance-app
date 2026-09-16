@@ -176,6 +176,15 @@ struct NeedsReviewView: View {
         .accessibilityIdentifier(RouteID.activityReviewQueue)
     }
 
+    /// What the bank called it, where and when — and then what the decision
+    /// actually is.
+    ///
+    /// The last two lines are the point. Without them this queue stated a
+    /// merchant, an account and a date for every row, so a cash withdrawal
+    /// that is not spending at all, a charge that settles a recurring payment,
+    /// and a debit whose real merchant is unresolved were one shape repeated,
+    /// ordered by a priority the person could not see. Each had to be opened
+    /// to find out which it was.
     private static func decisionRow(_ item: ActivityAttentionRow) -> some View {
         HStack(alignment: .firstTextBaseline) {
             VStack(alignment: .leading, spacing: 3) {
@@ -184,6 +193,18 @@ struct NeedsReviewView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+                if let decision = item.decision {
+                    Text(decision)
+                        .font(.caption2)
+                        .foregroundStyle(Theme.Role.accent)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                if let caution = item.caution {
+                    Label(caution.label, systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(Theme.Role.caution)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
             Spacer(minLength: 8)
             MoneyText(amount: item.amount, size: 17, weight: .medium, showsSign: true)

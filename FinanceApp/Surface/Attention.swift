@@ -109,6 +109,42 @@ struct ActivityAttentionRow: Identifiable, Hashable, Sendable {
     let subtitle: String
     let amount: Amount
     let destination: AttentionDestination
+    /// What the app already thinks this piece of evidence is — the engine's
+    /// own primary suggestion, carried verbatim.
+    ///
+    /// The queue used to state a merchant, an account and a date, which is
+    /// what the bank said and not what the decision is. An ATM withdrawal, a
+    /// charge that matches a recurring payment and a PayPal debit whose real
+    /// merchant is unresolved are three different questions, and all three
+    /// read identically. `nil` where the app has no interpretation to offer;
+    /// nothing is invented to fill the line.
+    var decision: String? = nil
+    /// A reason to look before acting, when the evidence carries one.
+    var caution: ActivityReviewCaution? = nil
+}
+
+/// Something about a piece of evidence that changes how a person should
+/// approach the decision, in the queue's own short words.
+///
+/// Both cases restate a flag the banking surface already carries. Neither is
+/// a resolution, neither suppresses the row, and neither decides anything:
+/// the review screen states the full reason and owns the actions.
+enum ActivityReviewCaution: String, Hashable, Sendable {
+    /// `SyncedObservationItem.duplicateConflict` is set. The four kinds differ
+    /// in *why*, which the review screen explains; what the row owes the
+    /// person before they open it is that creating another expense here can
+    /// record the same money twice.
+    case mayAlreadyBeRecorded
+    /// `SyncedObservationItem.hasProviderStatusWarning`. The provider and the
+    /// app disagree about this record, so the evidence itself is in question.
+    case providerChangedRecord
+
+    var label: String {
+        switch self {
+        case .mayAlreadyBeRecorded: "May already be recorded"
+        case .providerChangedRecord: "Your bank changed this record"
+        }
+    }
 }
 
 struct ActivityPendingRow: Identifiable, Hashable, Sendable {
