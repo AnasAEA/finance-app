@@ -66,10 +66,24 @@ enum ActivityID {
     static let removeTransaction = "activity.remove-transaction"
     static let removeBlocked = "activity.remove-blocked"
 
+    /// One piece of source evidence on a transaction, and the section holding
+    /// them. Outside the row namespaces above for the same reason the two
+    /// identifiers before it are: a transaction's provenance is not a row in
+    /// any of the four review lists, and must not answer a search for one.
+    ///
+    /// The observation identity is tokenised like every other row identity —
+    /// it addresses the evidence screen, and an automation identifier is not a
+    /// place to publish a provider's record id.
+    static let evidenceSection = "activity.evidence-section"
+    static let evidencePrefix = "activity.evidence."
+
+    static func evidence(_ id: String) -> String { evidencePrefix + AutomationToken.opaque(id) }
+
     /// Every prefix a row identity may legitimately begin with. The privacy
     /// regression test walks these.
     static let rowPrefixes = [
         decisionPrefix, paymentPrefix, pendingPrefix, limitationPrefix, transactionPrefix,
+        evidencePrefix,
     ]
 }
 

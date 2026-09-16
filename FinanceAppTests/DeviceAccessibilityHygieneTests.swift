@@ -83,7 +83,7 @@ struct DeviceAccessibilityHygieneTests {
         ]
         let builders: [(String) -> String] = [
             ActivityID.decision, ActivityID.payment, ActivityID.pending,
-            ActivityID.limitation, ActivityID.transaction,
+            ActivityID.limitation, ActivityID.transaction, ActivityID.evidence,
         ]
 
         for identity in leaky {
@@ -106,9 +106,9 @@ struct DeviceAccessibilityHygieneTests {
         }
     }
 
-    @Test("The five row roles are separate, unambiguous identifier spaces")
+    @Test("The six row roles are separate, unambiguous identifier spaces")
     func activityRowNamespacesDoNotOverlap() {
-        #expect(Set(ActivityID.rowPrefixes).count == 5)
+        #expect(Set(ActivityID.rowPrefixes).count == 6)
         for prefix in ActivityID.rowPrefixes {
             let others = ActivityID.rowPrefixes.filter { $0 != prefix }
             #expect(!others.contains { $0.hasPrefix(prefix) })
@@ -116,6 +116,8 @@ struct DeviceAccessibilityHygieneTests {
         // A section header must not answer a search for a row in that section.
         #expect(!ActivityID.rowPrefixes.contains { ActivityID.pendingSection.hasPrefix($0) })
         #expect(ActivityID.pendingSection == "activity.pending-section")
+        #expect(!ActivityID.rowPrefixes.contains { ActivityID.evidenceSection.hasPrefix($0) })
+        #expect(ActivityID.evidenceSection == "activity.evidence-section")
 
         let sameIdentity = builtIdentifiers(for: "obs-streaming")
         #expect(Set(sameIdentity).count == sameIdentity.count)
@@ -251,7 +253,7 @@ struct DeviceAccessibilityHygieneTests {
         [
             ActivityID.decision(identity), ActivityID.payment(identity),
             ActivityID.pending(identity), ActivityID.limitation(identity),
-            ActivityID.transaction(identity),
+            ActivityID.transaction(identity), ActivityID.evidence(identity),
         ]
     }
 }

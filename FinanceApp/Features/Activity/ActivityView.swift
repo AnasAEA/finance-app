@@ -435,14 +435,21 @@ struct TransactionDetailView: View {
         let snapshot = store.snapshot
         let reconciliation = snapshot.reconciliations[row.id]
         let candidates = reconciliation == nil ? store.matches(forTransaction: row.id) : []
-        return content(snapshot, reconciliation, candidates, store.removalBlocker(forTransaction: row.id))
+        return content(
+            snapshot,
+            reconciliation,
+            candidates,
+            store.removalBlocker(forTransaction: row.id),
+            store.linkedEvidence(forTransaction: row.id)
+        )
     }
 
     private func content(
         _ snapshot: FinanceAppSnapshot,
         _ reconciliation: ReconciliationSummary?,
         _ candidates: [PaymentMatch],
-        _ removalBlocker: AppRemovalError?
+        _ removalBlocker: AppRemovalError?,
+        _ evidence: [TransactionEvidenceSummary]
     ) -> some View {
         List {
             Section {
@@ -520,6 +527,8 @@ struct TransactionDetailView: View {
                 }
             }
 
+            sourceSection(evidence)
+
             if let note = row.note {
                 Section("Notes") { Text(note) }
             }
@@ -577,6 +586,53 @@ struct TransactionDetailView: View {
             Button("OK", role: .cancel) { failure = nil }
         } message: { error in
             Text(error.message)
+        }
+    }
+
+    /// Where this transaction came from, when evidence says so.
+    ///
+    /// Absent entirely when there is no link. That is not a missing state to
+    /// fill in: a row somebody typed has no external source, and a section
+    /// saying so would invite the reader to look for one.
+    ///
+    /// Each row opens the evidence screen the app already owns. That screen
+    /// reads the observation and offers actions only while it is still
+    /// unreviewed, so arriving from here cannot reopen a decision that has
+    /// been made — it shows the evidence and the state it was left in.
+    @ViewBuilder
+    private func sourceSection(_ evidence: [TransactionEvidenceSummary]) -> some View {
+        if !evidence.isEmpty {
+            Section {
+                ForEach(evidence) { item in
+                    NavigationLink {
+                        ObservationReviewView(observationID: item.id)
+                    } label: {
+                        VStack(alignment: .leading, spacing: 3) {
+                            HStack(alignment: .firstTextBaseline) {
+                                Text(item.title)
+                                    .font(.body)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                Spacer(minLength: 8)
+                                MoneyText(amount: item.amount, size: 17, weight: .medium,
+                                          showsSign: true)
+                            }
+                            Text(item.detailLine)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .padding(.vertical, 2)
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel(item.accessibilityLabel)
+                    }
+                    .accessibilityIdentifier(ActivityID.evidence(item.id))
+                }
+            } header: {
+                Text(TransactionEvidenceSummary.sectionTitle)
+                    .accessibilityIdentifier(ActivityID.evidenceSection)
+            } footer: {
+                Text(TransactionEvidenceSummary.footer)
+            }
         }
     }
 

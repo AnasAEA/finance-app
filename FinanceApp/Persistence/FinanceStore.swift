@@ -1422,6 +1422,72 @@ final class FinanceStore: FinanceProviding {
 
     // MARK: - Removing a transaction
 
+    /// The external evidence recorded as the reason this transaction exists.
+    ///
+    /// Read from `document.externalEvidenceLinks`, which is the persisted
+    /// relationship and the only thing consulted. No amount, day, merchant
+    /// text or identifier shape is compared: a transaction that happens to
+    /// agree with an observation about money on a day has no provenance here,
+    /// and returning an empty array for it is the correct answer rather than a
+    /// missing feature.
+    ///
+    /// An array because the document permits it. `validate` holds an
+    /// observation to at most one transaction but places no ceiling on the
+    /// other side, and cross-provider review deliberately links two
+    /// observations of one movement to the same row — so taking the first and
+    /// calling it *the* source would hide half of an answer the person came
+    /// here for.
+    ///
+    /// An observation that no longer reaches the surface is dropped rather
+    /// than rendered from the link alone. The link carries an identifier and
+    /// nothing a person could read, so a row built from it would be an empty
+    /// claim that evidence exists somewhere.
+    ///
+    /// Ordering is total and deterministic: role first so the bank's own
+    /// record of the money leads, then day, then identity. `sort` is not
+    /// stable, so a comparator that called two rows equal would let the hash
+    /// seed decide what a person sees.
+    func linkedEvidence(forTransaction id: String) -> [TransactionEvidenceSummary] {
+        let observations = Dictionary(
+            uniqueKeysWithValues: snapshot.syncedObservations.map { ($0.id, $0) }
+        )
+        return document.externalEvidenceLinks
+            .filter { $0.transactionID == id }
+            .compactMap { link -> TransactionEvidenceSummary? in
+                guard let observation = observations[link.observationID] else { return nil }
+                return TransactionEvidenceSummary(
+                    id: observation.id,
+                    title: observation.displayMerchant,
+                    providerLabel: "\(observation.providerName) · \(observation.providerAccountName)",
+                    amount: observation.amount,
+                    day: observation.dates.economicPeriod,
+                    role: Self.evidenceRole(link.role)
+                )
+            }
+            .sorted { first, second in
+                if first.role.precedence != second.role.precedence {
+                    return first.role.precedence < second.role.precedence
+                }
+                if first.day != second.day {
+                    guard let firstDay = first.day else { return false }
+                    guard let secondDay = second.day else { return true }
+                    return firstDay < secondDay
+                }
+                return first.id < second.id
+            }
+    }
+
+    /// The domain's closed role vocabulary, answered totally. An unknown value
+    /// cannot arrive here — `StoredExternalEvidenceLink.asDomain` already fails
+    /// loudly on one — so every case is named rather than defaulted.
+    private static func evidenceRole(_ role: ExternalEvidenceRole) -> TransactionEvidenceRole {
+        switch role {
+        case .accountMovement: .bankMovement
+        case .merchantEnrichment: .merchantDetail
+        case .supportingEvidence: .supporting
+        }
+    }
+
     /// Why this transaction cannot be removed, or `nil` when it can.
     ///
     /// The single authority. The screen asks it to decide whether to offer the

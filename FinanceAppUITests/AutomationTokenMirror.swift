@@ -24,10 +24,13 @@ enum AutomationTokenMirror {
     static func pending(_ id: String) -> String { "activity.pending." + opaque(id) }
     static func limitation(_ id: String) -> String { "activity.limitation." + opaque(id) }
     static func transaction(_ id: String) -> String { "activity.transaction." + opaque(id) }
+    static func evidence(_ id: String) -> String { "activity.evidence." + opaque(id) }
+
+    static let evidenceSection = "activity.evidence-section"
 
     static let rowPrefixes = [
         "activity.decision.", "activity.payment.", "activity.pending.",
-        "activity.limitation.", "activity.transaction.",
+        "activity.limitation.", "activity.transaction.", "activity.evidence.",
     ]
 }
 

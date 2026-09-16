@@ -375,6 +375,99 @@ final class ProductionHCIUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["This may already be recorded"].exists)
     }
 
+    /// The whole loop, in one pass: evidence is work, a person decides what it
+    /// means, the queue goes quiet, and the row it produced can still say where
+    /// it came from.
+    ///
+    /// Before this the relationship only pointed one way. The decision was
+    /// visible from the evidence and invisible from the transaction, so the
+    /// row the decision created could not explain itself — and could not
+    /// explain why the app then refused to delete it.
+    func testResolvingEvidenceLeavesTheTransactionAbleToExplainItself() {
+        launch(variant: "exactExisting", tab: "activity", section: "toReview")
+        let queueRow = app.descendants(matching: .any)[
+            AutomationTokenMirror.decision("obs-streaming")
+        ]
+        XCTAssertTrue(queueRow.waitForExistence(timeout: 8))
+        queueRow.tap()
+
+        // Decide what it means. Creating the expense from the evidence is the
+        // path that records the link, and the duplicate warning still demands
+        // an explicit override on the way through.
+        revealIdentifier("review.createExpense", as: .button).tap()
+        let override = app.buttons.matching(
+            identifier: "review.createExpenseAnyway"
+        ).firstMatch
+        XCTAssertTrue(override.waitForExistence(timeout: 5))
+        override.tap()
+
+        // The decision is recorded in place: the same screen now states the
+        // state it was left in and offers nothing further to decide.
+        XCTAssertTrue(resolvedState.waitForExistence(timeout: 8))
+        XCTAssertFalse(app.buttons["review.matchExisting"].exists)
+        XCTAssertFalse(app.buttons["review.createExpense"].exists)
+
+        // Back on the queue, it is quiet about it.
+        app.navigationBars["Review activity"].buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.buttons["To Review"].waitForExistence(timeout: 8))
+        XCTAssertFalse(
+            app.descendants(matching: .any)[
+                AutomationTokenMirror.decision("obs-streaming")
+            ].exists
+        )
+
+        // The transaction it produced can now answer where it came from.
+        app.buttons["Transactions"].tap()
+        let transaction = app.buttons.matching(
+            NSPredicate(format: "label CONTAINS %@", "STREAMING MEMBERSHIP")
+        ).firstMatch
+        XCTAssertTrue(transaction.waitForExistence(timeout: 8))
+        transaction.tap()
+
+        XCTAssertTrue(app.navigationBars["Transaction"].waitForExistence(timeout: 5))
+        _ = revealIdentifier(AutomationTokenMirror.evidenceSection, as: .any)
+        let source = revealIdentifier(
+            AutomationTokenMirror.evidence("obs-streaming"), as: .button
+        )
+        XCTAssertTrue(source.label.contains("Bank movement"), "source read \(source.label)")
+
+        // And it opens the evidence the app already owns, in the state the
+        // decision left it — not a fresh review.
+        source.tap()
+        XCTAssertTrue(app.navigationBars["Review activity"].waitForExistence(timeout: 5))
+        // Arriving from the transaction shows the evidence in the state the
+        // decision left it. It is not a fresh review, and it offers nothing to
+        // decide again.
+        XCTAssertTrue(resolvedState.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["review.matchExisting"].exists)
+        XCTAssertFalse(app.buttons["review.createExpense"].exists)
+    }
+
+    /// The review screen states a resolved observation through one combined
+    /// label, so the assertion matches the sentence rather than half of it.
+    private var resolvedState: XCUIElement {
+        app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "Linked to transaction")
+        ).firstMatch
+    }
+
+    /// A row nobody linked offers no source section to look at.
+    func testATransactionWithNoEvidenceOffersNoSource() {
+        launch(variant: "exactExisting", tab: "activity")
+        let transaction = app.buttons.matching(
+            NSPredicate(format: "label CONTAINS %@", "Recorded membership")
+        ).firstMatch
+        XCTAssertTrue(transaction.waitForExistence(timeout: 8))
+        transaction.tap()
+
+        XCTAssertTrue(app.navigationBars["Transaction"].waitForExistence(timeout: 5))
+        // Nothing is linked yet in this variant, and the app does not invent a
+        // source from an observation that merely agrees about the money.
+        XCTAssertFalse(
+            app.descendants(matching: .any)[AutomationTokenMirror.evidenceSection].exists
+        )
+    }
+
     /// The queue warns before the decision, not after it.
     ///
     /// The duplicate conflict was stated only on the review screen, so the one
