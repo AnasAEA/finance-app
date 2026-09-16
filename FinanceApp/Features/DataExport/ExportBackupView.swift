@@ -231,7 +231,7 @@ struct ExportReadyStep: View {
             } header: {
                 Text("Not in it")
             } footer: {
-                Text("Restoring this file needs an app with nothing in it yet, because importing on top of an existing history could duplicate money.")
+                Text("Restoring this file needs an app with nothing in it yet, because restoring on top of an existing history could duplicate money.")
             }
 
             Section {
@@ -245,7 +245,7 @@ struct ExportReadyStep: View {
                 .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
                 .accessibilityIdentifier(DataID.exportSave)
             } footer: {
-                Text("The file holds your whole financial state in readable text. Put it somewhere you are willing to keep that.")
+                Text("The file holds your accounts, balances, transactions and plan in readable text. Put it somewhere you are willing to keep that.")
             }
         }
         .listStyle(.insetGrouped)

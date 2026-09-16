@@ -70,6 +70,22 @@ only HTTPS is accepted. It ships as `https://finance-bank-sync.example.invalid`
 — a placeholder, not a running service. Point it at your own deployment before
 using sync; everything else in the app works without it.
 
+`BankPairingState` has four states, and the two that look alike are not:
+
+| State | What a person can do |
+| --- | --- |
+| `notConfigured` | nothing — this build has no service address |
+| `unpaired` | claim a pairing code |
+| `paired` | sync, map accounts, disconnect |
+| `revoked` | pair again |
+
+`BankFreshness` collapses the first two into `notConnected`, correctly: it
+answers "is my bank data current?", and Home has nothing to report either way.
+Settings must not collapse them, because it is where a person goes to *act* and
+only one of the two has an action behind it — so `SettingsView.banksDetail`
+asks configuration first and says `Not available on this build` rather than
+sending somebody looking for a Pair button that cannot exist.
+
 Remote accounts must be mapped to local ones explicitly. An unmapped account
 creates no work at all: a dormant non-EUR pocket is simply ignored. Each mapping carries a cutover, defaulting to the day that local
 account's balance was last stated, because activity already inside an opening
@@ -107,12 +123,29 @@ Production first launch starts with an empty local document. Fictional personal
 history is not silently seeded. The development fixture is used only by
 previews, development rendering, and tests.
 
-### First-run onboarding and import
+### First-run onboarding and restore
 
-An empty store shows onboarding with two ways in — **Import current state** and
-**Set up manually** — and no third. There is no fixture behind either.
+An empty store shows onboarding with two ways in — **Restore backup** and
+**Set up manually** — and no third. There is no fixture behind either. Bank
+sync is deliberately not a third option: pairing is only useful once local
+accounts exist for a remote one to be mapped onto, so it is done afterwards,
+from Settings.
 
-Import runs in four steps, and writes nothing before the last:
+Three user-facing names, three different operations, and they are not
+interchangeable:
+
+| Name | What it does |
+| --- | --- |
+| **Export backup** | writes this app's own `FinanceDocument` out |
+| **Restore backup** | reads one back — the onboarding card and the Data & Privacy row are the same operation |
+| **Import historical archive** | reads a `FinanceHistoryDocument`, a type this app cannot produce and does not back up |
+
+"Import" survives only on the third, which is the only one where a person is
+genuinely bringing in something foreign. The Swift types below the boundary
+keep their older `import` spelling: they are named for the operation, and the
+operation did not change — only the account given of it to the person.
+
+Restore runs in four steps, and writes nothing before the last:
 
 ```text
 choose a JSON file → decode + schema + semantic validation → preview
@@ -139,7 +172,17 @@ Rules the path enforces:
 - **No restart.** `FinanceStore` recalculates on confirmation, so Home renders
   from the imported data on the next frame.
 
-`Settings → Data & Privacy` offers the same import, and the other direction.
+`Settings → Data & Privacy` offers the same restore, and the other direction.
+Where it refuses, it shows the reason **and** the `recoverySuggestion` beside
+it: the row is disabled in that state, so the sheet that would otherwise carry
+the remedy cannot be reached, and a person with an existing history needs to be
+told that a fresh install is the supported recovery rather than left with a
+bare refusal.
+
+The restore result restates `BackupSummary.exclusions` — the archive, verified
+month history and bank pairing — at the point a person has just landed on an
+otherwise-populated app and would go looking for them. The same list backs both
+screens, so the two cannot disagree about what a backup carries.
 
 ### Export backup
 

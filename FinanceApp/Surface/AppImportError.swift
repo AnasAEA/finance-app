@@ -1,6 +1,6 @@
 import Foundation
 
-/// Why a finance export could not be imported.
+/// Why a backup or finance export could not be restored.
 ///
 /// **These messages are the only thing the import path is allowed to say about
 /// the file.** The document holds a person's balances, salary, arrears and
@@ -14,9 +14,14 @@ enum AppImportError: Error, Hashable, Sendable {
     /// A fixed preview/test store was asked to import.
     case storeIsReadOnly
 
-    /// Phase 2.2 imports into an empty store only. Merging an export into a
+    /// Phase 2.2 restores into an empty store only. Merging an export into a
     /// history that already exists needs reconciliation that does not exist
     /// yet, and the failure mode of guessing is duplicated money.
+    ///
+    /// The sentences this produces say "restore", not "import", because the
+    /// screen that shows them says "Restore backup" on the button directly
+    /// above. A refusal that answers in different words than the action it
+    /// refused reads as a refusal of something else.
     case storeNotEmpty
 
     /// The stored graph could not be read at launch. Importing over it would
@@ -113,15 +118,15 @@ enum AppImportError: Error, Hashable, Sendable {
     var message: String {
         switch self {
         case .storeIsReadOnly:
-            "This is a preview. Nothing is imported here."
+            "This is a preview. Nothing is restored here."
         case .storeNotEmpty:
-            "Import into an existing account history is not supported yet."
+            "Restoring into an account history that already exists is not supported yet."
         case .storeUnreadable:
-            "Your existing data could not be opened, so it will not be replaced. Nothing was imported."
+            "Your existing data could not be opened, so it will not be replaced. Nothing was restored."
         case .fileUnreadable:
             "That file could not be opened."
         case .noDocumentStaged:
-            "Choose a file to import first."
+            "Choose a file to restore from first."
         case let .notAFinanceDocument(field, reason):
             if let field {
                 "This is not a finance export this app can read: \(reason.phrase) at \(field)."
@@ -133,7 +138,7 @@ enum AppImportError: Error, Hashable, Sendable {
         case let .inconsistentDocument(problem):
             problem.message
         case let .persistenceFailed(reason):
-            "The import could not be saved, so nothing was changed: \(reason)"
+            "The restore could not be saved, so nothing was changed: \(reason)"
         }
     }
 
@@ -141,9 +146,9 @@ enum AppImportError: Error, Hashable, Sendable {
     var recoverySuggestion: String? {
         switch self {
         case .storeNotEmpty:
-            "Importing on top of existing accounts could duplicate money. Start from a fresh install, or add the missing records by hand."
+            "Restoring on top of existing accounts could duplicate money. A backup restores into a fresh install — so keep the file, and add anything missing here by hand in the meantime."
         case .storeUnreadable:
-            "The data on this device is intact but unreadable by this build. Do not import over it."
+            "The data on this device is intact but unreadable by this build. Do not restore over it."
         case .notAFinanceDocument, .inconsistentDocument:
             "Nothing on this device was changed. Fix the export and choose it again."
         default:

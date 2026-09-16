@@ -1,9 +1,16 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Import current state, in four deliberate steps:
+/// Restore backup, in four deliberate steps:
 ///
 ///     choose a file → preview → review balances → confirm
+///
+/// The type keeps its older name because the operation is unchanged and the
+/// persistence boundary below it is named for the operation. What changed is
+/// what a person is told they are doing: they are bringing their own state
+/// back, and "Import current state" was the name of a function, not of that.
+/// The one thing genuinely *imported* in this app is the historical archive —
+/// a document type the app cannot produce — and that screen keeps the word.
 ///
 /// Nothing is written until the last one. The preview exists so a person can
 /// recognise their own finances before they become the app's, and the balance
@@ -67,7 +74,7 @@ struct ImportCurrentStateView: View {
             onCompletion: chose
         )
         .alert(
-            "Import stopped",
+            "Restore stopped",
             isPresented: Binding(get: { failure != nil }, set: { if !$0 { failure = nil } }),
             presenting: failure
         ) { _ in
@@ -83,10 +90,10 @@ struct ImportCurrentStateView: View {
 
     private var title: String {
         switch stage {
-        case .choose: "Import current state"
-        case .preview: "Review import"
+        case .choose: "Restore backup"
+        case .preview: "Review file"
         case .balances: "Review balances"
-        case .done: "Imported"
+        case .done: "Restored"
         }
     }
 
@@ -194,7 +201,7 @@ struct ChooseFileStep: View {
                     Image(systemName: "square.and.arrow.down")
                         .font(.system(size: 34))
                         .foregroundStyle(Theme.Role.accent)
-                    Text("Restore from an export")
+                    Text("Restore from a backup")
                         .font(.title3.bold())
                         .fixedSize(horizontal: false, vertical: true)
                     Text("Choose an exported finance file. Accounts, balances, commitments and planning are read from it, checked, and shown to you before anything is saved.")
@@ -458,7 +465,7 @@ struct BalanceReviewStep: View {
         .safeAreaInset(edge: .bottom) {
             VStack(spacing: 6) {
                 Button(action: onConfirm) {
-                    Label("Confirm import", systemImage: "checkmark")
+                    Label("Confirm restore", systemImage: "checkmark")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
@@ -530,7 +537,7 @@ struct ImportResultStep: View {
                     Image(systemName: "checkmark.circle.fill")
                         .font(.system(size: 38))
                         .foregroundStyle(Theme.Role.positive)
-                    Text("Imported")
+                    Text("Restored")
                         .font(.title2.bold())
                 }
 
@@ -555,6 +562,8 @@ struct ImportResultStep: View {
                 }
                 .financeCard()
 
+                ExclusionsCard()
+
                 Button(action: onFinish) {
                     Label("Go to Home", systemImage: "house.fill")
                         .frame(maxWidth: .infinity)
@@ -566,6 +575,36 @@ struct ImportResultStep: View {
         }
         .background(Theme.Surface.background)
         .interactiveDismissDisabled()
+    }
+}
+
+/// What did not come back, said where a person is about to go looking for it.
+///
+/// The export screen already lists these before the file is written, but that
+/// is the wrong end of the story: a person reads it while everything they own
+/// is still on screen, and remembers it months later, if at all. Here they
+/// have just restored onto an empty install and are one tap from Home, and
+/// this is the moment the absent verified months and the missing bank pairing
+/// would otherwise read as data loss rather than as a documented boundary.
+///
+/// The lines are `BackupSummary.exclusions` verbatim rather than a second
+/// wording of them, so a backup that started carrying one of these could not
+/// go on being described as not carrying it on one screen out of two.
+struct ExclusionsCard: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Not included")
+                .font(.subheadline.weight(.medium))
+            ForEach(BackupSummary.exclusions, id: \.self) { line in
+                Text(line)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .financeCard()
+        .accessibilityElement(children: .combine)
     }
 }
 

@@ -443,7 +443,7 @@ struct ImportCurrentStateTests {
         }
     }
 
-    @Test("An import into a store that already has history is refused")
+    @Test("A restore into a store that already has history is refused")
     func nonEmptyStoreBlocksImport() throws {
         let harness = try CurrentStateExport.harness()
         try harness.store.prepareImport(from: try CurrentStateExport.data())
@@ -459,7 +459,15 @@ struct ImportCurrentStateTests {
                 Issue.record("a second import must not be accepted")
             } catch let error as AppImportError {
                 #expect(error == .storeNotEmpty)
-                #expect(error.message == "Import into an existing account history is not supported yet.")
+                // The refusal is asserted by what it says rather than by its
+                // exact sentence: the wording is product copy and moved once
+                // already, when the action stopped being called "import". What
+                // must not move is that it names the reason and the remedy.
+                #expect(error.message.contains("already exists"))
+                #expect(error.message.contains("not supported yet"))
+                let suggestion = try #require(error.recoverySuggestion)
+                #expect(suggestion.contains("duplicate money"))
+                #expect(suggestion.contains("fresh install"))
             }
         }
         // Nothing was duplicated.

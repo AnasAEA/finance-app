@@ -29,7 +29,10 @@ struct FinanceApp: App {
             case .bankSyncFailed: .failed(BankSyncClientError.offline.message)
             default: .idle
             }
-            let pairing: BankPairingState = screen == .bankSyncPairing ? .unpaired : .paired
+            let pairing: BankPairingState = switch screen {
+            case .bankSyncPairing, .bankSyncUnpaired: .unpaired
+            default: .paired
+            }
             _store = State(
                 initialValue: FinanceStore.bankSyncPreview(pairing: pairing, activity: activity)
             )

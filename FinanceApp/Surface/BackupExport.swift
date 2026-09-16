@@ -69,7 +69,7 @@ enum AppExportError: Error, Hashable, Sendable {
         case .storeUnreadable:
             "The data on this device may still be intact. Do not reinstall the app before it can be read again."
         case .nothingToExport:
-            "A backup restores accounts and the plan built around them. Add one, or import your current state, and there will be something to save."
+            "A backup restores accounts and the plan built around them. Add one, or restore a backup, and there will be something to save."
         case .verificationFailed, .incompleteBackup:
             "Nothing on this device was changed and no file was written."
         default:

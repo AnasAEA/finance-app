@@ -130,6 +130,11 @@ enum VisualValidationScreen: String {
     case bankInbox, bankReview, bankRecurring, bankAmbiguous, bankATM, bankResolved, bankBalance
     case bankSyncPairing, bankSyncConnected, bankSyncMapping
     case bankSyncSyncing, bankSyncSucceeded, bankSyncFailed
+    /// Banks & Sync on a build that *does* have a service address, with this
+    /// device not yet paired. Distinct from `bankSyncPairing`, which is the
+    /// code sheet on its own: the state worth pinning is that this screen
+    /// still offers a way to pair, which the not-configured state must not.
+    case bankSyncUnpaired
     #endif
 }
 
@@ -268,7 +273,8 @@ struct RootView: View {
                 NavigationStack { ProviderBalanceDetailView(balanceID: "balance-bank-clbd") }
             case .bankSyncPairing:
                 NavigationStack { PairDeviceSheet() }
-            case .bankSyncConnected, .bankSyncSyncing, .bankSyncSucceeded, .bankSyncFailed:
+            case .bankSyncConnected, .bankSyncSyncing, .bankSyncSucceeded, .bankSyncFailed,
+                 .bankSyncUnpaired:
                 NavigationStack { BankSyncView() }
             case .bankSyncMapping:
                 NavigationStack {

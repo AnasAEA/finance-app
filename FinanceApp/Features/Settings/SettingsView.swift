@@ -22,7 +22,7 @@ struct SettingsView: View {
                     settingsRow(
                         "Banks & Sync",
                         systemImage: "antenna.radiowaves.left.and.right",
-                        detail: Self.banksDetail(freshness)
+                        detail: Self.banksDetail(freshness, pairing: store.pairingState)
                     )
                 }
                 .accessibilityIdentifier(RouteID.settingsBanks)
@@ -67,8 +67,26 @@ struct SettingsView: View {
         .navigationBarTitleDisplayMode(.inline)
     }
 
-    private static func banksDetail(_ evaluation: BankFreshnessEvaluation) -> String {
-        switch evaluation.state {
+    /// The one line under "Banks & Sync", and the only place a person reads
+    /// about sync before deciding whether to open it.
+    ///
+    /// Configuration is asked first, and `BankFreshness` cannot answer it.
+    /// That type answers "is my bank data current?", and for a build with no
+    /// service address and a device that simply has not paired it correctly
+    /// gives the same answer — `notConnected`, say nothing — because Home has
+    /// nothing to report in either case. Settings is not Home: it is where a
+    /// person comes to *act*, and the two states need opposite actions. One is
+    /// fixed with a pairing code. The other cannot be fixed from inside the
+    /// app at all, and "Not paired" would send somebody looking for a Pair
+    /// button that the screen behind this row deliberately does not offer.
+    ///
+    /// Internal rather than private so a test can assert the sentence itself
+    /// rather than the state that produced it.
+    static func banksDetail(
+        _ evaluation: BankFreshnessEvaluation, pairing: BankPairingState
+    ) -> String {
+        if pairing == .notConfigured { return "Not available on this build" }
+        return switch evaluation.state {
         case .notConnected: "Not paired"
         case .neverSynced: "Not synced yet"
         case .updated: evaluation.caption ?? "Synced"
