@@ -49,6 +49,15 @@ struct HoldingRow: View {
 /// promised-but-not-received, approximate date.
 struct UpcomingRow: View {
     let event: PlannedEvent
+    /// Whether this is the event the plan's own first risk names.
+    ///
+    /// Decided by the caller from `PlanStatusPresentation.triggerEventID`, so
+    /// the row carries the engine's attribution rather than guessing one from
+    /// an amount — several events routinely share a day and the largest is not
+    /// necessarily the one that broke. Defaulted, because every other list of
+    /// upcoming events is a list of dates and marking one would be a claim
+    /// nothing established.
+    var marksPlanRisk = false
 
     var body: some View {
         HStack(spacing: 12) {
@@ -82,6 +91,9 @@ struct UpcomingRow: View {
                         Text("around this date")
                             .font(.caption2).foregroundStyle(.secondary)
                     }
+                    if marksPlanRisk {
+                        Chip(text: "Where the plan falls short", tint: Theme.Role.caution)
+                    }
                 }
             }
 
@@ -105,6 +117,7 @@ struct UpcomingRow: View {
         ]
         if event.isGuaranteedButNotReceived { parts.append("not received yet") }
         if let certainty = event.certaintyLabel { parts.append(certainty) }
+        if marksPlanRisk { parts.append("where the plan falls short") }
         return parts.joined(separator: ", ")
     }
 }

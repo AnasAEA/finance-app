@@ -12,6 +12,14 @@ struct AttentionPresentation: Hashable, Sendable {
     /// The exact canonical forecast event already summarized by the primary
     /// funding card. Home excludes only this event from its seven-day list.
     let summarizedUpcomingEventID: String?
+    /// Whether the plan holds, for the tab that exists to answer that.
+    ///
+    /// Composed from the same `AttentionState` as `home` and never from a
+    /// second evaluation, so the two surfaces cannot contradict each other
+    /// about one forecast. They are allowed to *say different things*: Home
+    /// asks what needs doing now, Plan asks whether the plan works and what to
+    /// change, and a reserve breach is a different destination in each.
+    let plan: PlanStatusPresentation
 }
 
 extension AttentionPresentation {
@@ -29,7 +37,8 @@ extension AttentionPresentation {
                 decisions: [], paymentsToConfirm: [], pending: [], limitations: []
             ),
             fundingNeeded: nil,
-            summarizedUpcomingEventID: nil
+            summarizedUpcomingEventID: nil,
+            plan: .projectionUnavailable
         )
     }
 }
@@ -65,6 +74,14 @@ enum AttentionDestination: Hashable, Sendable {
     /// spent into, or the run opened short. Offering it anyway reached a
     /// "Funding detail unavailable" dead end.
     case planUpcoming
+    /// The Plan destination that owns the safety reserve: what the floor is,
+    /// how the projection sits against it, and the field that changes it.
+    ///
+    /// Reached from the Plan status when the plan stays funded and crosses
+    /// that floor, because the reserve is the thing the person can actually
+    /// act on there. Home deliberately does not send anyone here — it asks
+    /// what needs doing, and adjusting a planning policy is not that.
+    case planSafetyReserve
     case banksAndSync
     case account(String)
     case observationReview(String)

@@ -3697,7 +3697,18 @@ final class FinanceStore: FinanceProviding {
         return AttentionPresentationMapper.present(
             output.attention,
             snapshot: evaluation.snapshot,
-            heroIsAvailable: evaluation.safeToUseIsAvailable
+            heroIsAvailable: evaluation.safeToUseIsAvailable,
+            // Not `safeToUseIsAvailable`: that is the forecast having *run*.
+            // This is everything a statement about funding rests on being
+            // usable, which is the only basis on which Plan may call a plan
+            // funded. A run whose risk was rejected as incoherent, and a gap
+            // suppressed because a balance could not be established, both
+            // leave no candidate behind — and without this, either absence
+            // would read as safety.
+            planFundingIsEstablished:
+                AttentionFactAdapters.fundingGapDependencies.allSatisfy {
+                    output.availability.status($0).isAvailable
+                }
         )
     }
 

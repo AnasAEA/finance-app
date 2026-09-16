@@ -32,6 +32,18 @@ enum AttentionFactAdapters {
     /// rather than a candidate when the risk does not hold together, so the
     /// caller can record `.incoherent` on `.forecastProjection` instead of
     /// quietly showing nothing.
+    /// What a statement about the plan's funding rests on.
+    ///
+    /// Declared once, because two callers need it and a copy would drift: the
+    /// proposal below carries it, and anything that wants to say the plan is
+    /// *funded* has to find every one of these available. A gap suppressed
+    /// because one of them is compromised leaves no candidate behind, and
+    /// reading that absence as safety is the failure this constant exists to
+    /// prevent.
+    static let fundingGapDependencies: Set<AttentionDependencyKey> = [
+        .forecastProjection, .currentAccountTruth
+    ]
+
     static func fundingGap(
         from forecast: ForecastResult,
         accountNames: [String: String],
@@ -107,7 +119,7 @@ enum AttentionFactAdapters {
                 identity: "\(risk.kind.rawValue)@\(risk.day.isoString)",
                 subject: subject,
                 detail: .fundingGap(fact),
-                dependencies: [.forecastProjection, .currentAccountTruth],
+                dependencies: fundingGapDependencies,
                 orderingDay: fact.day,
                 orderingMinorUnits: fact.shortfall.minorUnits
             )

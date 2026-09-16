@@ -274,6 +274,8 @@ private struct HomeDashboard: View {
             navigation.openPlan(.fundingNeeded)
         case .planUpcoming:
             navigation.openPlan(.upcoming)
+        case .planSafetyReserve:
+            navigation.openPlan(.safetyReserve)
         case .banksAndSync:
             navigation.showHome([.settings, .banks])
         case let .account(id):

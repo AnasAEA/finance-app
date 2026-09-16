@@ -204,6 +204,75 @@ final class PlanProductionUITests: XCTestCase {
         }
     }
 
+    /// Plan opens on a condition, and that condition leads somewhere.
+    ///
+    /// The planning fixture's projection cannot meet Housing on 10 March, so
+    /// the hub's status is a funding gap whose settlement failure Funding
+    /// Needed exists to explain. Before this, Plan opened on "Budget — 198,00 €
+    /// left of 750,00 € this month" and said nothing about the gap at all.
+    func testPlanHubStatesTheFundingGapAndOpensWhatIsNeeded() {
+        launchPlan(arguments: ["-usePlanningPreview"])
+
+        let status = app.buttons[planStatus]
+        XCTAssertTrue(status.waitForExistence(timeout: 8))
+        // The launch locale is en_US, so the figure reads "€209.00" here and
+        // "209,00 €" on a French phone. The digits and the claim are the
+        // product; the separator is the reader's.
+        let statement = status.label
+        XCTAssertTrue(
+            statement.contains("209") && statement.contains("short"),
+            "status read \(statement)"
+        )
+        // A deficit is money that is missing. It is never the reserve.
+        XCTAssertFalse(statement.lowercased().contains("safety reserve"))
+
+        status.tap()
+        XCTAssertTrue(app.navigationBars["Funding Needed"].waitForExistence(timeout: 8))
+    }
+
+    /// The status sends a person to find one payment. The list it sends them
+    /// to has to say which one: twenty dated rows answered nothing, because
+    /// the 480,00 € that broke the plan looked exactly like the 29,00 € that
+    /// did not.
+    func testUpcomingMarksThePaymentTheStatusIsAbout() {
+        launchPlan(arguments: ["-usePlanningPreview"], route: "upcoming")
+
+        let marked = app.staticTexts["Where the plan falls short"]
+        XCTAssertTrue(marked.waitForExistence(timeout: 8))
+
+        // The marking sits on the payment the projection named, and on no
+        // other: a row combines its label, so one element carries both.
+        let markedRow = app.descendants(matching: .any).matching(
+            NSPredicate(format: "label CONTAINS %@ AND label CONTAINS %@",
+                        "Housing", "where the plan falls short")
+        )
+        XCTAssertGreaterThan(markedRow.count, 0, "the marking is not on the payment the plan named")
+
+        let anyMarked = app.descendants(matching: .any).matching(
+            NSPredicate(format: "label CONTAINS %@", "where the plan falls short")
+        )
+        XCTAssertEqual(
+            anyMarked.count, markedRow.count,
+            "a payment the projection did not name is marked too"
+        )
+    }
+
+    /// An empty plan states what it cannot establish, and offers no route to a
+    /// screen that would have nothing to show.
+    func testEmptyPlanRefusesToClaimTheProjectionRan() {
+        launchPlan(arguments: ["-useEmptyPreview"])
+
+        let status = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "can't be checked")
+        ).firstMatch
+        XCTAssertTrue(status.waitForExistence(timeout: 8))
+        // Unknown is not safety. The honest sentence mentions being funded in
+        // order to decline the claim, so the assertion is on the claim itself.
+        XCTAssertFalse(app.staticTexts["Your plan is funded."].exists)
+    }
+
+    private let planStatus = "plan.status"
+
     private func launchPlan(arguments: [String], route: String? = nil) {
         var launchArguments = [
             "-AppleLanguages", "(en-US)",

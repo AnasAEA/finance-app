@@ -207,7 +207,8 @@ struct NeedsReviewView: View {
             AccountDetailView(accountID: id)
         // Destinations no Activity row produces. The projection's risks
         // belong to Home and Plan; Activity links evidence and payments.
-        case .activityToReview, .insightsMonthVerification, .planUpcoming:
+        case .activityToReview, .insightsMonthVerification, .planUpcoming,
+             .planSafetyReserve:
             EmptyView()
         }
     }

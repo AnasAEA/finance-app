@@ -94,6 +94,9 @@ enum RouteID {
     static let activityReviewQueue = "activity.review.queue"
     static let activityArchive = "activity.archive"
 
+    /// The Plan hub's one status block, whatever condition it is reporting.
+    /// A test addresses the state, not the sentence currently printed on it.
+    static let planStatus = "plan.status"
     static let planBudget = "plan.budget"
     static let planFundingNeeded = "plan.funding-needed"
     static let planReserve = "plan.reserve"

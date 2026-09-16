@@ -9,7 +9,8 @@ enum AttentionPresentationMapper {
     static func present(
         _ state: AttentionState,
         snapshot: FinanceAppSnapshot,
-        heroIsAvailable: Bool
+        heroIsAvailable: Bool,
+        planFundingIsEstablished: Bool
     ) -> AttentionPresentation {
         let activity = activity(state, snapshot: snapshot)
         let reviewCount = activity.decisions.count + activity.paymentsToConfirm.count
@@ -55,8 +56,127 @@ enum AttentionPresentationMapper {
             actionableReviewCount: reviewCount,
             activity: activity,
             fundingNeeded: funding,
-            summarizedUpcomingEventID: summarizedEventID
+            summarizedUpcomingEventID: summarizedEventID,
+            plan: planStatus(
+                state,
+                snapshot: snapshot,
+                fundingIsEstablished: planFundingIsEstablished
+            )
         )
+    }
+
+    // MARK: - Plan status
+
+    /// What the Plan tab may say about the plan as a whole.
+    ///
+    /// Three branches, in this order, because the order is the honesty:
+    ///
+    /// 1. The engine found a cash risk. Say which of its two risks it is, in
+    ///    that risk's own words, and offer the screen that answers it.
+    /// 2. No risk, and the forecast source was recorded available. Only here
+    ///    may the plan be called funded.
+    /// 3. Anything else. The projection did not run, or ran and did not hold
+    ///    together, and a plan that cannot be judged is not a plan that is
+    ///    fine.
+    ///
+    /// Branch 1 implies the forecast was established — a funding candidate is
+    /// only ever appended on the path that records `.forecastProjection` as
+    /// available — so the three branches cannot disagree about one run.
+    ///
+    /// `actionableCandidates` rather than `primary`: a bank connection needing
+    /// attention outranks a funding gap on Home, and the plan's own risk must
+    /// not disappear from the planning tab because something else was more
+    /// urgent somewhere else.
+    private static func planStatus(
+        _ state: AttentionState,
+        snapshot: FinanceAppSnapshot,
+        fundingIsEstablished: Bool
+    ) -> PlanStatusPresentation {
+        if let fact = state.actionableCandidates.lazy.compactMap({ candidate -> RequiredFundingGapFact? in
+            guard case let .fundingGap(fact) = candidate.detail else { return nil }
+            return fact
+        }).first {
+            switch fact.riskKind {
+            case .poolDeficit: return deficitStatus(fact)
+            case .belowSafetyFloor: return reserveStatus(fact, snapshot: snapshot)
+            }
+        }
+
+        guard fundingIsEstablished else { return .projectionUnavailable }
+
+        // The horizon is quoted only from the run that established it. A quiet
+        // outcome carries one; an `actionsAvailable` outcome with no funding
+        // candidate does not, and then the sentence names no period rather
+        // than borrowing the snapshot's own horizon, which is a different
+        // measurement.
+        let through: CalendarDay?
+        if case let .noActionNeeded(quiet) = state.outcome { through = quiet.horizonEnd } else { through = nil }
+
+        return PlanStatusPresentation(
+            kind: .funded,
+            headline: "Your plan is funded.",
+            detail: through.map { "No shortfall is projected through \(longDayText($0))." },
+            action: snapshot.upcomingEvents.isEmpty
+                ? nil
+                : PlanStatusAction(title: "See what's coming", destination: .planUpcoming),
+            triggerEventID: nil
+        )
+    }
+
+    /// Money that is genuinely missing. Never the word "reserve".
+    ///
+    /// The destination follows the evidence the screen needs, exactly as
+    /// Home's card does: Funding Needed exists to explain one payment that
+    /// could not be settled, and without such a payment it is a dead end.
+    private static func deficitStatus(_ fact: RequiredFundingGapFact) -> PlanStatusPresentation {
+        let explainable = fact.settlementFailure != nil
+        return PlanStatusPresentation(
+            kind: .fundingGap,
+            headline: "Your plan is \(fact.shortfall.formatted()) short on \(longDayText(fact.day)).",
+            detail: fact.triggerLabel.map { "\($0) is the payment it can't cover." },
+            action: PlanStatusAction(
+                title: explainable ? "See what's needed" : "See what's coming",
+                destination: explainable ? .planFundingNeeded : .planUpcoming
+            ),
+            triggerEventID: fact.triggerEventID
+        )
+    }
+
+    /// A funded plan crossing a floor the person chose. Nothing is missing,
+    /// and the sentence may not imply that anything is.
+    ///
+    /// The reserve screen is the destination because the reserve is what can
+    /// actually be acted on: it states the comparison and owns the field that
+    /// changes the floor. Home sends the same fact to Upcoming, which is the
+    /// right answer to a different question.
+    private static func reserveStatus(
+        _ fact: RequiredFundingGapFact,
+        snapshot: FinanceAppSnapshot
+    ) -> PlanStatusPresentation {
+        // The configured floor is named only when it is the same currency as
+        // the gap. Two currencies in one sentence would be a comparison the
+        // app never makes.
+        let floor = snapshot.safetyReserve
+            .flatMap { $0.currencyCode == fact.shortfall.currencyCode ? $0 : nil }
+        let detail = floor.map {
+            "\(fact.shortfall.formatted()) below the \($0.formatted()) you set."
+        } ?? "\(fact.shortfall.formatted()) below the reserve you set."
+        return PlanStatusPresentation(
+            kind: .reserveWarning,
+            headline: "Your plan stays funded, but dips below your safety reserve on \(longDayText(fact.day)).",
+            detail: detail,
+            action: PlanStatusAction(
+                title: "Review your reserve",
+                destination: .planSafetyReserve
+            ),
+            triggerEventID: fact.triggerEventID
+        )
+    }
+
+    /// Plan writes the month out. The person opened the planning area on
+    /// purpose and is reading one sentence, not scanning a list.
+    private static func longDayText(_ day: CalendarDay) -> String {
+        day.formatted(.dateTime.day().month(.wide))
     }
 
     private static func isActBand(_ kind: AttentionCandidateKind) -> Bool {

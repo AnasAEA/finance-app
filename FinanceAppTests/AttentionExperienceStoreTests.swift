@@ -235,7 +235,8 @@ struct AttentionExperienceStoreTests {
             availability: available
         )
         let act = AttentionPresentationMapper.present(
-            actState, snapshot: snapshot, heroIsAvailable: true
+            actState, snapshot: snapshot, heroIsAvailable: true,
+            planFundingIsEstablished: available.status(.forecastProjection).isAvailable
         )
         guard case let .act(card, _) = act.home else {
             Issue.record("Expected ACT")
@@ -253,7 +254,8 @@ struct AttentionExperienceStoreTests {
             proposals: [evidenceProposal(0)], availability: available
         )
         let review = AttentionPresentationMapper.present(
-            reviewState, snapshot: snapshot, heroIsAvailable: true
+            reviewState, snapshot: snapshot, heroIsAvailable: true,
+            planFundingIsEstablished: available.status(.forecastProjection).isAvailable
         )
         guard case let .reviewOnly(count) = review.home else {
             Issue.record("Expected REVIEW ONLY")
@@ -270,7 +272,8 @@ struct AttentionExperienceStoreTests {
             )
         )
         let quiet = AttentionPresentationMapper.present(
-            quietState, snapshot: snapshot, heroIsAvailable: true
+            quietState, snapshot: snapshot, heroIsAvailable: true,
+            planFundingIsEstablished: available.status(.forecastProjection).isAvailable
         )
         guard case let .quiet(detail) = quiet.home else {
             Issue.record("Expected QUIET")
@@ -286,7 +289,8 @@ struct AttentionExperienceStoreTests {
             )
         )
         let uncertain = AttentionPresentationMapper.present(
-            uncertainState, snapshot: snapshot, heroIsAvailable: true
+            uncertainState, snapshot: snapshot, heroIsAvailable: true,
+            planFundingIsEstablished: available.status(.forecastProjection).isAvailable
         )
         guard case let .indeterminate(message) = uncertain.home else {
             Issue.record("Expected INDETERMINATE")
@@ -313,7 +317,8 @@ struct AttentionExperienceStoreTests {
             availability: sources
         )
         let never = AttentionPresentationMapper.present(
-            neverClosed, snapshot: snapshot, heroIsAvailable: true
+            neverClosed, snapshot: snapshot, heroIsAvailable: true,
+            planFundingIsEstablished: available.status(.forecastProjection).isAvailable
         )
         guard case let .act(card, _) = never.home else {
             Issue.record("expected a Home action")
@@ -339,7 +344,8 @@ struct AttentionExperienceStoreTests {
             availability: sources
         )
         let changed = AttentionPresentationMapper.present(
-            changedState, snapshot: snapshot, heroIsAvailable: true
+            changedState, snapshot: snapshot, heroIsAvailable: true,
+            planFundingIsEstablished: available.status(.forecastProjection).isAvailable
         )
         guard case let .act(changedCard, _) = changed.home else {
             Issue.record("expected a changed-month Home action")
@@ -387,7 +393,8 @@ struct AttentionExperienceStoreTests {
             availability: available.recording(.periodCheckpointBaseline, .available)
         )
         let presentation = AttentionPresentationMapper.present(
-            state, snapshot: snapshot, heroIsAvailable: true
+            state, snapshot: snapshot, heroIsAvailable: true,
+            planFundingIsEstablished: available.status(.forecastProjection).isAvailable
         )
         guard case let .act(card, _) = presentation.home else {
             Issue.record("expected the funding card")
@@ -449,7 +456,8 @@ struct AttentionExperienceStoreTests {
         #expect(state.secondary.count == 3)
 
         let presentation = AttentionPresentationMapper.present(
-            state, snapshot: snapshot, heroIsAvailable: true
+            state, snapshot: snapshot, heroIsAvailable: true,
+            planFundingIsEstablished: available.status(.forecastProjection).isAvailable
         )
         #expect(presentation.actionableReviewCount == 5)
         #expect(presentation.activity.decisions.count == 5)
@@ -490,7 +498,8 @@ struct AttentionExperienceStoreTests {
         )
 
         let presentation = AttentionPresentationMapper.present(
-            state, snapshot: snapshot, heroIsAvailable: true
+            state, snapshot: snapshot, heroIsAvailable: true,
+            planFundingIsEstablished: available.status(.forecastProjection).isAvailable
         )
         #expect(presentation.activity.paymentsToConfirm.count == 1)
         #expect(presentation.activity.paymentsToConfirm[0].subtitle.contains("nothing matched"))

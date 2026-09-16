@@ -1,18 +1,35 @@
 import SwiftUI
 
-/// Planning starts as a choice of task, not as a runway chart. Each concept has
-/// one management home below this list.
+/// Planning opens with the answer, then the tools.
+///
+/// Each concept still has one management home in the list below, and the list
+/// is deliberately still a list. What changed is that it no longer *starts*
+/// there: a hub whose first line was "Budget — 198,00 € left of 750,00 € this
+/// month" said the same reassuring thing whether or not the plan could fund
+/// itself, and left the person who had just been told money was missing to
+/// guess which of five rows led to it.
+///
+/// The status states a condition and offers one route. It is composed by
+/// `AttentionPresentationMapper` from the same evaluation Home reads, so the
+/// two tabs cannot disagree about one forecast.
 struct PlanView: View {
     @Environment(FinanceStore.self) private var store
+    @Environment(AppNavigation.self) private var navigation
 
     /// One live read per composition: every row below describes the same plan
     /// at the same moment, including the day-derived upcoming and waiting counts.
     var body: some View {
-        content(store.snapshot)
+        let presentation = store.currentPresentation()
+        return content(presentation.snapshot, status: presentation.attention.plan)
     }
 
-    private func content(_ snapshot: FinanceAppSnapshot) -> some View {
+    private func content(
+        _ snapshot: FinanceAppSnapshot,
+        status: PlanStatusPresentation
+    ) -> some View {
         List {
+            planStatus(status)
+
             NavigationLink(value: PlanRoute.budget) {
                 PlanHubRow(
                     title: "Budget",
@@ -62,6 +79,76 @@ struct PlanView: View {
         .listStyle(.insetGrouped)
         .contentMargins(.bottom, Theme.Metric.floatingTabBarClearance, for: .scrollContent)
         .navigationTitle("Plan")
+    }
+
+    // MARK: - Status
+
+    /// One condition and at most one route. Not a card stack: the tools below
+    /// are the detail, and repeating their figures here would only invite a
+    /// comparison between a budget ceiling, a policy floor and protected money
+    /// that means nothing.
+    @ViewBuilder
+    private func planStatus(_ status: PlanStatusPresentation) -> some View {
+        Section {
+            if let action = status.action {
+                Button { open(action.destination) } label: {
+                    statusBody(status, actionTitle: action.title)
+                }
+                .buttonStyle(.plain)
+                .accessibilityElement(children: .combine)
+                .accessibilityAddTraits(.isButton)
+                .accessibilityIdentifier(RouteID.planStatus)
+            } else {
+                statusBody(status, actionTitle: nil)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier(RouteID.planStatus)
+            }
+        }
+        .listRowBackground(
+            status.isTinted ? Theme.Role.caution.opacity(0.12) : Theme.Surface.card
+        )
+    }
+
+    private func statusBody(
+        _ status: PlanStatusPresentation,
+        actionTitle: String?
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(PlanStatusPresentation.eyebrow)
+                .font(.eyebrow)
+                .foregroundStyle(.secondary)
+            Text(status.headline)
+                .font(.headline)
+                .fixedSize(horizontal: false, vertical: true)
+            if let detail = status.detail {
+                Text(detail)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if let actionTitle {
+                Text(actionTitle).font(.subheadline.weight(.semibold))
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 4)
+        .contentShape(Rectangle())
+    }
+
+    /// Plan routes to the screen that owns the answer, and never to a copy of
+    /// it. Every case here is a destination the app already had.
+    private func open(_ destination: AttentionDestination) {
+        switch destination {
+        case .planFundingNeeded: navigation.openPlan(.fundingNeeded)
+        case .planUpcoming: navigation.openPlan(.upcoming)
+        case .planSafetyReserve: navigation.openPlan(.safetyReserve)
+        case .banksAndSync: navigation.showHome([.settings, .banks])
+        case let .account(id): navigation.showHome([.accounts, .account(id)])
+        case .observationReview, .expectedPayment, .activityToReview:
+            navigation.openToReview()
+        case let .insightsMonthVerification(selection):
+            navigation.openInsightsVerification(selection)
+        }
     }
 
     private static func budgetDetail(_ snapshot: FinanceAppSnapshot) -> String {
@@ -161,13 +248,18 @@ struct PlanHubRow: View {
 struct UpcomingView: View {
     @Environment(FinanceStore.self) private var store
 
-    /// One live read per composition. "Coming up" and the expected-payment
-    /// caption are both day-derived; they must describe the same civil day.
+    /// One live read per composition. "Coming up", the expected-payment
+    /// caption and the risk attribution are all day-derived; they must
+    /// describe the same civil day.
     var body: some View {
-        content(store.snapshot)
+        let presentation = store.currentPresentation()
+        return content(presentation.snapshot, status: presentation.attention.plan)
     }
 
-    private func content(_ snapshot: FinanceAppSnapshot) -> some View {
+    private func content(
+        _ snapshot: FinanceAppSnapshot,
+        status: PlanStatusPresentation
+    ) -> some View {
         List {
             Section("Coming up") {
                 if snapshot.upcomingEvents.isEmpty {
@@ -175,7 +267,14 @@ struct UpcomingView: View {
                         .foregroundStyle(.secondary)
                 } else {
                     ForEach(snapshot.upcomingEvents.prefix(20)) { event in
-                        UpcomingRow(event: event)
+                        // The status sends a person here to find out which
+                        // payment it meant. Arriving at twenty identical rows
+                        // answered nothing: the 480,00 € that broke the plan
+                        // looked exactly like the 29,00 € that did not.
+                        UpcomingRow(
+                            event: event,
+                            marksPlanRisk: event.id == status.triggerEventID
+                        )
                     }
                 }
             }
