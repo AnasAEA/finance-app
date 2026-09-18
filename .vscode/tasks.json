@@ -1,0 +1,47 @@
+{
+    // Wrappers set DEVELOPER_DIR per process — CLAUDE.md is explicit that raw
+    // xcodebuild must not be used here.
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Check: core tests + Debug build",
+            "type": "shell",
+            "command": "Scripts/check",
+            "group": { "kind": "build", "isDefault": true },
+            "problemMatcher": []
+        },
+        {
+            "label": "Test: FinanceCore package",
+            "type": "shell",
+            "command": "Scripts/test-core",
+            "group": { "kind": "test", "isDefault": true },
+            "problemMatcher": []
+        },
+        {
+            "label": "Test: app + integration suites",
+            "type": "shell",
+            "command": "Scripts/test-app",
+            "group": "test",
+            "problemMatcher": []
+        },
+        {
+            "label": "Build: debug",
+            "type": "shell",
+            "command": "Scripts/build-debug",
+            "group": "build",
+            "problemMatcher": []
+        },
+        {
+            "label": "Release gate (Release build + fixture-absence proof)",
+            "type": "shell",
+            "command": "Scripts/release-gate",
+            "problemMatcher": []
+        },
+        {
+            "label": "Context",
+            "type": "shell",
+            "command": "Scripts/context",
+            "problemMatcher": []
+        }
+    ]
+}
