@@ -36,10 +36,10 @@ struct SafeToUseExplanationView: View {
     // MARK: - Explained
 
     private func explained(_ breakdown: SafeToUseBreakdown) -> some View {
-        List {
-            Section { headline(breakdown) }
+        FinancePage {
+            FinanceSection { headline(breakdown) }
 
-            Section {
+            FinanceSection {
                 LedgerRow(label: "Money on your accounts", value: breakdown.cash)
                     .accessibilityIdentifier(SafeToUseID.cash)
                 LedgerRow(
@@ -67,7 +67,7 @@ struct SafeToUseExplanationView: View {
                 noteSection(note)
             }
 
-            Section {
+            FinanceSection {
                 Button {
                     navigation.openPlan(.upcoming)
                 } label: {
@@ -81,7 +81,7 @@ struct SafeToUseExplanationView: View {
                     }
                     .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(FinancePressStyle())
                 .accessibilityAddTraits(.isButton)
                 .accessibilityIdentifier(SafeToUseID.seeCommitted)
             }
@@ -110,7 +110,7 @@ struct SafeToUseExplanationView: View {
     private func noteSection(_ note: SafeToUseNote) -> some View {
         switch note {
         case let .setAside(amount):
-            Section {
+            FinanceSection {
                 LedgerRow(label: "Set aside for goals", value: amount)
             } header: {
                 Text("Already inside this figure")
@@ -121,7 +121,7 @@ struct SafeToUseExplanationView: View {
             .accessibilityIdentifier(SafeToUseID.setAside)
 
         case let .notCounted(holdings):
-            Section {
+            FinanceSection {
                 ForEach(holdings) { holding in
                     LedgerRow(
                         label: holding.title,

@@ -59,21 +59,34 @@ struct UpcomingRow: View {
     /// nothing established.
     var marksPlanRisk = false
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     var body: some View {
-        HStack(spacing: 12) {
-            VStack(spacing: 0) {
-                Text(event.date.formatted(.dateTime.day()))
-                    .font(.money(17, weight: .semibold))
-                Text(event.date.formatted(.dateTime.month(.abbreviated)))
-                    .font(.caption2)
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: Theme.Space.sm))
+            : AnyLayout(HStackLayout(alignment: .top, spacing: Theme.Space.md))
+        layout {
+            if dynamicTypeSize.isAccessibilitySize {
+                Text(event.date.formatted(.dateTime.day().month(.wide)))
+                    .font(Theme.TypeStyle.metadata)
                     .foregroundStyle(.secondary)
-                    .textCase(.uppercase)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                VStack(spacing: 0) {
+                    Text(event.date.formatted(.dateTime.day()))
+                        .font(.money(17, weight: .semibold))
+                    Text(event.date.formatted(.dateTime.month(.abbreviated)))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .textCase(.uppercase)
+                        .fixedSize()
+                }
+                .frame(minWidth: 34)
             }
-            .frame(width: 34)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(event.label).font(.subheadline).lineLimit(1)
-                HStack(spacing: 6) {
+                Text(event.label).font(Theme.TypeStyle.card).fixedSize(horizontal: false, vertical: true)
+                VStack(alignment: .leading, spacing: Theme.Space.xs) {
                     if event.isRecovery {
                         Chip(text: "Recovery", tint: Theme.Role.recovery)
                     }
@@ -97,9 +110,9 @@ struct UpcomingRow: View {
                 }
             }
 
-            Spacer(minLength: 8)
+            if !dynamicTypeSize.isAccessibilitySize { Spacer(minLength: Theme.Space.sm) }
             MoneyText(amount: event.amount, size: 17, weight: .medium,
-                      showsSign: true, colorBySign: true)
+                      showsSign: true)
         }
         .padding(.vertical, 9)
         .accessibilityElement(children: .combine)

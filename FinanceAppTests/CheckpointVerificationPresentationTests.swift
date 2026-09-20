@@ -1,4 +1,6 @@
 import Testing
+import SwiftUI
+import UIKit
 import Foundation
 import SwiftData
 import FinanceCore
@@ -201,6 +203,46 @@ struct CheckpointVerificationPresentationTests {
         try harness.container.mainContext.fetch(
             FetchDescriptor<StoredPeriodCheckpointRevision>()
         )
+    }
+
+    /// Screenshots from a real host window and the same persistence fixtures
+    /// that prove these states. No pixel assertions; the state must be real.
+    @Test("Render verified and changed month states for visual inspection")
+    func renderVerificationStates() async throws {
+        let harness = try Harness(document: Self.cleanDocument())
+        guard case .storedFirstClose = harness.store.writeEndedMonthCheckpoint(Self.selection) else {
+            Issue.record("expected a first close")
+            return
+        }
+        #expect(try state(in: harness.store) == .verified)
+        try await renderInsights(harness.store, name: "insights-verified")
+        try harness.replace(Self.cleanDocument(incomeMinor: 9_500))
+        let reopened = try harness.reopen()
+        #expect(try state(in: reopened) == .changedSinceVerification)
+        try await renderInsights(reopened, name: "insights-changed")
+    }
+
+    private func renderInsights(_ store: FinanceStore, name: String) async throws {
+        let navigation = AppNavigation(selectedTab: .insights)
+        navigation.insightsSelection = Self.selection
+        let view = NavigationStack { InsightsView() }
+            .environment(store).environment(navigation).tint(Theme.Role.accent)
+        let controller = UIHostingController(rootView: view)
+        let scene = try #require(UIApplication.shared.connectedScenes.first as? UIWindowScene)
+        let window = UIWindow(windowScene: scene)
+        window.frame = CGRect(x: 0, y: 0, width: 393, height: 852)
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+        try await Task.sleep(for: .milliseconds(300))
+        controller.view.layoutIfNeeded()
+        let image = UIGraphicsImageRenderer(size: window.bounds.size).image { _ in
+            window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+        }
+        let data = try #require(image.pngData())
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("finance-design", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try data.write(to: directory.appendingPathComponent(name + ".png"))
     }
 
     // MARK: - P1 never closed

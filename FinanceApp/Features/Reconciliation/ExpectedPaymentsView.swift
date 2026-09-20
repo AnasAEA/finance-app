@@ -63,6 +63,7 @@ struct ExpectedPaymentsView: View {
                 }
             }
         }
+        .financeList()
         .navigationTitle("Expected payments")
         .navigationBarTitleDisplayMode(.inline)
     }
@@ -256,6 +257,7 @@ struct ExpectedPaymentDetailView: View {
                 }
             }
         }
+        .financeList()
         .navigationTitle("Expected payment")
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $isPicking) {
@@ -339,6 +341,7 @@ struct MatchPickerView: View {
                     }
                 }
             }
+            .financeList()
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

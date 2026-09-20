@@ -50,6 +50,7 @@ struct ExportBackupView: View {
                     }
                 }
             }
+            .financeList()
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

@@ -292,6 +292,7 @@ struct RootView: View {
                 tabContent
             }
         }
+        .tint(Theme.Role.accent)
         .environment(navigation)
         .sheet(isPresented: $navigation.isAddingTransaction) {
             AddTransactionSheet()

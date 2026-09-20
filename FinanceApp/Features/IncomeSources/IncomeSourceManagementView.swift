@@ -43,6 +43,7 @@ struct IncomeSourcesView: View {
                 }
             }
         }
+        .financeList()
         .navigationTitle("Income Sources")
         .navigationBarTitleDisplayMode(dynamicTypeSize.isAccessibilitySize ? .inline : .large)
         .toolbar {
@@ -191,6 +192,7 @@ struct IncomeSourceEditorView: View {
                 }
             }
         }
+        .financeList()
         .navigationTitle(existing == nil ? "Add Income Source" : "Edit Income Source")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {

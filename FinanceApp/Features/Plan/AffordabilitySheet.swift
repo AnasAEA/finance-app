@@ -56,6 +56,7 @@ struct AffordabilityCheckView: View {
             if draft.on == nil { draft.on = defaults.day }
             pickerRange = defaults.range
         }
+        .financeList()
         .navigationTitle("Can I afford this?")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {

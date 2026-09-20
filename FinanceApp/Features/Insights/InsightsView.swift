@@ -74,12 +74,14 @@ private struct InsightsPeriodView: View {
     @Binding var refreshGeneration: Int
 
     @State private var showsDetails = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        List {
-            Section { header }
-            Section { summaryCard }
-            Section {
+        FinancePage {
+            FinanceSection { header }
+            verificationSection
+            FinanceSection { summaryCard }
+            FinanceSection {
                 Text(review.recordsQualityStatement)
                     .font(.footnote)
                     .foregroundStyle(.secondary)
@@ -88,18 +90,19 @@ private struct InsightsPeriodView: View {
                 Text("Records")
             }
             findingsSection
-            verificationSection
             if review.showsHistoricalHomePointer {
-                Section {
+                FinanceSection {
                     Button("Today's outlook is on Home") {
                         navigation.selectedTab = .home
                     }
                 }
             }
-            Section {
+            FinanceSection {
                 Button(showsDetails ? "Hide Details" : "Show Details") {
-                    showsDetails.toggle()
+                    withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) { showsDetails.toggle() }
                 }
+                .font(Theme.TypeStyle.action)
+                .frame(minHeight: Theme.Metric.minimumTarget)
                 .accessibilityIdentifier(InsightsID.showDetails)
             }
             if showsDetails {
@@ -116,11 +119,8 @@ private struct InsightsPeriodView: View {
                 if !review.showsHistoricalHomePointer { outlookSection }
             }
         }
-        .listStyle(.insetGrouped)
-        .listSectionSpacing(.compact)
-        .contentMargins(.bottom, Theme.Metric.floatingTabBarClearance, for: .scrollContent)
         .navigationTitle("Insights")
-        .navigationBarTitleDisplayMode(.large)
+        .navigationBarTitleDisplayMode(.inline)
     }
 
     // MARK: - Header
@@ -203,7 +203,7 @@ private struct InsightsPeriodView: View {
     private var summaryCard: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text(review.summary)
-                .font(.body)
+                .font(Theme.TypeStyle.screen)
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier(RouteID.insightsSummary)
 
@@ -244,7 +244,7 @@ private struct InsightsPeriodView: View {
     // MARK: - Data quality
 
     private var coverageSection: some View {
-        Section {
+        FinanceSection {
             VStack(alignment: .leading, spacing: 8) {
                 Label {
                     Text(review.coverage.quality.title)
@@ -300,7 +300,7 @@ private struct InsightsPeriodView: View {
 
     @ViewBuilder private var budgetSection: some View {
         if !review.monthContexts.isEmpty {
-            Section {
+            FinanceSection {
                 ForEach(review.monthContexts) { context in
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
@@ -370,7 +370,7 @@ private struct InsightsPeriodView: View {
     // MARK: - Spending
 
     @ViewBuilder private var spendingSection: some View {
-        Section {
+        FinanceSection {
             if !review.topCategories.isEmpty {
                 ForEach(review.topCategories) { category in
                     LabeledContent {
@@ -406,7 +406,7 @@ private struct InsightsPeriodView: View {
     // MARK: - Income and support
 
     private var incomeSection: some View {
-        Section {
+        FinanceSection {
             let income = review.incomeBreakdown
             if !income.earnedOrOther.isZero {
                 row("Earned and other", income.earnedOrOther)
@@ -458,7 +458,7 @@ private struct InsightsPeriodView: View {
 
     @ViewBuilder private var expectationsSection: some View {
         if !review.expectations.isEmpty {
-            Section {
+            FinanceSection {
                 ForEach(review.expectations) { item in
                     VStack(alignment: .leading, spacing: 2) {
                         HStack {
@@ -491,7 +491,7 @@ private struct InsightsPeriodView: View {
 
     @ViewBuilder private var goalsSection: some View {
         if !review.goals.currentlySetAside.isZero || !review.goals.active.isEmpty {
-            Section {
+            FinanceSection {
                 row("Set aside now", review.goals.currentlySetAside)
                 ForEach(review.goals.active) { goal in
                     LabeledContent {
@@ -520,7 +520,7 @@ private struct InsightsPeriodView: View {
     @ViewBuilder
     private var findingsSection: some View {
         if !review.findings.isEmpty {
-            Section {
+            FinanceSection {
                 ForEach(review.findings) { finding in findingRow(finding) }
             } header: {
                 Text("What changed")
@@ -535,31 +535,47 @@ private struct InsightsPeriodView: View {
     @ViewBuilder
     private var verificationSection: some View {
         if let verification = review.verification {
-            Section {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(verification.verificationState.headline)
-                        .font(.headline)
-                        .accessibilityIdentifier(InsightsID.verification)
-                    if let summary = verification.changeSummary {
-                        VerificationChangeExplanation(summary: summary)
-                            .accessibilityIdentifier(InsightsID.verificationChange)
+            FinanceSection {
+                StatusSurface(tone: .verification(verification.verificationState)) {
+                    VStack(alignment: .leading, spacing: Theme.Space.sm) {
+                        Text(verification.verificationState.headline)
+                            .font(Theme.TypeStyle.screen)
+                            .accessibilityIdentifier(InsightsID.verification)
+                        if let summary = verification.changeSummary {
+                            VerificationChangeExplanation(summary: summary)
+                                .accessibilityIdentifier(InsightsID.verificationChange)
+                        }
+                        if dynamicTypeSize.isAccessibilitySize {
+                            VStack(alignment: .leading, spacing: Theme.Space.sm) {
+                                Text("\(verification.decisionCount) decision\(verification.decisionCount == 1 ? "" : "s") waiting")
+                                Text("\(verification.limitationCount) limitation\(verification.limitationCount == 1 ? "" : "s")")
+                            }
+                            .font(Theme.TypeStyle.supporting)
+                            .fixedSize(horizontal: false, vertical: true)
+                        } else {
+                            HStack(spacing: Theme.Space.md) {
+                                Chip(text: "\(verification.decisionCount) decision\(verification.decisionCount == 1 ? "" : "s")", tint: Theme.Role.information)
+                                Chip(text: "\(verification.limitationCount) limitation\(verification.limitationCount == 1 ? "" : "s")", tint: .secondary)
+                            }
+                        }
+                        Text(verification.totalsStatement)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        NavigationLink {
+                            PeriodVerificationDetailView(
+                                verification: verification,
+                                selection: selection,
+                                refreshGeneration: $refreshGeneration
+                            )
+                        } label: {
+                            ActionLabel(title: "What's unresolved")
+                        }
+                        .buttonStyle(FinancePressStyle())
+                        .accessibilityIdentifier(InsightsID.unresolved)
                     }
-                    Text("\(verification.decisionCount) decision\(verification.decisionCount == 1 ? " is" : "s are") waiting.")
-                    Text("\(verification.limitationCount) thing\(verification.limitationCount == 1 ? "" : "s") can't be confirmed.")
-                    Text(verification.totalsStatement)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                    NavigationLink("What's unresolved") {
-                        PeriodVerificationDetailView(
-                            verification: verification,
-                            selection: selection,
-                            refreshGeneration: $refreshGeneration
-                        )
-                    }
-                    .accessibilityIdentifier(InsightsID.unresolved)
+                    .padding(.vertical, 3)
                 }
-                .padding(.vertical, 3)
             } header: {
                 Text("\(verification.periodLabel) · Verification")
             }
@@ -601,7 +617,7 @@ private struct InsightsPeriodView: View {
     // MARK: - Outlook
 
     private var outlookSection: some View {
-        Section {
+        FinanceSection {
             row("Available now", review.outlook.liquidityNow)
             if let day = review.outlook.firstRiskDay {
                 VStack(alignment: .leading, spacing: 2) {
@@ -715,10 +731,10 @@ private struct PeriodVerificationDetailView: View {
         let screen = acknowledgment.screen(for: selection, in: store)
         let shown = screen?.verification ?? verification
 
-        List {
+        FinancePage {
             verificationStatusSection(shown, readiness: screen?.readinessState)
 
-            Section {
+            FinanceSection {
                 Text(shown.totalsStatement)
                     .fixedSize(horizontal: false, vertical: true)
                 if let statement = shown.categoryStatement {
@@ -736,7 +752,7 @@ private struct PeriodVerificationDetailView: View {
             }
 
             if !shown.decisions.isEmpty {
-                Section("Decisions") {
+                FinanceSection("Decisions") {
                     ForEach(shown.decisions) { issue in
                         if let destination = issue.destination {
                             NavigationLink {
@@ -750,7 +766,7 @@ private struct PeriodVerificationDetailView: View {
             }
 
             if !shown.limitations.isEmpty {
-                Section {
+                FinanceSection {
                     ForEach(shown.limitations) { issue in
                         issueRow(issue)
                             .accessibilityElement(children: .combine)
@@ -791,14 +807,16 @@ private struct PeriodVerificationDetailView: View {
         _ shown: PeriodVerificationPresentation,
         readiness: EndedMonthAcknowledgmentReadinessState?
     ) -> some View {
-        Section {
+        FinanceSection {
             Text(shown.verificationState.headline)
-                .font(.headline)
+                .font(Theme.TypeStyle.screen)
             if let summary = shown.changeSummary {
                 VerificationChangeExplanation(summary: summary)
             }
             if offersVerification(shown) {
                 Button("Verify month") { verifyMonth() }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
                     .disabled(!canVerify(readiness))
                     .accessibilityIdentifier(InsightsID.verify)
             }
@@ -868,7 +886,7 @@ private struct PeriodVerificationDetailView: View {
     private func acknowledgmentSection(
         _ section: EndedMonthAcknowledgmentSection
     ) -> some View {
-        Section {
+        FinanceSection {
             Text(section.statement)
                 .font(.subheadline)
                 .fixedSize(horizontal: false, vertical: true)
@@ -889,6 +907,7 @@ private struct PeriodVerificationDetailView: View {
             Button("Accept selected") {
                 acknowledgment.confirmSelection(for: selection, in: store)
             }
+            .buttonStyle(.bordered).controlSize(.large)
             .disabled(!acknowledgment.hasSelection || !section.allowsConfirmation)
             .accessibilityIdentifier(InsightsID.acknowledge)
         } header: {
@@ -991,8 +1010,8 @@ private struct InsightsUnavailablePeriodView: View {
     @Binding var selection: ReviewPeriodSelection
 
     var body: some View {
-        List {
-            Section {
+        FinancePage {
+            FinanceSection {
                 Picker("Period", selection: $selection.scope) {
                     ForEach(ReviewPeriodScope.allCases) { scope in
                         Text(scope.title)
@@ -1004,7 +1023,7 @@ private struct InsightsUnavailablePeriodView: View {
                 .accessibilityIdentifier(RouteID.insightsScope)
                 .onChange(of: selection.scope) { _, _ in selection.offset = 0 }
             }
-            Section {
+            FinanceSection {
                 Text("This period cannot be reviewed. Its dates fall outside the range this app can calculate.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
@@ -1018,6 +1037,6 @@ private struct InsightsUnavailablePeriodView: View {
         .listSectionSpacing(.compact)
         .contentMargins(.bottom, Theme.Metric.floatingTabBarClearance, for: .scrollContent)
         .navigationTitle("Insights")
-        .navigationBarTitleDisplayMode(.large)
+        .navigationBarTitleDisplayMode(.inline)
     }
 }

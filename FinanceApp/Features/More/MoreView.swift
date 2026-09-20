@@ -194,6 +194,7 @@ struct DataAndBackupView: View {
                 Text("Files you choose here are read once and not kept. What is stored is the accounts and plan themselves.")
             }
         }
+        .financeList()
         .navigationTitle("Data & Privacy")
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $isImporting) { ImportCurrentStateView() }

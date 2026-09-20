@@ -2,8 +2,7 @@ import SwiftUI
 
 /// Planning opens with the answer, then the tools.
 ///
-/// Each concept still has one management home in the list below, and the list
-/// is deliberately still a list. What changed is that it no longer *starts*
+/// Each concept keeps one management home in the workspace below. What changed is that it no longer *starts*
 /// there: a hub whose first line was "Budget — 198,00 € left of 750,00 € this
 /// month" said the same reassuring thing whether or not the plan could fund
 /// itself, and left the person who had just been told money was missing to
@@ -15,6 +14,7 @@ import SwiftUI
 struct PlanView: View {
     @Environment(FinanceStore.self) private var store
     @Environment(AppNavigation.self) private var navigation
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     /// One live read per composition: every row below describes the same plan
     /// at the same moment, including the day-derived upcoming and waiting counts.
@@ -27,58 +27,89 @@ struct PlanView: View {
         _ snapshot: FinanceAppSnapshot,
         status: PlanStatusPresentation
     ) -> some View {
-        List {
+        FinancePage {
             planStatus(status)
 
-            NavigationLink(value: PlanRoute.budget) {
-                PlanHubRow(
-                    title: "Budget",
-                    detail: Self.budgetDetail(snapshot),
-                    value: snapshot.everydayBudget.isEmpty
-                        ? nil
-                        : snapshot.everydayBudget.headlineAmount.formatted()
-                )
+            FinanceSection("Spending policy") {
+                if Theme.Layout.planHubStacksValueBelowTitle(dynamicTypeSize) {
+                    VStack(spacing: Theme.Space.md) {
+                        policyTile(snapshot, budget: true)
+                        policyTile(snapshot, budget: false)
+                    }
+                } else {
+                    HStack(alignment: .top, spacing: Theme.Space.md) {
+                        policyTile(snapshot, budget: true)
+                        policyTile(snapshot, budget: false)
+                    }
+                }
             }
-            .accessibilityIdentifier(RouteID.planBudget)
 
-            NavigationLink(value: PlanRoute.safetyReserve) {
-                PlanHubRow(
-                    title: "Safety reserve",
-                    detail: Self.reserveDetail(snapshot),
-                    value: snapshot.safetyReserve?.formatted()
-                )
+            FinanceSection("Commitments") {
+                NavigationLink(value: PlanRoute.upcoming) {
+                    VStack(alignment: .leading, spacing: Theme.Space.sm) {
+                        ActionLabel(title: "Upcoming")
+                        Text(Self.upcomingDetail(snapshot))
+                            .font(Theme.TypeStyle.supporting).foregroundStyle(.secondary)
+                        if let value = Self.matchingValue(snapshot) {
+                            Chip(text: value, tint: Theme.Role.information)
+                        }
+                    }
+                }
+                .buttonStyle(FinancePressStyle())
+                .accessibilityIdentifier(RouteID.planUpcoming)
             }
-            .accessibilityIdentifier(RouteID.planReserve)
 
-            NavigationLink(value: PlanRoute.upcoming) {
-                PlanHubRow(
-                    title: "Upcoming",
-                    detail: Self.upcomingDetail(snapshot),
-                    value: Self.matchingValue(snapshot)
-                )
-            }
-            .accessibilityIdentifier(RouteID.planUpcoming)
-
+            Divider()
             NavigationLink(value: PlanRoute.goals) {
-                PlanHubRow(
-                    title: "Goals & Set Aside",
-                    detail: Self.goalsDetail(snapshot),
-                    value: PlanningTotals.setAside(from: snapshot).formatted()
-                )
+                VStack(alignment: .leading, spacing: Theme.Space.sm) {
+                    ActionLabel(title: "Goals & Set Aside")
+                    Text(PlanningTotals.setAside(from: snapshot).formatted())
+                        .font(Theme.TypeStyle.numeric).foregroundStyle(.primary)
+                    Text(Self.goalsDetail(snapshot))
+                        .font(Theme.TypeStyle.supporting).foregroundStyle(.secondary)
+                }
             }
+            .buttonStyle(FinancePressStyle())
             .accessibilityIdentifier(RouteID.planGoals)
 
             NavigationLink(value: PlanRoute.affordability) {
-                PlanHubRow(
-                    title: "Can I afford this?",
-                    detail: "Check a purchase against cash, the ceiling, and what is set aside."
-                )
+                VStack(alignment: .leading, spacing: Theme.Space.xs) {
+                    ActionLabel(title: "Can I afford this?")
+                    Text("Try a purchase against your plan.")
+                        .font(Theme.TypeStyle.supporting).foregroundStyle(.secondary)
+                }
+                .financeCard()
             }
+            .buttonStyle(FinancePressStyle())
             .accessibilityIdentifier(RouteID.planAfford)
         }
-        .listStyle(.insetGrouped)
-        .contentMargins(.bottom, Theme.Metric.floatingTabBarClearance, for: .scrollContent)
         .navigationTitle("Plan")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private func policyTile(_ snapshot: FinanceAppSnapshot, budget: Bool) -> some View {
+        NavigationLink(value: budget ? PlanRoute.budget : PlanRoute.safetyReserve) {
+            VStack(alignment: .leading, spacing: Theme.Space.sm) {
+                Text(budget ? "Budget" : "Safety reserve")
+                    .font(Theme.TypeStyle.action).foregroundStyle(Theme.Role.accent)
+                    .fixedSize(horizontal: false, vertical: true)
+                if budget && !snapshot.everydayBudget.isEmpty {
+                    MoneyText(amount: snapshot.everydayBudget.headlineAmount, size: 23)
+                } else if !budget, let reserve = snapshot.safetyReserve {
+                    MoneyText(amount: reserve, size: 23)
+                } else {
+                    Text("Not set").font(Theme.TypeStyle.numeric)
+                }
+                Text(budget ? Self.budgetDetail(snapshot) : Self.reserveDetail(snapshot))
+                    .font(Theme.TypeStyle.metadata).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .financeCard()
+            .foregroundStyle(.primary)
+        }
+        .buttonStyle(FinancePressStyle())
+        .accessibilityIdentifier(budget ? RouteID.planBudget : RouteID.planReserve)
     }
 
     // MARK: - Status
@@ -89,12 +120,12 @@ struct PlanView: View {
     /// that means nothing.
     @ViewBuilder
     private func planStatus(_ status: PlanStatusPresentation) -> some View {
-        Section {
+        Group {
             if let action = status.action {
                 Button { open(action.destination) } label: {
                     statusBody(status, actionTitle: action.title)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(FinancePressStyle())
                 .accessibilityElement(children: .combine)
                 .accessibilityAddTraits(.isButton)
                 .accessibilityIdentifier(RouteID.planStatus)
@@ -104,34 +135,25 @@ struct PlanView: View {
                     .accessibilityIdentifier(RouteID.planStatus)
             }
         }
-        .listRowBackground(
-            status.isTinted ? Theme.Role.caution.opacity(0.12) : Theme.Surface.card
-        )
+
     }
 
     private func statusBody(
         _ status: PlanStatusPresentation,
         actionTitle: String?
     ) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(PlanStatusPresentation.eyebrow)
-                .font(.eyebrow)
-                .foregroundStyle(.secondary)
-            Text(status.headline)
-                .font(.headline)
-                .fixedSize(horizontal: false, vertical: true)
-            if let detail = status.detail {
-                Text(detail)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+        StatusSurface(tone: .plan(status.kind)) {
+            VStack(alignment: .leading, spacing: Theme.Space.sm) {
+                Text(PlanStatusPresentation.eyebrow).font(.eyebrow)
+                    .foregroundStyle(FinanceTone.plan(status.kind).color)
+                Text(status.headline).font(Theme.TypeStyle.screen)
                     .fixedSize(horizontal: false, vertical: true)
-            }
-            if let actionTitle {
-                Text(actionTitle).font(.subheadline.weight(.semibold))
+                if let detail = status.detail {
+                    Text(detail).font(Theme.TypeStyle.supporting).foregroundStyle(.secondary)
+                }
+                if let actionTitle { ActionLabel(title: actionTitle) }
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.vertical, 4)
         .contentShape(Rectangle())
     }
 
@@ -183,66 +205,6 @@ struct PlanView: View {
     }
 }
 
-struct PlanHubRow: View {
-    let title: String
-    let detail: String
-    var value: String? = nil
-
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-
-    var body: some View {
-        Group {
-            if Theme.Layout.planHubStacksValueBelowTitle(dynamicTypeSize) {
-                vertical
-            } else {
-                horizontal
-            }
-        }
-        .padding(.vertical, 5)
-        .accessibilityElement(children: .combine)
-    }
-
-    /// Everyday size: title and figure share a line. The figure is one line so
-    /// "206,70 €" cannot hyphenate; a long caption wraps under the title.
-    private var horizontal: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 12) {
-            labels
-                .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
-            if let value { figure(value) }
-        }
-    }
-
-    /// Accessibility and overflow: title, then the whole figure, then the caption.
-    private var vertical: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title).font(.body.weight(.medium))
-            if let value { figure(value) }
-            Text(detail)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private var labels: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(title).font(.body.weight(.medium))
-            Text(detail)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-    }
-
-    private func figure(_ value: String) -> some View {
-        Text(value)
-            .font(.body.monospacedDigit().weight(.medium))
-            .lineLimit(1)
-            .multilineTextAlignment(.leading)
-    }
-}
-
 /// Known future cash and the definitions that produce it. Booked income stays
 /// in Activity; this view only reads the existing planned/expected surfaces.
 struct UpcomingView: View {
@@ -260,8 +222,8 @@ struct UpcomingView: View {
         _ snapshot: FinanceAppSnapshot,
         status: PlanStatusPresentation
     ) -> some View {
-        List {
-            Section("Coming up") {
+        FinancePage {
+            FinanceSection("Coming up") {
                 if snapshot.upcomingEvents.isEmpty {
                     Text("Nothing scheduled.")
                         .foregroundStyle(.secondary)
@@ -279,7 +241,7 @@ struct UpcomingView: View {
                 }
             }
 
-            Section("Expected") {
+            FinanceSection("Expected") {
                 NavigationLink {
                     ExpectedPaymentsView()
                 } label: {
@@ -287,7 +249,7 @@ struct UpcomingView: View {
                 }
             }
 
-            Section("Plan definitions") {
+            FinanceSection("Plan definitions") {
                 NavigationLink {
                     RecurringPaymentsView()
                 } label: {
@@ -341,7 +303,7 @@ struct UpcomingView: View {
 
     private func destinationRow(_ title: String, detail: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(title)
+            ActionLabel(title: title)
             Text(detail)
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -373,8 +335,8 @@ struct GoalsAndSetAsideView: View {
 
     private func content(_ snapshot: FinanceAppSnapshot) -> some View {
         let standaloneFunds = Self.standaloneFunds(snapshot)
-        return List {
-            Section {
+        return FinancePage {
+            FinanceSection {
                 if snapshot.plannedPurchases.isEmpty {
                     Text(PlanningCopy.emptyGoals)
                         .foregroundStyle(.secondary)
@@ -393,11 +355,12 @@ struct GoalsAndSetAsideView: View {
                     Text("Goals")
                     Spacer()
                     Button("Add") { isEditingGoal = true }
-                    .accessibilityIdentifier(PlanningControlID.addGoal)
+                        .frame(minWidth: Theme.Metric.minimumTarget, minHeight: Theme.Metric.minimumTarget)
+                        .accessibilityIdentifier(PlanningControlID.addGoal)
                 }
             }
 
-            Section {
+            FinanceSection {
                 if standaloneFunds.isEmpty {
                     Text("Set-aside not tied to a goal appears here.")
                         .foregroundStyle(.secondary)
@@ -416,7 +379,8 @@ struct GoalsAndSetAsideView: View {
                     Text("Standalone set-aside")
                     Spacer()
                     Button("Add") { isEditingFund = true }
-                    .accessibilityIdentifier(PlanningControlID.addFund)
+                        .frame(minWidth: Theme.Metric.minimumTarget, minHeight: Theme.Metric.minimumTarget)
+                        .accessibilityIdentifier(PlanningControlID.addFund)
                 }
             }
         }
@@ -447,9 +411,9 @@ struct GoalDetailView: View {
         let linkedFund = goal?.sinkingFundID.flatMap { id in
             snapshot.sinkingFunds.first { $0.id == id }
         }
-        return List {
+        return FinancePage {
             if let goal {
-                Section {
+                FinanceSection {
                     LabeledContent("Name", value: goal.name)
                     LabeledContent("Target") { MoneyText(amount: goal.target, size: 17, weight: .medium) }
                     LabeledContent("Status", value: goal.status.displayName)
@@ -459,7 +423,7 @@ struct GoalDetailView: View {
                     }
                 }
                 if let linkedFund {
-                    Section("Set aside") {
+                    FinanceSection("Set aside") {
                         NavigationLink {
                             SetAsideDetailView(fundID: linkedFund.id)
                         } label: {
@@ -467,14 +431,15 @@ struct GoalDetailView: View {
                         }
                     }
                 } else if goal.reserved.isPositive {
-                    Section("Set aside") {
+                    FinanceSection("Set aside") {
                         LabeledContent("Protected for this goal") {
                             MoneyText(amount: goal.reserved, size: 17, weight: .medium)
                         }
                     }
                 }
-                Section {
+                FinanceSection {
                     Button("Delete goal", role: .destructive) { confirmsDelete = true }
+                        .buttonStyle(.bordered).controlSize(.large)
                 }
             } else {
                 ContentUnavailableView("Goal not available", systemImage: "questionmark.folder")
@@ -530,9 +495,9 @@ struct SetAsideDetailView: View {
     }
 
     var body: some View {
-        List {
+        FinancePage {
             if let fund {
-                Section {
+                FinanceSection {
                     LabeledContent("Target") { MoneyText(amount: fund.target, size: 17, weight: .medium) }
                     LabeledContent("Set aside") { MoneyText(amount: fund.reserved, size: 17, weight: .medium) }
                     if fund.remaining.isPositive {
@@ -548,8 +513,9 @@ struct SetAsideDetailView: View {
                         LabeledContent("Goal", value: goal)
                     }
                 }
-                Section {
+                FinanceSection {
                     Button("Delete set-aside", role: .destructive) { confirmsDelete = true }
+                        .buttonStyle(.bordered).controlSize(.large)
                 }
             } else {
                 ContentUnavailableView("Set-aside not available", systemImage: "questionmark.folder")

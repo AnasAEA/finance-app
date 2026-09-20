@@ -25,7 +25,7 @@ struct MoneyText: View {
             .monospacedDigit()
             .foregroundStyle(resolvedTint)
             .lineLimit(1)
-            .minimumScaleFactor(0.6)
+            .minimumScaleFactor(0.4)
             .accessibilityLabel(amount.accessibleDescription())
     }
 
@@ -87,8 +87,13 @@ struct LedgerRow: View {
     /// See `MoneyText.tint`.
     var valueTint: Color?
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     var body: some View {
-        HStack(alignment: .firstTextBaseline) {
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: Theme.Space.sm))
+            : AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: Theme.Space.md))
+        layout {
             VStack(alignment: .leading, spacing: 1) {
                 Text(label)
                     .font(emphasis ? .subheadline.weight(.semibold) : .subheadline)
@@ -97,7 +102,7 @@ struct LedgerRow: View {
                     Text(caption).font(.caption).foregroundStyle(.secondary)
                 }
             }
-            Spacer(minLength: 12)
+            if !dynamicTypeSize.isAccessibilitySize { Spacer(minLength: Theme.Space.md) }
             MoneyText(amount: value, size: emphasis ? 19 : 17,
                       weight: emphasis ? .semibold : .regular,
                       colorBySign: colorBySign, tint: valueTint)

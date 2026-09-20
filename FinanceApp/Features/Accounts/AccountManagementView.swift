@@ -65,6 +65,7 @@ struct AccountsView: View {
             }
         }
         .accessibilityIdentifier(RouteID.accountsList)
+        .financeList()
         .navigationTitle("Accounts")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -234,6 +235,7 @@ private struct AccountDetailContent: View {
                 )
             }
         }
+        .financeList()
         .navigationTitle(account?.name ?? "Account")
         .navigationBarTitleDisplayMode(.inline)
     }
@@ -348,6 +350,7 @@ struct AccountEditorView: View {
                 }
             }
         }
+        .financeList()
         .navigationTitle(existing == nil ? "Add Account" : "Edit Account")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { if openingBalanceDate == nil { openingBalanceDate = store.currentDay() } }

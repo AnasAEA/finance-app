@@ -16,6 +16,7 @@ struct BudgetDetailView: View {
 }
 
 private struct BudgetDetailContent: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(FinanceStore.self) private var store
     let snapshot: FinanceAppSnapshot
     @State private var monthOffset = 0
@@ -43,6 +44,7 @@ private struct BudgetDetailContent: View {
             .padding(.bottom, 24)
         }
         .background(Theme.Surface.background)
+        .financeList()
         .navigationTitle("Budget")
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $isEditingBudget) { BudgetEditView() }
@@ -72,7 +74,7 @@ private struct BudgetDetailContent: View {
     private var monthPicker: some View {
         HStack {
             Button {
-                withAnimation(.snappy) { monthOffset -= 1 }
+                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) { monthOffset -= 1 }
             } label: {
                 Image(systemName: "chevron.left")
             }
@@ -86,7 +88,7 @@ private struct BudgetDetailContent: View {
             Spacer()
 
             Button {
-                withAnimation(.snappy) { monthOffset += 1 }
+                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) { monthOffset += 1 }
             } label: {
                 Image(systemName: "chevron.right")
             }

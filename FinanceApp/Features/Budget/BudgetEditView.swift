@@ -30,6 +30,7 @@ struct BudgetEditView: View {
                 if budget.hasSuggestedLines { confirmSection }
                 unlinkedCommitmentsSection(budget)
             }
+            .financeList()
             .navigationTitle("Budget")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -302,6 +303,7 @@ struct BudgetLineEditor: View {
                     Text("A line with no categories is still fed by any recurring charge linked to it.")
                 }
             }
+            .financeList()
             .navigationTitle(draft.id == nil ? "New line" : "Edit line")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

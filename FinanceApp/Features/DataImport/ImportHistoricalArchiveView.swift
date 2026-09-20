@@ -31,6 +31,7 @@ struct ImportHistoricalArchiveView: View {
                     if let outcome { resultStep(outcome) }
                 }
             }
+            .financeList()
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

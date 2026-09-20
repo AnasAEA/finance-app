@@ -11,9 +11,9 @@ struct FundingNeededView: View {
     }
 
     var body: some View {
-        List {
+        FinancePage {
             if let funding {
-                Section {
+                FinanceSection {
                     VStack(alignment: .leading, spacing: 5) {
                         if let trigger = funding.trigger {
                             Text(trigger)
@@ -28,11 +28,11 @@ struct FundingNeededView: View {
                     .padding(.vertical, 4)
                 }
 
-                Section {
+                FinanceSection {
                     fundingFigures(funding)
                 }
 
-                Section {
+                FinanceSection {
                     switch funding.subject {
                     case let .account(name, kind):
                         LabeledContent("Payment account", value: "\(name) · \(kind)")
@@ -50,7 +50,7 @@ struct FundingNeededView: View {
                 }
 
                 if !funding.beforeThen.isEmpty {
-                    Section("Before then") {
+                    FinanceSection("Before then") {
                         ForEach(funding.beforeThen) { event in
                             LabeledContent {
                                 MoneyText(
@@ -71,7 +71,7 @@ struct FundingNeededView: View {
                     }
                 }
 
-                Section {
+                FinanceSection {
                     Text(funding.footer)
                         .font(.footnote)
                         .foregroundStyle(.secondary)

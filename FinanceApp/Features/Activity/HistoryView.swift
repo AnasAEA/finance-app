@@ -53,6 +53,19 @@ struct HistoryBrowserView: View {
         }
     }
 
+    /// Adjacent dates are grouped without changing the selected sort order.
+    private var dateGroups: [HistoryDateGroup] {
+        var groups: [HistoryDateGroup] = []
+        for row in displayedRows {
+            if groups.last?.date == row.date {
+                groups[groups.count - 1].rows.append(row)
+            } else {
+                groups.append(HistoryDateGroup(id: row.id, date: row.date, rows: [row]))
+            }
+        }
+        return groups
+    }
+
     private var hasFilters: Bool {
         query.dateRange != nil
             || !query.accountIDs.isEmpty
@@ -92,18 +105,27 @@ struct HistoryBrowserView: View {
                 .listRowBackground(Color.clear)
             }
 
-            ForEach(displayedRows) { item in
-                NavigationLink {
-                    switch item {
-                    case let .archive(row):
-                        HistoricalTransactionDetailView(transactionID: row.id)
-                    case let .live(row):
-                        TransactionDetailView(row: row.row, date: row.date)
+            ForEach(dateGroups, id: \.id) { group in
+                Section {
+                    ForEach(group.rows) { item in
+                        NavigationLink {
+                            switch item {
+                            case let .archive(row):
+                                HistoricalTransactionDetailView(transactionID: row.id)
+                            case let .live(row):
+                                TransactionDetailView(row: row.row, date: row.date)
+                            }
+                        } label: {
+                            UnifiedHistoryRowView(item: item)
+                        }
+                        .listRowBackground(Theme.Surface.background)
+                        .accessibilityIdentifier(ActivityID.transaction(item.id))
                     }
-                } label: {
-                    UnifiedHistoryRowView(item: item)
+                } header: {
+                    Text(group.date.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated).year()))
+                        .font(Theme.TypeStyle.action).foregroundStyle(.primary).textCase(nil)
+                        .padding(.top, Theme.Space.xs)
                 }
-                .accessibilityIdentifier(ActivityID.transaction(item.id))
             }
 
             if nextOffset != nil {
@@ -118,7 +140,10 @@ struct HistoryBrowserView: View {
                 }
             }
         }
-        .listStyle(.insetGrouped)
+        .listStyle(.plain)
+        .listSectionSpacing(Theme.Space.sm)
+        .environment(\.defaultMinListHeaderHeight, 24)
+        .financeList()
         .searchable(text: $searchText, prompt: "Search transactions")
         .task { reload() }
         .task(id: searchText) {
@@ -403,46 +428,37 @@ private extension Int64 {
     var magnitudeForHistoryUI: Int64 { self == .min ? .max : Swift.abs(self) }
 }
 
+private struct HistoryDateGroup: Identifiable {
+    let id: String
+    let date: CalendarDay
+    var rows: [UnifiedHistoryRow]
+}
+
 private struct UnifiedHistoryRowView: View {
     let item: UnifiedHistoryRow
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        HStack(alignment: .center, spacing: 12) {
-            Image(systemName: symbol)
-                .font(.system(size: 15))
-                .foregroundStyle(Theme.Role.accent)
-                .frame(width: 34, height: 34)
-                .background(Theme.Role.accent.opacity(0.1), in: Circle())
-                .accessibilityHidden(true)
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title)
-                    .font(.body)
-                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 1)
-                Text(subtitle)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 1)
-                Text(date.formatted(.dateTime.day().month(.abbreviated).year()))
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: Theme.Space.sm))
+            : AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: Theme.Space.md))
+        layout {
+            VStack(alignment: .leading, spacing: Theme.Space.xs) {
+                Text(title).font(Theme.TypeStyle.card)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(subtitle).font(Theme.TypeStyle.metadata).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-
-            Spacer(minLength: 8)
-            VStack(alignment: .trailing, spacing: 2) {
-                MoneyText(amount: amount, size: 17, weight: .medium,
-                          showsSign: true, colorBySign: true)
-                // Gross movement alone would overstate a split arrival: money
-                // that arrives owed onward was never income.
+            if !dynamicTypeSize.isAccessibilitySize { Spacer(minLength: Theme.Space.sm) }
+            VStack(alignment: dynamicTypeSize.isAccessibilitySize ? .leading : .trailing, spacing: Theme.Space.xs) {
+                MoneyText(amount: amount, size: 18, weight: .semibold, showsSign: true)
                 if let personal = personalAmount {
                     Text("\(personal.formatted()) yours")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .font(Theme.TypeStyle.metadata).foregroundStyle(.secondary)
                 }
             }
         }
-        .padding(.vertical, 3)
+        .padding(.vertical, Theme.Space.sm)
         .accessibilityElement(children: .combine)
     }
 

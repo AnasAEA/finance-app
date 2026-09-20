@@ -121,6 +121,7 @@ private struct AddTransactionContent: View {
                     entryForm
                 }
             }
+            .financeList()
             .navigationTitle("New Transaction")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

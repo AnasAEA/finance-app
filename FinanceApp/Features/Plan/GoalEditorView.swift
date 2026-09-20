@@ -130,7 +130,8 @@ struct GoalEditorView: View {
                 }
             }
             .onAppear { if draft.targetDate == nil { draft.targetDate = Self.defaultDate(store: store) } }
-        .navigationTitle(draft.id == nil ? "New goal" : "Goal")
+            .financeList()
+            .navigationTitle(draft.id == nil ? "New goal" : "Goal")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

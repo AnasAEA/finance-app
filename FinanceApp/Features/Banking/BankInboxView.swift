@@ -143,6 +143,7 @@ struct BankInboxView: View {
                 }
             }
         }
+        .financeList()
         .navigationTitle("Bank Inbox")
     }
 }
@@ -253,13 +254,14 @@ struct ObservationReviewView: View {
         }
         return Group {
             if let item {
-                List {
-                    Section {
+                FinancePage {
+                    FinanceSection {
                         VStack(alignment: .leading, spacing: 5) {
-                            Text(item.displayMerchant).font(.headline)
+                            Text(item.displayMerchant).font(Theme.TypeStyle.screen)
+                                .fixedSize(horizontal: false, vertical: true)
                             MoneyText(
                                 amount: item.amount,
-                                size: 34,
+                                size: 44,
                                 weight: .bold,
                                 showsSign: true,
                                 colorBySign: false
@@ -268,30 +270,8 @@ struct ObservationReviewView: View {
                         .padding(.vertical, 6)
                     }
 
-                    Section("Provider evidence") {
-                        LabeledContent("Provider account", value: "\(item.providerName) · \(item.providerAccountName)")
-                        LabeledContent("Status", value: item.status.displayName)
-                        if let merchant = item.observedMerchant {
-                            LabeledContent("Observed merchant", value: merchant)
-                        }
-                        if let code = item.bankTransactionCode {
-                            LabeledContent("Transaction code", value: code)
-                        }
-                        if let email = item.merchantEmail {
-                            LabeledContent("Merchant email", value: email)
-                        }
-                        if let raw = item.rawMerchantText, raw != item.observedMerchant {
-                            evidenceText("Raw provider text", raw)
-                        }
-                        if let remittance = item.remittance, remittance != item.rawMerchantText {
-                            evidenceText("Remittance", remittance)
-                        }
-                    }
-
-                    dates(item)
-
                     if !item.suggestions.isEmpty {
-                        Section("Suggested interpretation") {
+                        FinanceSection("Suggested interpretation") {
                             ForEach(item.suggestions) { suggestion in
                                 VStack(alignment: .leading, spacing: 4) {
                                     Label(suggestion.title, systemImage: suggestionSymbol(suggestion.kind))
@@ -316,7 +296,7 @@ struct ObservationReviewView: View {
                     }
 
                     if let conflict = item.duplicateConflict {
-                        Section {
+                        FinanceSection {
                             VStack(alignment: .leading, spacing: 8) {
                                 Label(
                                     "This may already be accounted for",
@@ -351,13 +331,35 @@ struct ObservationReviewView: View {
                     }
 
                     if let reason = item.trustedAutomationReviewReason {
-                        Section {
+                        FinanceSection {
                             Label(reason, systemImage: "exclamationmark.triangle")
                                 .foregroundStyle(Theme.Role.caution)
                         } footer: {
                             Text("No automatic transaction was created. Review this activity and choose its meaning once.")
                         }
                     }
+
+                    FinanceSection("Provider evidence") {
+                        LabeledContent("Provider account", value: "\(item.providerName) · \(item.providerAccountName)")
+                        LabeledContent("Status", value: item.status.displayName)
+                        if let merchant = item.observedMerchant {
+                            LabeledContent("Observed merchant", value: merchant)
+                        }
+                        if let code = item.bankTransactionCode {
+                            LabeledContent("Transaction code", value: code)
+                        }
+                        if let email = item.merchantEmail {
+                            LabeledContent("Merchant email", value: email)
+                        }
+                        if let raw = item.rawMerchantText, raw != item.observedMerchant {
+                            evidenceText("Raw provider text", raw)
+                        }
+                        if let remittance = item.remittance, remittance != item.rawMerchantText {
+                            evidenceText("Remittance", remittance)
+                        }
+                    }
+
+                    dates(item)
 
                     if item.resolution == .unreviewed {
                         actions(
@@ -367,7 +369,7 @@ struct ObservationReviewView: View {
                             crossProviderMatch: crossProviderMatch
                         )
                     } else {
-                        Section {
+                        FinanceSection {
                             LabeledContent("Review state", value: resolutionLabel(item.resolution))
                         } footer: {
                             Text("The provider evidence remains unchanged and available here after review.")
@@ -378,6 +380,7 @@ struct ObservationReviewView: View {
                 ContentUnavailableView("Item unavailable", systemImage: "exclamationmark.triangle")
             }
         }
+        .financeList()
         .navigationTitle("Review activity")
         .navigationBarTitleDisplayMode(.inline)
         .alert("Couldn’t save review", isPresented: Binding(
@@ -433,7 +436,7 @@ struct ObservationReviewView: View {
     private func dates(_ item: SyncedObservationItem) -> some View {
         let dates = item.dates
         if dates.booking != nil || dates.transaction != nil || dates.value != nil || dates.derivedTransaction != nil {
-            Section("Dates") {
+            FinanceSection("Dates") {
                 if let day = dates.booking { dayRow("Booking date", day) }
                 if let day = dates.transaction { dayRow("Transaction date", day) }
                 if let day = dates.value { dayRow("Value date", day) }
@@ -455,7 +458,7 @@ struct ObservationReviewView: View {
         recurringMatches: [ObservationSuggestion],
         crossProviderMatch: ObservationSuggestion?
     ) -> some View {
-        Section {
+        FinanceSection {
             if !existingMatches.isEmpty {
                 Menu {
                     ForEach(existingMatches) { suggestion in
@@ -550,6 +553,8 @@ struct ObservationReviewView: View {
         } footer: {
             Text("Suggestions do not act on their own. Your selection creates or links economic truth once.")
         }
+        .buttonStyle(.bordered)
+        .controlSize(.large)
     }
 
     private func isATMSuggestion(_ item: SyncedObservationItem) -> Bool {
@@ -663,6 +668,7 @@ struct TrustedRulesView: View {
                 }
             }
         }
+        .financeList()
         .navigationTitle("Trusted Rules")
     }
 }
@@ -790,6 +796,7 @@ private struct TrustedRuleDetailView: View {
                 }
             }
         }
+        .financeList()
         .navigationTitle(rule?.title ?? "Trusted Rule")
         .navigationBarTitleDisplayMode(.inline)
         .alert("Couldn’t update rule", isPresented: Binding(
@@ -982,6 +989,7 @@ struct ProviderBalanceDetailView: View {
                 }
             }
         }
+        .financeList()
         .navigationTitle("Balance evidence")
         .navigationBarTitleDisplayMode(.inline)
     }

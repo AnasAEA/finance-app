@@ -11,6 +11,7 @@ struct SafetyReserveView: View {
 
     @State private var amountText = ""
     @State private var error: String?
+    @FocusState private var amountFocused: Bool
 
     var body: some View {
         let presentation = store.currentPresentation()
@@ -19,6 +20,7 @@ struct SafetyReserveView: View {
             isAvailable: presentation.attention.heroIsAvailable
         )
         return content(explanation, snapshot: presentation.snapshot)
+            .financeList()
             .navigationTitle("Safety reserve")
             .navigationBarTitleDisplayMode(.inline)
             .accessibilityIdentifier(SafetyReserveID.screen)
@@ -65,6 +67,7 @@ struct SafetyReserveView: View {
                     Spacer()
                     TextField("None", text: $amountText)
                         .keyboardType(.decimalPad)
+                        .focused($amountFocused)
                         .multilineTextAlignment(.trailing)
                         .frame(maxWidth: 140)
                         .accessibilityIdentifier(PlanningControlID.reserveAmount)
@@ -133,6 +136,7 @@ struct SafetyReserveView: View {
                 try store.setSafetyReserve(parsed)
             }
             amountText = store.snapshot.safetyReserve?.editingText ?? ""
+            amountFocused = false
         } catch let failure as AppManagementError {
             error = failure.message
         } catch {

@@ -17,7 +17,7 @@ struct SettingsView: View {
         _ snapshot: FinanceAppSnapshot, _ freshness: BankFreshnessEvaluation
     ) -> some View {
         List {
-            Section {
+            Section("Connections") {
                 NavigationLink(value: HomeRoute.banks) {
                     settingsRow(
                         "Banks & Sync",
@@ -40,7 +40,7 @@ struct SettingsView: View {
                 .accessibilityIdentifier(RouteID.settingsAutomation)
             }
 
-            Section {
+            Section("Your app") {
                 NavigationLink(value: HomeRoute.data) {
                     settingsRow(
                         "Data & Privacy",
@@ -61,11 +61,15 @@ struct SettingsView: View {
             }
 
             Section {
-                LabeledContent("Accounts", value: "\(snapshot.accounts.count)")
+                NavigationLink(value: HomeRoute.accounts) {
+                    settingsRow("Accounts", systemImage: "wallet.bifold",
+                                detail: "\(snapshot.accounts.count) on this device")
+                }
             } footer: {
-                Text("Browse balances and account activity from Home → Cash. Provider configuration stays in Banks & Sync.")
+                Text("Your records stay on this device. You choose when to export a backup.")
             }
         }
+        .financeList()
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
     }
@@ -117,7 +121,8 @@ struct SettingsView: View {
         HStack(spacing: 12) {
             Image(systemName: systemImage)
                 .foregroundStyle(Theme.Role.accent)
-                .frame(width: 28)
+                .frame(width: 36, height: 36)
+                .background(Theme.Surface.inset, in: RoundedRectangle(cornerRadius: 10))
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                 Text(detail)
@@ -163,6 +168,7 @@ struct AutomationView: View {
                 Text("Rules begin as suggestions. Automatic resolution is a separate approval.")
             }
         }
+        .financeList()
         .navigationTitle("Automation")
         .navigationBarTitleDisplayMode(.inline)
         .alert("Couldn’t save", isPresented: Binding(
@@ -249,6 +255,7 @@ struct AppSettingsView: View {
                 LabeledContent("Storage", value: "On this device")
             }
         }
+        .financeList()
         .navigationTitle("App Settings")
         .navigationBarTitleDisplayMode(.inline)
     }

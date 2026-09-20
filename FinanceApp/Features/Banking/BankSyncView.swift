@@ -51,6 +51,7 @@ struct BankSyncView: View {
                 trustedAutomationSection
             }
         }
+        .financeList()
         .navigationTitle("Banks & Sync")
         .task {
             // Read what the service already holds, so the account list is
@@ -297,6 +298,7 @@ struct PairDeviceSheet: View {
                     }
                 }
             }
+            .financeList()
             .navigationTitle("Pair device")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -416,6 +418,7 @@ struct MapAccountSheet: View {
                     }
                 }
             }
+            .financeList()
             .navigationTitle("Account mapping")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

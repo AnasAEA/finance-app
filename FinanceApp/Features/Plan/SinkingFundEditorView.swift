@@ -106,6 +106,7 @@ struct SinkingFundEditorView: View {
                     }
                 }
             }
+            .financeList()
             .navigationTitle(draft.id == nil ? "New fund" : "Sinking fund")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

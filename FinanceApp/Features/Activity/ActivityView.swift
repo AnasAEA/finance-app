@@ -6,6 +6,7 @@ import SwiftUI
 /// segment and only becomes economic activity after a decision.
 struct ActivityView: View {
     @Environment(AppNavigation.self) private var navigation
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         @Bindable var navigation = navigation
@@ -28,8 +29,10 @@ struct ActivityView: View {
                 NeedsReviewView()
             }
         }
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: navigation.activitySection)
         .background(Theme.Surface.background)
         .navigationTitle("Activity")
+        .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
@@ -106,6 +109,7 @@ struct NeedsReviewView: View {
                         } label: {
                             decisionRow(item)
                         }
+                        .listRowBackground(Theme.Surface.background)
                         .accessibilityIdentifier(ActivityID.decision(item.id))
                     }
                 } header: {
@@ -121,6 +125,7 @@ struct NeedsReviewView: View {
                         } label: {
                             decisionRow(item)
                         }
+                        .listRowBackground(Theme.Surface.background)
                         .accessibilityIdentifier(ActivityID.payment(item.id))
                     }
                 }
@@ -171,7 +176,8 @@ struct NeedsReviewView: View {
                 }
             }
         }
-        .listStyle(.insetGrouped)
+        .listStyle(.plain)
+        .financeList()
         .contentMargins(.bottom, Theme.Metric.floatingTabBarClearance, for: .scrollContent)
         .accessibilityIdentifier(RouteID.activityReviewQueue)
     }
@@ -186,30 +192,33 @@ struct NeedsReviewView: View {
     /// ordered by a priority the person could not see. Each had to be opened
     /// to find out which it was.
     private static func decisionRow(_ item: ActivityAttentionRow) -> some View {
-        HStack(alignment: .firstTextBaseline) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(item.title).font(.body).fixedSize(horizontal: false, vertical: true)
-                Text(item.subtitle)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: Theme.Space.sm) {
+            if let decision = item.decision {
+                Text(decision).font(Theme.TypeStyle.card)
+                    .foregroundStyle(Theme.Role.accent)
                     .fixedSize(horizontal: false, vertical: true)
-                if let decision = item.decision {
-                    Text(decision)
-                        .font(.caption2)
-                        .foregroundStyle(Theme.Role.accent)
-                        .fixedSize(horizontal: false, vertical: true)
+            }
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .firstTextBaseline, spacing: Theme.Space.md) {
+                    Text(item.title).font(Theme.TypeStyle.supporting).fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: Theme.Space.sm)
+                    MoneyText(amount: item.amount, size: 18, weight: .semibold, showsSign: true)
                 }
-                if let caution = item.caution {
-                    Label(caution.label, systemImage: "exclamationmark.triangle.fill")
-                        .font(.caption2.weight(.medium))
-                        .foregroundStyle(Theme.Role.caution)
-                        .fixedSize(horizontal: false, vertical: true)
+                VStack(alignment: .leading, spacing: Theme.Space.xs) {
+                    Text(item.title).font(Theme.TypeStyle.supporting)
+                    MoneyText(amount: item.amount, size: 18, weight: .semibold, showsSign: true)
                 }
             }
-            Spacer(minLength: 8)
-            MoneyText(amount: item.amount, size: 17, weight: .medium, showsSign: true)
+            if let caution = item.caution {
+                Label(caution.label, systemImage: "exclamationmark.triangle")
+                    .font(Theme.TypeStyle.metadata.weight(.medium))
+                    .foregroundStyle(Theme.Role.caution)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Text(item.subtitle).font(Theme.TypeStyle.metadata).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(.vertical, 3)
+        .padding(.vertical, Theme.Space.sm)
         .accessibilityElement(children: .combine)
     }
 
@@ -415,6 +424,7 @@ struct TransactionRow: View {
 }
 
 struct TransactionDetailView: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let row: ActivityRow
     let date: CalendarDay
 
@@ -451,17 +461,19 @@ struct TransactionDetailView: View {
         _ removalBlocker: AppRemovalError?,
         _ evidence: [TransactionEvidenceSummary]
     ) -> some View {
-        List {
-            Section {
+        FinancePage {
+            FinanceSection {
                 VStack(alignment: .leading, spacing: 5) {
-                    Text(row.title).font(.headline)
-                    MoneyText(amount: row.amount, size: 34, weight: .bold,
-                              showsSign: true, colorBySign: true)
+                    Text(row.title).font(Theme.TypeStyle.screen)
+                        .fixedSize(horizontal: false, vertical: true)
+                    MoneyText(amount: row.amount, size: 44, weight: .bold, showsSign: true)
+                    Text(date.formatted(date: .long, time: .omitted))
+                        .font(Theme.TypeStyle.supporting).foregroundStyle(.secondary)
                 }
                 .padding(.vertical, 6)
             }
 
-            Section("Transaction") {
+            FinanceSection("Transaction") {
                 LabeledContent("Type", value: row.transactionTypeLabel)
                 LabeledContent("Date", value: date.formatted(date: .long, time: .omitted))
                 if let category = row.categoryLabel {
@@ -472,7 +484,7 @@ struct TransactionDetailView: View {
                 }
             }
 
-            Section("Accounts") {
+            FinanceSection("Accounts") {
                 if let primary = row.primaryAccountLabel {
                     LabeledContent(primaryAccountLabel, value: primary)
                 }
@@ -482,13 +494,13 @@ struct TransactionDetailView: View {
             }
 
             if let source = row.incomeSourceLabel {
-                Section("Income") {
+                FinanceSection("Income") {
                     LabeledContent("Income source", value: source)
                 }
             }
 
             if let reconciliation {
-                Section {
+                FinanceSection {
                     LabeledContent("Recurring", value: reconciliation.ruleName)
                     LabeledContent("Expected") {
                         Text(reconciliation.expectedDate.formatted(.dateTime.day().month(.wide)))
@@ -516,7 +528,7 @@ struct TransactionDetailView: View {
                          : "This payment settles the expected one, so it is counted once rather than twice.")
                 }
             } else if !candidates.isEmpty {
-                Section {
+                FinanceSection {
                     Button {
                         isPicking = true
                     } label: {
@@ -530,9 +542,10 @@ struct TransactionDetailView: View {
             sourceSection(evidence)
 
             if let note = row.note {
-                Section("Notes") { Text(note) }
+                FinanceSection("Notes") { Text(note) }
             }
 
+            Divider()
             removalSection(removalBlocker)
         }
         .navigationTitle("Transaction")
@@ -602,17 +615,20 @@ struct TransactionDetailView: View {
     @ViewBuilder
     private func sourceSection(_ evidence: [TransactionEvidenceSummary]) -> some View {
         if !evidence.isEmpty {
-            Section {
+            FinanceSection {
                 ForEach(evidence) { item in
                     NavigationLink {
                         ObservationReviewView(observationID: item.id)
                     } label: {
                         VStack(alignment: .leading, spacing: 3) {
-                            HStack(alignment: .firstTextBaseline) {
-                                Text(item.title)
-                                    .font(.body)
+                            let layout = dynamicTypeSize.isAccessibilitySize
+                                ? AnyLayout(VStackLayout(alignment: .leading, spacing: Theme.Space.xs))
+                                : AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: Theme.Space.sm))
+                            layout {
+                                Label(item.title, systemImage: "arrow.up.right")
+                                    .font(Theme.TypeStyle.card)
                                     .fixedSize(horizontal: false, vertical: true)
-                                Spacer(minLength: 8)
+                                if !dynamicTypeSize.isAccessibilitySize { Spacer(minLength: Theme.Space.sm) }
                                 MoneyText(amount: item.amount, size: 17, weight: .medium,
                                           showsSign: true)
                             }
@@ -621,7 +637,8 @@ struct TransactionDetailView: View {
                                 .foregroundStyle(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
-                        .padding(.vertical, 2)
+                        .padding(.vertical, Theme.Space.sm)
+                        .frame(minHeight: Theme.Metric.minimumTarget)
                         .accessibilityElement(children: .ignore)
                         .accessibilityLabel(item.accessibilityLabel)
                     }
@@ -650,12 +667,14 @@ struct TransactionDetailView: View {
     private func removalSection(_ blocker: AppRemovalError?) -> some View {
         switch blocker {
         case .none:
-            Section {
+            FinanceSection {
                 Button(role: .destructive) {
                     confirmsRemoval = true
                 } label: {
                     Label("Remove transaction", systemImage: "trash")
                 }
+                .buttonStyle(.bordered)
+                .controlSize(.large)
                 .accessibilityIdentifier(ActivityID.removeTransaction)
             } footer: {
                 Text("Removes it from your records. Balances and totals are worked out again without it.")
@@ -663,7 +682,7 @@ struct TransactionDetailView: View {
         case .notFound:
             EmptyView()
         case let .some(blocker):
-            Section {
+            FinanceSection {
                 VStack(alignment: .leading, spacing: 6) {
                     Label(blocker.message, systemImage: "lock")
                         .font(.subheadline)

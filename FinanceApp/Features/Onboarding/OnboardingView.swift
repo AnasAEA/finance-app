@@ -17,11 +17,11 @@ struct OnboardingView: View {
     @State private var isImporting = false
 
     var body: some View {
-        VStack(spacing: Theme.Metric.stackSpacing) {
+        VStack(alignment: .leading, spacing: Theme.Space.xl) {
             header
             OnboardingChoice(
                 title: "Restore backup",
-                explanation: "Bring back your accounts, balances, commitments and planning from an exported finance file. If you have used this app before, this is the way in.",
+                explanation: "Used this app before? Bring back your accounts and plan from an exported backup.",
                 systemImage: "square.and.arrow.down",
                 isPrimary: true
             ) {
@@ -42,18 +42,21 @@ struct OnboardingView: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 10) {
             Image(systemName: "wallet.bifold")
-                .font(.system(size: 38))
+                .font(.system(.largeTitle, weight: .light))
                 .foregroundStyle(Theme.Role.accent)
+                .frame(width: 72, height: 72)
+                .background(Theme.Surface.inset, in: RoundedRectangle(cornerRadius: Theme.Metric.cardRadius))
+                .accessibilityHidden(true)
             Text("Set up your money")
-                .font(.title2.bold())
+                .font(.system(.largeTitle, design: .serif, weight: .semibold))
                 .fixedSize(horizontal: false, vertical: true)
-            Text("Nothing is here yet. Choose how to begin.")
+            Text("Know what’s safe. Make room for what matters.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.top, 8)
+        .padding(.vertical, Theme.Space.xl)
     }
 
     /// What the app is, said once, before either button is pressed.
@@ -122,7 +125,7 @@ private struct OnboardingChoice<Destination: View>: View {
                 Button { action?() } label: { label }
             }
         }
-        .buttonStyle(.plain)
+        .buttonStyle(FinancePressStyle())
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(title). \(explanation)")
         .accessibilityAddTraits(.isButton)
@@ -148,9 +151,15 @@ private struct OnboardingChoice<Destination: View>: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .multilineTextAlignment(.leading)
             }
-            Spacer(minLength: 0)
+            Image(systemName: "chevron.right")
+                .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                .accessibilityHidden(true)
         }
         .financeCard()
+        .overlay {
+            RoundedRectangle(cornerRadius: Theme.Metric.cardRadius)
+                .strokeBorder(isPrimary ? Theme.Role.accent.opacity(0.35) : .clear, lineWidth: 1)
+        }
     }
 }
 

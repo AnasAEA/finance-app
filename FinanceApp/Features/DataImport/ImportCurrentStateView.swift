@@ -54,6 +54,7 @@ struct ImportCurrentStateView: View {
                     }
                 }
             }
+            .financeList()
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

@@ -30,7 +30,7 @@ struct HomeView: View {
             }
         }
         .navigationTitle("Home")
-        .navigationBarTitleDisplayMode(.large)
+        .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
@@ -56,34 +56,36 @@ struct HomeView: View {
 
 private struct HomeDashboard: View {
     @Environment(AppNavigation.self) private var navigation
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let snapshot: FinanceAppSnapshot
     let attention: AttentionPresentation
     let freshness: BankFreshnessEvaluation
 
     var body: some View {
-        return List {
-            if attention.heroIsAvailable {
-                Section { safeToUse(attention) }
+        FinancePage(spacing: Theme.Space.lg) {
+            VStack(alignment: .leading, spacing: Theme.Space.lg) {
+                if attention.heroIsAvailable { safeToUse(attention) }
+                cashSection(freshness)
             }
-            Section { attentionAnswer(attention) }
-            cashSection(freshness)
-            Section {
+            VStack(alignment: .leading, spacing: Theme.Space.sm) {
+                attentionAnswer(attention)
+            }
+            FinanceSection {
                 weekAhead(attention)
+                Divider()
                 nextSevenDays(attention)
             } header: {
                 HStack {
-                    Text("Next 7 days")
+                    Text("Next 7 days").font(Theme.TypeStyle.section)
                     Spacer()
                     Button("View all") { navigation.openPlan(.upcoming) }
-                        .font(.caption)
-                        .textCase(.none)
+                        .font(Theme.TypeStyle.action)
+                        .foregroundStyle(Theme.Role.accent)
+                        .frame(minHeight: Theme.Metric.minimumTarget)
                         .accessibilityIdentifier(RouteID.homeUpcomingAll)
                 }
             }
         }
-        .listStyle(.insetGrouped)
-        .listSectionSpacing(.compact)
-        .contentMargins(.bottom, Theme.Metric.floatingTabBarClearance, for: .scrollContent)
     }
 
     // MARK: - Safe to use
@@ -102,18 +104,19 @@ private struct HomeDashboard: View {
         } label: {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 6) {
-                    Text("SAFE TO USE")
-                        .font(.eyebrow)
-                        .foregroundStyle(snapshot.safeToSpendReason.isShortfall ? Theme.Role.negative : .secondary)
+                    Text("Safe to use")
+                        .font(Theme.TypeStyle.section)
+                        .foregroundStyle(.secondary)
+                    Spacer()
                     Image(systemName: "info.circle")
-                        .font(.caption2)
+                        .font(.body)
                         .foregroundStyle(.tertiary)
                         .accessibilityHidden(true)
                 }
-                MoneyText(amount: snapshot.safeToSpend, size: 34, weight: .bold)
+                MoneyText(amount: snapshot.safeToSpend, size: Theme.TypeStyle.heroSize, weight: .bold)
                 if !primaryFundingCardIsShowing(attention) {
                     Text(snapshot.safeToSpendReason.explanation)
-                        .font(.caption)
+                        .font(Theme.TypeStyle.supporting)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -122,7 +125,7 @@ private struct HomeDashboard: View {
             .padding(.vertical, 4)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(FinancePressStyle())
         // The identifier belongs to the combined element, not to the figure
         // inside it: a name on a child of a combined element is inherited by
         // the combination as well, and `home.safe` resolved to two elements.
@@ -148,21 +151,25 @@ private struct HomeDashboard: View {
     /// did. It lives on Plan → Goals & Set Aside until that is decided.
     @ViewBuilder
     private func cashSection(_ freshness: BankFreshnessEvaluation) -> some View {
-        Section {
+        VStack(alignment: .leading, spacing: Theme.Space.xs) {
             Button {
                 navigation.openHome(.accounts)
             } label: {
-                HStack {
+                let layout = dynamicTypeSize.isAccessibilitySize
+                    ? AnyLayout(VStackLayout(alignment: .leading, spacing: Theme.Space.sm))
+                    : AnyLayout(HStackLayout(spacing: Theme.Space.sm))
+                layout {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Cash").font(.subheadline.weight(.medium))
                         Text("Accounts").font(.caption).foregroundStyle(.secondary)
                     }
-                    Spacer(minLength: 8)
+                    if !dynamicTypeSize.isAccessibilitySize { Spacer(minLength: Theme.Space.sm) }
                     MoneyText(amount: snapshot.accountCash, size: 20, weight: .semibold)
-                    Image(systemName: "chevron.right")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.tertiary)
-                        .accessibilityHidden(true)
+                    if !dynamicTypeSize.isAccessibilitySize {
+                        Image(systemName: "chevron.right")
+                            .font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
+                            .accessibilityHidden(true)
+                    }
                 }
                 .padding(.vertical, 4)
                 .contentShape(Rectangle())
@@ -170,12 +177,13 @@ private struct HomeDashboard: View {
                 .accessibilityLabel("Cash, \(snapshot.accountCash.accessibleDescription()), accounts")
                 .accessibilityAddTraits(.isButton)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(FinancePressStyle())
+            .padding(.vertical, Theme.Space.sm)
             .accessibilityIdentifier(RouteID.homeCash)
 
-        } footer: {
             if let caption = freshness.caption {
-                Text(caption).accessibilityIdentifier(RouteID.homeSync)
+                Text(caption).font(Theme.TypeStyle.metadata).foregroundStyle(.secondary)
+                    .accessibilityIdentifier(RouteID.homeSync)
             }
         }
     }
@@ -187,20 +195,18 @@ private struct HomeDashboard: View {
         switch attention.home {
         case let .act(card, reviewCount):
             Button { open(card.destination) } label: {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("NEEDS ACTION").font(.eyebrow)
-                    Text(card.title).font(.headline).fixedSize(horizontal: false, vertical: true)
-                    if let detail = card.detail {
-                        Text(detail).font(.subheadline).foregroundStyle(.secondary)
+                StatusSurface(tone: attentionTone(card)) {
+                    VStack(alignment: .leading, spacing: Theme.Space.sm) {
+                        Text(attentionLabel(card)).font(.eyebrow).foregroundStyle(attentionTone(card).color)
+                        Text(card.title).font(Theme.TypeStyle.card).fixedSize(horizontal: false, vertical: true)
+                        if let detail = card.detail {
+                            Text(detail).font(Theme.TypeStyle.supporting).foregroundStyle(.secondary)
+                        }
+                        ActionLabel(title: card.actionTitle)
                     }
-                    Text(card.actionTitle).font(.subheadline.weight(.semibold))
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.vertical, 4)
-                .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
-            .listRowBackground(card.isTinted ? Theme.Role.caution.opacity(0.12) : Color.clear)
+            .buttonStyle(FinancePressStyle())
             .accessibilityElement(children: .combine)
             .accessibilityAddTraits(.isButton)
             .accessibilityIdentifier(RouteID.homeAttention)
@@ -208,14 +214,16 @@ private struct HomeDashboard: View {
 
         case let .reviewOnly(reviewCount):
             VStack(alignment: .leading, spacing: 8) {
-                Text("Nothing urgent.").font(.headline)
+                Label("Nothing urgent.", systemImage: "checkmark.circle").font(Theme.TypeStyle.card)
+                    .foregroundStyle(Theme.Role.positive)
                 if reviewCount > 0 { reviewSummary(reviewCount) }
             }
             .accessibilityIdentifier(RouteID.homeAttention)
 
         case let .quiet(detail):
             VStack(alignment: .leading, spacing: 5) {
-                Text("Nothing needs you right now.").font(.headline)
+                Label("Nothing needs you right now.", systemImage: "checkmark.circle").font(Theme.TypeStyle.card)
+                    .foregroundStyle(Theme.Role.positive)
                 if let detail {
                     Text(detail).font(.subheadline).foregroundStyle(.secondary)
                 }
@@ -226,12 +234,34 @@ private struct HomeDashboard: View {
         case let .indeterminate(uncertainty):
             if let destination = uncertainty.destination {
                 Button { open(destination) } label: { uncertaintyRow(uncertainty.message, tappable: true) }
-                    .buttonStyle(.plain)
+                    .buttonStyle(FinancePressStyle())
                     .accessibilityIdentifier(RouteID.homeAttention)
             } else {
                 uncertaintyRow(uncertainty.message, tappable: false)
                     .accessibilityIdentifier(RouteID.homeAttention)
             }
+        }
+    }
+
+    private func attentionTone(_ card: HomeAttentionCard) -> FinanceTone {
+        switch card.destination {
+        case .planFundingNeeded: .deficit
+        case .planUpcoming, .planSafetyReserve: .plan(attention.plan.kind)
+        case .banksAndSync, .account: .information
+        case .insightsMonthVerification: .information
+        case .observationReview, .expectedPayment, .activityToReview: .caution
+        }
+    }
+
+    private func attentionLabel(_ card: HomeAttentionCard) -> String {
+        switch card.destination {
+        case .banksAndSync: "CONNECTION"
+        case .account: "BALANCE CHECK"
+        case .insightsMonthVerification: "MONTH REVIEW"
+        case .planFundingNeeded: "FUNDING NEEDED"
+        case .planUpcoming, .planSafetyReserve:
+            attention.plan.kind == .reserveWarning ? "RESERVE WARNING" : "NEEDS ACTION"
+        default: "TO REVIEW"
         }
     }
 
@@ -246,9 +276,10 @@ private struct HomeDashboard: View {
                     .foregroundStyle(.tertiary)
                     .accessibilityHidden(true)
             }
+            .frame(minHeight: Theme.Metric.minimumTarget)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(FinancePressStyle())
         .accessibilityIdentifier(RouteID.homeReview)
     }
 
@@ -341,23 +372,32 @@ private struct HomeDashboard: View {
             }
         } else {
             ForEach(events) { event in
-                HStack {
-                    Text(event.date.formatted(.dateTime.day().month(.abbreviated)))
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                        .frame(width: 52, alignment: .leading)
-                    Text(event.label)
-                        .font(.subheadline)
-                        .lineLimit(1)
-                    Spacer(minLength: 8)
-                    MoneyText(amount: event.amount, size: 15, weight: .medium,
-                              showsSign: true, colorBySign: true)
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .firstTextBaseline, spacing: Theme.Space.md) {
+                        eventLabel(event)
+                        Spacer(minLength: Theme.Space.sm)
+                        MoneyText(amount: event.amount, size: 17, weight: .medium, showsSign: true)
+                    }
+                    VStack(alignment: .leading, spacing: Theme.Space.sm) {
+                        eventLabel(event)
+                        MoneyText(amount: event.amount, size: 19, weight: .medium, showsSign: true)
+                    }
                 }
+                .padding(.vertical, Theme.Space.xs)
                 .accessibilityElement(children: .combine)
                 .accessibilityIdentifier(RouteID.homeWeekEvent(event.id))
             }
         }
     }
+    private func eventLabel(_ event: PlannedEvent) -> some View {
+        VStack(alignment: .leading, spacing: Theme.Space.xs) {
+            Text(event.label).font(Theme.TypeStyle.supporting.weight(.medium))
+                .fixedSize(horizontal: false, vertical: true)
+            Text(event.date.formatted(.dateTime.day().month(.abbreviated)))
+                .font(Theme.TypeStyle.metadata).foregroundStyle(.secondary)
+        }
+    }
+
 }
 
 private struct FirstAccountCard: View {
