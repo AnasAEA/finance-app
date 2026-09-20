@@ -4,6 +4,7 @@ import SwiftData
 import SwiftUI
 import FinanceCore
 @testable import FinanceApp
+@testable import struct FinanceApp.DocumentWriter
 
 // MARK: - A current-state export, in the shape a real one has
 
