@@ -80,9 +80,10 @@ enum PendingObservationPresentation {
 
 struct NeedsReviewView: View {
     @Environment(FinanceStore.self) private var store
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        Self.content(store: store)
+        Self.content(store: store, reduceMotion: reduceMotion)
     }
 
     /// One body pass, one attention snapshot. `attentionPresentation` samples
@@ -90,7 +91,7 @@ struct NeedsReviewView: View {
     /// once per section paid for the whole evaluation each time and could
     /// cross the 48h freshness boundary halfway down itself. Taking the store
     /// as a parameter is what lets a test build this exact list.
-    static func content(store: FinanceStore) -> some View {
+    static func content(store: FinanceStore, reduceMotion: Bool = true) -> some View {
         let sections = store.attentionPresentation.activity
         return List {
             if sections.isEmpty {
@@ -179,6 +180,7 @@ struct NeedsReviewView: View {
         .listStyle(.plain)
         .financeList()
         .contentMargins(.bottom, Theme.Metric.floatingTabBarClearance, for: .scrollContent)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: sections.decisions.map(\.id))
         .accessibilityIdentifier(RouteID.activityReviewQueue)
     }
 
@@ -195,7 +197,7 @@ struct NeedsReviewView: View {
         VStack(alignment: .leading, spacing: Theme.Space.sm) {
             if let decision = item.decision {
                 Text(decision).font(Theme.TypeStyle.card)
-                    .foregroundStyle(Theme.Role.accent)
+                    .foregroundStyle(.primary)
                     .fixedSize(horizontal: false, vertical: true)
             }
             ViewThatFits(in: .horizontal) {
@@ -464,18 +466,17 @@ struct TransactionDetailView: View {
         FinancePage {
             FinanceSection {
                 VStack(alignment: .leading, spacing: 5) {
-                    Text(row.title).font(Theme.TypeStyle.screen)
+                    Text(row.title).font(Theme.TypeStyle.editorial)
                         .fixedSize(horizontal: false, vertical: true)
-                    MoneyText(amount: row.amount, size: 44, weight: .bold, showsSign: true)
+                    MoneyText(amount: row.amount, size: 44, weight: .medium, showsSign: true)
                     Text(date.formatted(date: .long, time: .omitted))
                         .font(Theme.TypeStyle.supporting).foregroundStyle(.secondary)
                 }
                 .padding(.vertical, 6)
             }
 
-            FinanceSection("Transaction") {
+            FinanceSection("Details") {
                 LabeledContent("Type", value: row.transactionTypeLabel)
-                LabeledContent("Date", value: date.formatted(date: .long, time: .omitted))
                 if let category = row.categoryLabel {
                     LabeledContent("Category", value: category)
                 }

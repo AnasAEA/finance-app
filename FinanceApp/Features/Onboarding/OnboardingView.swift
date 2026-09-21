@@ -42,21 +42,22 @@ struct OnboardingView: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 10) {
             Image(systemName: "wallet.bifold")
-                .font(.system(.largeTitle, weight: .light))
-                .foregroundStyle(Theme.Role.accent)
-                .frame(width: 72, height: 72)
-                .background(Theme.Surface.inset, in: RoundedRectangle(cornerRadius: Theme.Metric.cardRadius))
+                .font(.system(.title, weight: .light))
+                .foregroundStyle(Theme.Surface.supportingOnHeader)
                 .accessibilityHidden(true)
             Text("Set up your money")
-                .font(.system(.largeTitle, design: .serif, weight: .semibold))
+                .font(.system(.largeTitle, design: .serif, weight: .regular))
+                .foregroundStyle(Theme.Surface.onFinancialHeader)
                 .fixedSize(horizontal: false, vertical: true)
             Text("Know what’s safe. Make room for what matters.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .font(.body)
+                .foregroundStyle(Theme.Surface.supportingOnHeader)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.vertical, Theme.Space.xl)
+        .padding(Theme.Space.xl)
+        .background(Theme.Surface.financialHeader)
+        .padding(.horizontal, -Theme.Metric.screenPadding)
     }
 
     /// What the app is, said once, before either button is pressed.
@@ -135,12 +136,9 @@ private struct OnboardingChoice<Destination: View>: View {
         HStack(alignment: .top, spacing: 14) {
             Image(systemName: systemImage)
                 .font(.title3)
-                .foregroundStyle(isPrimary ? Color.white : Theme.Role.accent)
-                .frame(width: 40, height: 40)
-                .background(
-                    isPrimary ? AnyShapeStyle(Theme.Role.accent) : AnyShapeStyle(Theme.Role.accent.opacity(0.12)),
-                    in: RoundedRectangle(cornerRadius: Theme.Metric.controlRadius, style: .continuous)
-                )
+                .foregroundStyle(Theme.Role.accent)
+                .frame(width: Theme.Metric.minimumTarget, height: Theme.Metric.minimumTarget)
+                .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
                     .font(.headline)
@@ -151,15 +149,15 @@ private struct OnboardingChoice<Destination: View>: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .multilineTextAlignment(.leading)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             Image(systemName: "chevron.right")
                 .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
                 .accessibilityHidden(true)
         }
-        .financeCard()
-        .overlay {
-            RoundedRectangle(cornerRadius: Theme.Metric.cardRadius)
-                .strokeBorder(isPrimary ? Theme.Role.accent.opacity(0.35) : .clear, lineWidth: 1)
-        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, Theme.Space.md)
+        .overlay(alignment: .bottom) { Rectangle().fill(Theme.Surface.separator).frame(height: 1) }
+
     }
 }
 

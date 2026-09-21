@@ -16,16 +16,18 @@ struct MoneyText: View {
     /// by 256,00 €" is a bad number written as a positive one. Wins over
     /// `colorBySign`; nil leaves both off.
     var tint: Color?
+    var design: Font.Design = .rounded
+    var minimumScaleFactor: CGFloat = 0.4
 
     @ScaledMetric(relativeTo: .largeTitle) private var scale: CGFloat = 1
 
     var body: some View {
         Text(amount.formatted(showsSign: showsSign))
-            .font(.money(size * scale, weight: weight))
+            .font(.system(size: size * scale, weight: weight, design: design))
             .monospacedDigit()
             .foregroundStyle(resolvedTint)
             .lineLimit(1)
-            .minimumScaleFactor(0.4)
+            .minimumScaleFactor(minimumScaleFactor)
             .accessibilityLabel(amount.accessibleDescription())
     }
 

@@ -35,6 +35,8 @@ final class VisualExperienceUITests: XCTestCase {
         field.tap()
         field.typeText("3000")
         app.buttons["reserve.save"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["reserve.saved"].waitForExistence(timeout: 5))
+        capture("reserve-saved")
         app.navigationBars.buttons.firstMatch.tap()
         app.tabBars.buttons["tab.home"].tap()
         XCTAssertTrue(app.descendants(matching: .any)["home.safe"].waitForExistence(timeout: 8))

@@ -119,11 +119,12 @@ struct HistoryBrowserView: View {
                             UnifiedHistoryRowView(item: item)
                         }
                         .listRowBackground(Theme.Surface.background)
+                        .listRowInsets(EdgeInsets(top: Theme.Space.xs, leading: Theme.Space.xl, bottom: Theme.Space.xs, trailing: Theme.Space.lg))
                         .accessibilityIdentifier(ActivityID.transaction(item.id))
                     }
                 } header: {
                     Text(group.date.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated).year()))
-                        .font(Theme.TypeStyle.action).foregroundStyle(.primary).textCase(nil)
+                        .font(Theme.TypeStyle.metadata.weight(.semibold)).foregroundStyle(.primary).textCase(nil)
                         .padding(.top, Theme.Space.xs)
                 }
             }
@@ -141,7 +142,7 @@ struct HistoryBrowserView: View {
             }
         }
         .listStyle(.plain)
-        .listSectionSpacing(Theme.Space.sm)
+        .listSectionSpacing(Theme.Space.xs)
         .environment(\.defaultMinListHeaderHeight, 24)
         .financeList()
         .searchable(text: $searchText, prompt: "Search transactions")
@@ -444,7 +445,7 @@ private struct UnifiedHistoryRowView: View {
             : AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: Theme.Space.md))
         layout {
             VStack(alignment: .leading, spacing: Theme.Space.xs) {
-                Text(title).font(Theme.TypeStyle.card)
+                Text(title).font(Theme.TypeStyle.body.weight(.medium))
                     .fixedSize(horizontal: false, vertical: true)
                 Text(subtitle).font(Theme.TypeStyle.metadata).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -458,7 +459,7 @@ private struct UnifiedHistoryRowView: View {
                 }
             }
         }
-        .padding(.vertical, Theme.Space.sm)
+        .padding(.vertical, Theme.Space.xs)
         .accessibilityElement(children: .combine)
     }
 

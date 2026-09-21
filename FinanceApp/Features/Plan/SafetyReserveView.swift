@@ -11,6 +11,9 @@ struct SafetyReserveView: View {
 
     @State private var amountText = ""
     @State private var error: String?
+    @State private var lastSavedText: String?
+    @State private var successfulSaves = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @FocusState private var amountFocused: Bool
 
     var body: some View {
@@ -24,6 +27,7 @@ struct SafetyReserveView: View {
             .navigationTitle("Safety reserve")
             .navigationBarTitleDisplayMode(.inline)
             .accessibilityIdentifier(SafetyReserveID.screen)
+            .sensoryFeedback(.success, trigger: successfulSaves)
             .onAppear { amountText = presentation.snapshot.safetyReserve?.editingText ?? "" }
             .alert("Not saved", isPresented: Binding(
                 get: { error != nil },
@@ -73,9 +77,19 @@ struct SafetyReserveView: View {
                         .accessibilityIdentifier(PlanningControlID.reserveAmount)
                         .onSubmit(save)
                 }
-                Button("Save reserve", action: save)
-                    .disabled(amountText == (snapshot.safetyReserve?.editingText ?? ""))
-                    .accessibilityIdentifier(PlanningControlID.reserveSave)
+                HStack {
+                    Button("Save reserve", action: save)
+                        .disabled(amountText == (snapshot.safetyReserve?.editingText ?? ""))
+                        .accessibilityIdentifier(PlanningControlID.reserveSave)
+                    Spacer()
+                    if lastSavedText == amountText {
+                        Label("Saved", systemImage: "checkmark.circle.fill")
+                            .font(Theme.TypeStyle.supporting).foregroundStyle(Theme.Role.positive)
+                            .accessibilityIdentifier("reserve.saved")
+                            .transition(.opacity)
+                    }
+                }
+                .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: lastSavedText == amountText)
             } header: {
                 Text("Change reserve")
             } footer: {
@@ -137,6 +151,8 @@ struct SafetyReserveView: View {
             }
             amountText = store.snapshot.safetyReserve?.editingText ?? ""
             amountFocused = false
+            lastSavedText = amountText
+            successfulSaves += 1
         } catch let failure as AppManagementError {
             error = failure.message
         } catch {

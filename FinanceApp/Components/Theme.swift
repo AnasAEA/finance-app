@@ -20,7 +20,8 @@ enum Theme {
         static let metadata = Font.caption
         static let action = Font.system(.subheadline, weight: .semibold)
         static let numeric = Font.system(.title3, design: .rounded, weight: .semibold).monospacedDigit()
-        static let heroSize: CGFloat = 52
+        static let heroSize: CGFloat = 56
+        static let editorial = Font.system(.title2, design: .serif, weight: .semibold)
     }
 
     enum Role {
@@ -33,6 +34,10 @@ enum Theme {
     }
 
     enum Surface {
+        // A constant ink field keeps white text and native dark navigation chrome consistent.
+        static let financialHeader = adaptive(0x183C30, dark: 0x183C30)
+        static let onFinancialHeader = Color.white
+        static let supportingOnHeader = Color.white.opacity(0.78)
         static let background = adaptive(0xF6F5F0, dark: 0x131B19)
         static let card = adaptive(0xFFFFFF, dark: 0x202B27)
         static let inset = adaptive(0xEAEDE6, dark: 0x2B3731)
@@ -94,13 +99,14 @@ extension View {
 /// Reading surfaces use a document rhythm, without a box around every fact.
 struct FinancePage<Content: View>: View {
     var spacing: CGFloat = Theme.Space.xl
+    var topInset: CGFloat = Theme.Space.lg
     @ViewBuilder var content: Content
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: spacing) { content }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, Theme.Metric.screenPadding)
-                .padding(.top, Theme.Space.lg)
+                .padding(.top, topInset)
                 .padding(.bottom, Theme.Metric.floatingTabBarClearance)
         }
         .background(Theme.Surface.background)
@@ -189,6 +195,7 @@ enum FinanceTone {
 
 struct StatusSurface<Content: View>: View {
     let tone: FinanceTone
+    var filled = true
     @ViewBuilder var content: Content
     @Environment(\.colorSchemeContrast) private var contrast
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -202,12 +209,15 @@ struct StatusSurface<Content: View>: View {
                 .padding(.top, 2).accessibilityHidden(true)
             content.frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(Theme.Space.lg)
-        .background(tone.color.opacity(contrast == .increased ? 0.14 : 0.07),
+        .padding(.vertical, filled ? Theme.Space.lg : Theme.Space.sm)
+        .padding(.horizontal, filled ? Theme.Space.lg : 0)
+        .background(tone.color.opacity(filled ? (contrast == .increased ? 0.14 : 0.07) : 0),
                     in: RoundedRectangle(cornerRadius: Theme.Metric.controlRadius))
         .overlay(alignment: .leading) {
-            RoundedRectangle(cornerRadius: 2).fill(tone.color).frame(width: 3)
-                .padding(.vertical, Theme.Space.md)
+            if filled {
+                RoundedRectangle(cornerRadius: 2).fill(tone.color).frame(width: 3)
+                    .padding(.vertical, Theme.Space.md)
+            }
         }
     }
 }

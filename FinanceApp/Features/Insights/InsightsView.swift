@@ -536,10 +536,9 @@ private struct InsightsPeriodView: View {
     private var verificationSection: some View {
         if let verification = review.verification {
             FinanceSection {
-                StatusSurface(tone: .verification(verification.verificationState)) {
+                VStack(alignment: .leading, spacing: Theme.Space.md) {
                     VStack(alignment: .leading, spacing: Theme.Space.sm) {
-                        Text(verification.verificationState.headline)
-                            .font(Theme.TypeStyle.screen)
+                        VerificationHeading(state: verification.verificationState, title: verification.verificationState.headline)
                             .accessibilityIdentifier(InsightsID.verification)
                         if let summary = verification.changeSummary {
                             VerificationChangeExplanation(summary: summary)
@@ -554,9 +553,11 @@ private struct InsightsPeriodView: View {
                             .fixedSize(horizontal: false, vertical: true)
                         } else {
                             HStack(spacing: Theme.Space.md) {
-                                Chip(text: "\(verification.decisionCount) decision\(verification.decisionCount == 1 ? "" : "s")", tint: Theme.Role.information)
-                                Chip(text: "\(verification.limitationCount) limitation\(verification.limitationCount == 1 ? "" : "s")", tint: .secondary)
+                                Text("\(verification.decisionCount) decision\(verification.decisionCount == 1 ? "" : "s")")
+                                Text("·").accessibilityHidden(true)
+                                Text("\(verification.limitationCount) limitation\(verification.limitationCount == 1 ? "" : "s")")
                             }
+                            .font(Theme.TypeStyle.supporting).foregroundStyle(.secondary)
                         }
                         Text(verification.totalsStatement)
                             .font(.footnote)
@@ -569,7 +570,7 @@ private struct InsightsPeriodView: View {
                                 refreshGeneration: $refreshGeneration
                             )
                         } label: {
-                            ActionLabel(title: "What's unresolved")
+                            ActionLabel(title: verification.verificationState == .verified ? "View verification" : "What's unresolved")
                         }
                         .buttonStyle(FinancePressStyle())
                         .accessibilityIdentifier(InsightsID.unresolved)
@@ -808,8 +809,10 @@ private struct PeriodVerificationDetailView: View {
         readiness: EndedMonthAcknowledgmentReadinessState?
     ) -> some View {
         FinanceSection {
-            Text(shown.verificationState.headline)
-                .font(Theme.TypeStyle.screen)
+            VerificationHeading(state: shown.verificationState, title: shown.verificationState.headline)
+                .sensoryFeedback(trigger: shown.verificationState) { previous, current in
+                    current == .verified && previous != .verified ? .success : nil
+                }
             if let summary = shown.changeSummary {
                 VerificationChangeExplanation(summary: summary)
             }

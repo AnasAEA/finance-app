@@ -31,6 +31,9 @@ struct HomeView: View {
         }
         .navigationTitle("Home")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(Theme.Surface.financialHeader, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
+        .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
@@ -55,6 +58,7 @@ struct HomeView: View {
 }
 
 private struct HomeDashboard: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(AppNavigation.self) private var navigation
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let snapshot: FinanceAppSnapshot
@@ -62,11 +66,15 @@ private struct HomeDashboard: View {
     let freshness: BankFreshnessEvaluation
 
     var body: some View {
-        FinancePage(spacing: Theme.Space.lg) {
+        FinancePage(spacing: Theme.Space.lg, topInset: 0) {
             VStack(alignment: .leading, spacing: Theme.Space.lg) {
                 if attention.heroIsAvailable { safeToUse(attention) }
+                Rectangle().fill(Theme.Surface.supportingOnHeader.opacity(0.3)).frame(height: 1)
                 cashSection(freshness)
             }
+            .padding(Theme.Space.xl)
+            .background(Theme.Surface.financialHeader)
+            .padding(.horizontal, -Theme.Metric.screenPadding)
             VStack(alignment: .leading, spacing: Theme.Space.sm) {
                 attentionAnswer(attention)
             }
@@ -106,18 +114,22 @@ private struct HomeDashboard: View {
                 HStack(spacing: 6) {
                     Text("Safe to use")
                         .font(Theme.TypeStyle.section)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Surface.supportingOnHeader)
                     Spacer()
                     Image(systemName: "info.circle")
                         .font(.body)
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(Theme.Surface.supportingOnHeader)
                         .accessibilityHidden(true)
                 }
-                MoneyText(amount: snapshot.safeToSpend, size: Theme.TypeStyle.heroSize, weight: .bold)
+                MoneyText(amount: snapshot.safeToSpend, size: Theme.TypeStyle.heroSize,
+                          weight: .regular, tint: Theme.Surface.onFinancialHeader,
+                          design: .serif, minimumScaleFactor: 0.2)
+                    .contentTransition(.opacity)
+                    .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: snapshot.safeToSpend)
                 if !primaryFundingCardIsShowing(attention) {
                     Text(snapshot.safeToSpendReason.explanation)
                         .font(Theme.TypeStyle.supporting)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Surface.supportingOnHeader)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -160,14 +172,14 @@ private struct HomeDashboard: View {
                     : AnyLayout(HStackLayout(spacing: Theme.Space.sm))
                 layout {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Cash").font(.subheadline.weight(.medium))
-                        Text("Accounts").font(.caption).foregroundStyle(.secondary)
+                        Text("Cash").font(.subheadline.weight(.medium)).foregroundStyle(Theme.Surface.onFinancialHeader)
+                        Text("Accounts").font(.caption).foregroundStyle(Theme.Surface.supportingOnHeader)
                     }
                     if !dynamicTypeSize.isAccessibilitySize { Spacer(minLength: Theme.Space.sm) }
-                    MoneyText(amount: snapshot.accountCash, size: 20, weight: .semibold)
+                    MoneyText(amount: snapshot.accountCash, size: 19, weight: .medium, tint: Theme.Surface.onFinancialHeader)
                     if !dynamicTypeSize.isAccessibilitySize {
                         Image(systemName: "chevron.right")
-                            .font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
+                            .font(.caption.weight(.semibold)).foregroundStyle(Theme.Surface.supportingOnHeader)
                             .accessibilityHidden(true)
                     }
                 }
@@ -178,11 +190,11 @@ private struct HomeDashboard: View {
                 .accessibilityAddTraits(.isButton)
             }
             .buttonStyle(FinancePressStyle())
-            .padding(.vertical, Theme.Space.sm)
+            .padding(.vertical, 0)
             .accessibilityIdentifier(RouteID.homeCash)
 
             if let caption = freshness.caption {
-                Text(caption).font(Theme.TypeStyle.metadata).foregroundStyle(.secondary)
+                Text(caption).font(Theme.TypeStyle.metadata).foregroundStyle(Theme.Surface.supportingOnHeader)
                     .accessibilityIdentifier(RouteID.homeSync)
             }
         }
@@ -195,7 +207,7 @@ private struct HomeDashboard: View {
         switch attention.home {
         case let .act(card, reviewCount):
             Button { open(card.destination) } label: {
-                StatusSurface(tone: attentionTone(card)) {
+                StatusSurface(tone: attentionTone(card), filled: false) {
                     VStack(alignment: .leading, spacing: Theme.Space.sm) {
                         Text(attentionLabel(card)).font(.eyebrow).foregroundStyle(attentionTone(card).color)
                         Text(card.title).font(Theme.TypeStyle.card).fixedSize(horizontal: false, vertical: true)
@@ -333,15 +345,21 @@ private struct HomeDashboard: View {
     private func weekAhead(_ attention: AttentionPresentation) -> some View {
         if let week = WeekAheadSummary.make(from: snapshot, isAvailable: attention.heroIsAvailable) {
             VStack(alignment: .leading, spacing: 6) {
-                LedgerRow(
-                    label: WeekAheadSummary.title,
-                    value: week.low,
-                    caption: week.dayText,
-                    emphasis: true,
-                    // Calm unless the pool is actually projected below zero.
-                    // A balance that merely falls is not a warning.
-                    valueTint: week.low.isNegative ? Theme.Role.negative : nil
-                )
+                Text(WeekAheadSummary.title)
+                    .font(Theme.TypeStyle.supporting).foregroundStyle(.secondary)
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .firstTextBaseline, spacing: Theme.Space.md) {
+                        MoneyText(amount: week.low, size: 28, weight: .medium,
+                                  tint: week.low.isNegative ? Theme.Role.negative : nil)
+                        Spacer(minLength: Theme.Space.sm)
+                        Text(week.dayText).font(Theme.TypeStyle.metadata).foregroundStyle(.secondary)
+                    }
+                    VStack(alignment: .leading, spacing: Theme.Space.xs) {
+                        MoneyText(amount: week.low, size: 28, weight: .medium,
+                                  tint: week.low.isNegative ? Theme.Role.negative : nil)
+                        Text(week.dayText).font(Theme.TypeStyle.metadata).foregroundStyle(.secondary)
+                    }
+                }
                 ForEach(week.notes, id: \.self) { note in
                     Text(note.sentence)
                         .font(.caption)

@@ -27,50 +27,36 @@ struct PlanView: View {
         _ snapshot: FinanceAppSnapshot,
         status: PlanStatusPresentation
     ) -> some View {
-        FinancePage {
+        FinancePage(spacing: Theme.Space.lg) {
             planStatus(status)
 
             FinanceSection("Spending policy") {
                 if Theme.Layout.planHubStacksValueBelowTitle(dynamicTypeSize) {
                     VStack(spacing: Theme.Space.md) {
                         policyTile(snapshot, budget: true)
+                        Divider()
                         policyTile(snapshot, budget: false)
                     }
                 } else {
-                    HStack(alignment: .top, spacing: Theme.Space.md) {
+                    HStack(alignment: .top, spacing: Theme.Space.lg) {
                         policyTile(snapshot, budget: true)
+                        Rectangle().fill(Theme.Surface.separator).frame(width: 1)
                         policyTile(snapshot, budget: false)
                     }
+                    .fixedSize(horizontal: false, vertical: true)
                 }
-            }
-
-            FinanceSection("Commitments") {
-                NavigationLink(value: PlanRoute.upcoming) {
-                    VStack(alignment: .leading, spacing: Theme.Space.sm) {
-                        ActionLabel(title: "Upcoming")
-                        Text(Self.upcomingDetail(snapshot))
-                            .font(Theme.TypeStyle.supporting).foregroundStyle(.secondary)
-                        if let value = Self.matchingValue(snapshot) {
-                            Chip(text: value, tint: Theme.Role.information)
-                        }
-                    }
-                }
-                .buttonStyle(FinancePressStyle())
-                .accessibilityIdentifier(RouteID.planUpcoming)
             }
 
             Divider()
-            NavigationLink(value: PlanRoute.goals) {
-                VStack(alignment: .leading, spacing: Theme.Space.sm) {
-                    ActionLabel(title: "Goals & Set Aside")
-                    Text(PlanningTotals.setAside(from: snapshot).formatted())
-                        .font(Theme.TypeStyle.numeric).foregroundStyle(.primary)
-                    Text(Self.goalsDetail(snapshot))
-                        .font(Theme.TypeStyle.supporting).foregroundStyle(.secondary)
-                }
+            let workspaceLayout = dynamicTypeSize.isAccessibilitySize
+                ? AnyLayout(VStackLayout(alignment: .leading, spacing: Theme.Space.xl))
+                : AnyLayout(HStackLayout(alignment: .top, spacing: Theme.Space.xl))
+            workspaceLayout {
+                commitments(snapshot)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                protectedMoney(snapshot)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .buttonStyle(FinancePressStyle())
-            .accessibilityIdentifier(RouteID.planGoals)
 
             NavigationLink(value: PlanRoute.affordability) {
                 VStack(alignment: .leading, spacing: Theme.Space.xs) {
@@ -78,13 +64,45 @@ struct PlanView: View {
                     Text("Try a purchase against your plan.")
                         .font(Theme.TypeStyle.supporting).foregroundStyle(.secondary)
                 }
-                .financeCard()
+                .padding(.top, Theme.Space.sm)
+                .overlay(alignment: .top) { Rectangle().fill(Theme.Surface.separator).frame(height: 1) }
             }
             .buttonStyle(FinancePressStyle())
             .accessibilityIdentifier(RouteID.planAfford)
         }
         .navigationTitle("Plan")
         .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private func commitments(_ snapshot: FinanceAppSnapshot) -> some View {
+        FinanceSection("Commitments") {
+            NavigationLink(value: PlanRoute.upcoming) {
+                VStack(alignment: .leading, spacing: Theme.Space.sm) {
+                    ActionLabel(title: "Upcoming")
+                    Text(Self.upcomingDetail(snapshot))
+                        .font(Theme.TypeStyle.supporting).foregroundStyle(.secondary)
+                    if let value = Self.matchingValue(snapshot) {
+                        Chip(text: value, tint: Theme.Role.information)
+                    }
+                }
+            }
+            .buttonStyle(FinancePressStyle())
+            .accessibilityIdentifier(RouteID.planUpcoming)
+        }
+    }
+
+    private func protectedMoney(_ snapshot: FinanceAppSnapshot) -> some View {
+        NavigationLink(value: PlanRoute.goals) {
+            VStack(alignment: .leading, spacing: Theme.Space.sm) {
+                ActionLabel(title: "Goals & Set Aside")
+                Text(PlanningTotals.setAside(from: snapshot).formatted())
+                    .font(Theme.TypeStyle.numeric).foregroundStyle(.primary)
+                Text(Self.goalsDetail(snapshot))
+                    .font(Theme.TypeStyle.supporting).foregroundStyle(.secondary)
+            }
+        }
+        .buttonStyle(FinancePressStyle())
+        .accessibilityIdentifier(RouteID.planGoals)
     }
 
     private func policyTile(_ snapshot: FinanceAppSnapshot, budget: Bool) -> some View {
@@ -105,7 +123,6 @@ struct PlanView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .financeCard()
             .foregroundStyle(.primary)
         }
         .buttonStyle(FinancePressStyle())
@@ -142,11 +159,11 @@ struct PlanView: View {
         _ status: PlanStatusPresentation,
         actionTitle: String?
     ) -> some View {
-        StatusSurface(tone: .plan(status.kind)) {
+        StatusSurface(tone: .plan(status.kind), filled: false) {
             VStack(alignment: .leading, spacing: Theme.Space.sm) {
                 Text(PlanStatusPresentation.eyebrow).font(.eyebrow)
                     .foregroundStyle(FinanceTone.plan(status.kind).color)
-                Text(status.headline).font(Theme.TypeStyle.screen)
+                Text(status.headline).font(Theme.TypeStyle.editorial)
                     .fixedSize(horizontal: false, vertical: true)
                 if let detail = status.detail {
                     Text(detail).font(Theme.TypeStyle.supporting).foregroundStyle(.secondary)
