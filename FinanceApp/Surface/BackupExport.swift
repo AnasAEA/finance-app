@@ -125,6 +125,7 @@ struct BackupSummary: Hashable, Sendable {
     /// that implied otherwise would be the most expensive kind of wrong.
     static let fullRecoveryExclusions = [
         "Bank pairing and device keys. Pair this device again after recovery.",
+        "Bank sync endpoint settings, transport cursors and retry queues.",
         "Trusted Automation restarts switched off."
     ]
 

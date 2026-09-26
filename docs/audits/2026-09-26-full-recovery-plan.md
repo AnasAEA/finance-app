@@ -68,3 +68,12 @@ at 1k/10k/50k rows and physical file-protection attributes remain follow-up work
 - FinanceCore: 816 tests executed, two existing skips, zero failures.
 - Repository safety passed for 351 tracked paths. Simulator Release and signed
   iPhone Release bundle gates passed with no private fixtures or credentials.
+
+Post-merge automated review identified two compatibility cases. Pending-provider
+keys now must be canonical before they can reach a keyed dictionary; case aliases
+are refused before staging. Future checkpoint formats retain opaque payloads and
+digests, with supported-format checks owned by the existing repository. Recovery
+screens explicitly exclude endpoint settings, transport cursors and retry queues.
+Regression coverage exercises both the provider-alias refusal and an exact
+future-format export/restore/re-export. All 1,144 app/integration tests and
+the 816-test Core gate passed after these corrections (two existing Core skips).

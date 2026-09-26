@@ -267,4 +267,40 @@ struct FullRecoveryTests {
         try assertEmpty(container)
     }
 
+    @Test func noncanonicalPendingProviderKeysRefuseBeforeStaging() throws {
+        let backup = try source().store.exportBackup()
+        for keys in [["BNP"], ["BNP", "bnp"]] {
+            let data = try changing(backup) { recovery in
+                for key in keys {
+                    recovery.pendingSnapshots[key] = AuthoritativePendingSnapshot(
+                        authoritativeAt: CheckpointFixtures.closedAt, observationIDs: [])
+                }
+            }
+            let (container, store) = try empty()
+            #expect(throws: AppImportError.invalidBackupMetadata) { _ = try store.prepareImport(from: data) }
+            try assertEmpty(container)
+            #expect(throws: AppImportError.noDocumentStaged) { _ = try store.confirmImport() }
+        }
+    }
+
+    @Test func futureCheckpointPayloadsRemainOpaqueAcrossRecovery() throws {
+        let h = try source()
+        let revisions = try h.container.mainContext.fetch(FetchDescriptor<StoredPeriodCheckpointRevision>())
+        for row in revisions {
+            row.projectionFormatToken = "synthetic-future-format"
+            row.canonicalProjection = Data()
+            row.projectionDigest = Data([1, 2, 3])
+        }
+        try h.container.mainContext.save()
+        #expect(h.store.checkpoints.occupancy() == .holdsCheckpointHistory)
+        let backup = try h.store.exportBackup()
+        let (container, restored) = try empty()
+        _ = try restored.prepareImport(from: backup.data)
+        _ = try restored.confirmImport()
+        #expect(restored.checkpoints.occupancy() == .holdsCheckpointHistory)
+        #expect(try restored.exportBackup().data == backup.data)
+        let rows = try container.mainContext.fetch(FetchDescriptor<StoredPeriodCheckpointRevision>())
+        #expect(rows.count == 2 && rows.allSatisfy { $0.canonicalProjection.isEmpty && $0.projectionDigest == Data([1, 2, 3]) })
+    }
+
 }
