@@ -1,0 +1,23 @@
+name: Feature request
+description: Suggest an improvement to the app or developer workflow.
+title: "[Feature] "
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: What needs to be easier?
+      description: Describe the task and the friction you encounter. Use synthetic examples.
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+      description: Explain how the improvement would help and what successful behavior looks like.
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Optional design ideas or alternatives. Do not include personal financial data.

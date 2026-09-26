@@ -1,0 +1,34 @@
+name: Bug report
+description: Report a reproducible problem using synthetic data.
+title: "[Bug] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use synthetic data. Do not attach bank exports, databases, real financial screenshots, account identifiers, pairing codes, credentials, or private endpoints.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Expected and actual behavior
+      description: Describe what you expected and what happened.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Include a small synthetic example and the screen or action involved.
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: App commit or build, device family or simulator, and iOS version.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Additional context
+      description: Optional synthetic screenshots or sanitized error messages.

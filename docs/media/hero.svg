@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="320" viewBox="0 0 1200 320" role="img" aria-labelledby="title description">
+<title id="title">FinanceApp — personal finance, with a clearer view.</title>
+<desc id="description">Forest green and warm paper header matching the application theme. Native iOS, local first, explicit financial decisions.</desc>
+<rect width="1200" height="320" rx="24" fill="#183C30"/>
+<path d="M940 0H1176Q1200 0 1200 24V296Q1200 320 1176 320H1020Z" fill="#245C4D"/>
+<text x="64" y="64" font-family="Arial, sans-serif" font-size="15" font-weight="700" letter-spacing="3" fill="#9CD3BE">NATIVE iOS · LOCAL FIRST</text>
+<text x="60" y="144" font-family="Georgia, serif" font-size="64" fill="#F6F5F0">FinanceApp</text>
+<text x="64" y="198" font-family="Arial, sans-serif" font-size="25" fill="#F6F5F0">Personal finance, with a clearer view.</text>
+<text x="64" y="263" font-family="Arial, sans-serif" font-size="18" fill="#C5D7CD">Understand your cash. Review your activity. Plan ahead.</text>
+<g transform="translate(980 94)" fill="none" stroke="#9CD3BE" stroke-width="3">
+<rect width="136" height="136" rx="30"/>
+<path d="M30 96V72M56 96V56M82 96V42M108 96V26" stroke-width="8" stroke-linecap="round"/>
+<path d="M25 112H111"/>
+</g>
+</svg>
