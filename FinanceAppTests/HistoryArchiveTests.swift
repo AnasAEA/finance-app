@@ -167,6 +167,9 @@ struct HistoryArchiveTests {
 
         let surfacedEuro = try #require(page.transactions.first { $0.id == "whole-euro" })
         #expect(surfacedEuro.amount.fractionDigits == 0)
+        let currencies = try HistoryArchiveQueries(context: context).filterCatalog().currencies
+        #expect(currencies.first { $0.id == "XAA" }?.fractionDigits == 5)
+        #expect(currencies.first { $0.id == "EUR" }?.fractionDigits == 0)
         // The EUR-denominated companion fields stay fixed scale 2 even though
         // the original amount beside them is EUR/0.
         #expect(surfacedEuro.personalAmount?.fractionDigits == 2)
@@ -321,6 +324,7 @@ struct HistoryArchiveTests {
         query.minimumAmountMinor = 2_000
         query.maximumAmountMinor = 10_000
         query.currencies = ["EUR"]
+        query.amountFractionDigits = 2
         query.sourceIDs = ["paypal"]
         query.statuses = ["booked"]
         query.provenanceValues = ["canonical"]
@@ -348,6 +352,11 @@ struct HistoryArchiveTests {
         query.sort = .oldestFirst
         #expect(try queries.page(matching: query).transactions.map(\.id) == ["oldest", "middle", "newest"])
         query.sort = .amountHighToLow
+        #expect(throws: HistoryArchiveQueryError.amountCurrencyRequired) {
+            try queries.page(matching: query)
+        }
+        query.currencies = ["EUR"]
+        query.amountFractionDigits = 2
         #expect(try queries.page(matching: query).transactions.map(\.id) == ["oldest", "middle", "newest"])
         #expect(try context.fetchCount(FetchDescriptor<StoredHistoricalTransaction>()) == 3)
     }

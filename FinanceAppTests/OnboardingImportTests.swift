@@ -305,6 +305,22 @@ struct FirstLaunchTests {
 @Suite("Import current state")
 struct ImportCurrentStateTests {
 
+    @Test("Operational import refuses the unrepresentable signed magnitude")
+    func minimumIntegerAmountIsRefusedBeforePreview() throws {
+        var candidate = CurrentStateExport.document()
+        let original = candidate.balances[0]
+        candidate.balances[0] = AccountBalance(
+            accountID: original.accountID, balance: Money(minorUnits: .min, currency: .eur),
+            asOf: original.asOf, status: original.status
+        )
+        #expect(throws: AppImportError.inconsistentDocument(.unrepresentableAmount)) {
+            try DocumentImporter.semanticValidate(candidate)
+        }
+        #expect(throws: PersistenceMappingError.unrepresentableOperationalMoney) {
+            try StoredDocumentGraph.validate(candidate)
+        }
+    }
+
     @Test("A valid export imports, and survives reopening the store")
     func validDocumentImports() throws {
         let harness = try CurrentStateExport.harness()

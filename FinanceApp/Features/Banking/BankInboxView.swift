@@ -238,6 +238,7 @@ struct ObservationReviewView: View {
     @State private var pendingExpenseLabel: String?
     @State private var pendingRelatedObservationID: String?
     @State private var pendingExpectedPaymentID: String?
+    @State private var expenseDraft: ExpenseReviewDraft?
 
     /// One live read per composition: the observation, the related evidence it
     /// names and the counterpart accounts must all describe one civil day.
@@ -339,28 +340,6 @@ struct ObservationReviewView: View {
                         }
                     }
 
-                    FinanceSection("Provider evidence") {
-                        LabeledContent("Provider account", value: "\(item.providerName) · \(item.providerAccountName)")
-                        LabeledContent("Status", value: item.status.displayName)
-                        if let merchant = item.observedMerchant {
-                            LabeledContent("Observed merchant", value: merchant)
-                        }
-                        if let code = item.bankTransactionCode {
-                            LabeledContent("Transaction code", value: code)
-                        }
-                        if let email = item.merchantEmail {
-                            LabeledContent("Merchant email", value: email)
-                        }
-                        if let raw = item.rawMerchantText, raw != item.observedMerchant {
-                            evidenceText("Raw provider text", raw)
-                        }
-                        if let remittance = item.remittance, remittance != item.rawMerchantText {
-                            evidenceText("Remittance", remittance)
-                        }
-                    }
-
-                    dates(item)
-
                     if item.resolution == .unreviewed {
                         actions(
                             item, snapshot,
@@ -375,6 +354,32 @@ struct ObservationReviewView: View {
                             Text("The provider evidence remains unchanged and available here after review.")
                         }
                     }
+
+                    DisclosureGroup("Bank details") {
+                        FinanceSection("Provider evidence") {
+                            LabeledContent("Provider account", value: "\(item.providerName) · \(item.providerAccountName)")
+                            LabeledContent("Status", value: item.status.displayName)
+                            if let merchant = item.observedMerchant {
+                                LabeledContent("Observed merchant", value: merchant)
+                            }
+                            if let code = item.bankTransactionCode {
+                                LabeledContent("Transaction code", value: code)
+                            }
+                            if let email = item.merchantEmail {
+                                LabeledContent("Merchant email", value: email)
+                            }
+                            if let raw = item.rawMerchantText, raw != item.observedMerchant {
+                                evidenceText("Raw provider text", raw)
+                            }
+                            if let remittance = item.remittance, remittance != item.rawMerchantText {
+                                evidenceText("Remittance", remittance)
+                            }
+                        }
+
+                        dates(item)
+
+                    }
+
                 }
             } else {
                 ContentUnavailableView("Item unavailable", systemImage: "exclamationmark.triangle")
@@ -383,6 +388,12 @@ struct ObservationReviewView: View {
         .financeList()
         .navigationTitle("Review activity")
         .navigationBarTitleDisplayMode(.inline)
+        .sheet(item: $expenseDraft) { draft in
+            NavigationStack {
+                ExpenseCategorizationView(draft: draft)
+                    .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { expenseDraft = nil } } }
+            }
+        }
         .alert("Couldn’t save review", isPresented: Binding(
             get: { failure != nil }, set: { if !$0 { failure = nil } }
         )) {
@@ -411,15 +422,9 @@ struct ObservationReviewView: View {
                 pendingExpenseLabel = nil
                 pendingRelatedObservationID = nil
                 pendingExpectedPaymentID = nil
-                act {
-                    try store.createExpense(
-                        from: item.id,
-                        userLabel: label,
-                        including: related,
-                        settlingExpectedPaymentID: expected,
-                        allowingPotentialDuplicate: true
-                    )
-                }
+                expenseDraft = ExpenseReviewDraft(observationID: item.id, label: label,
+                                                 relatedObservationID: related, expectedPaymentID: expected,
+                                                 allowingPotentialDuplicate: true)
             }
             .accessibilityIdentifier("review.createExpenseAnyway")
             Button("Cancel", role: .cancel) {
@@ -460,19 +465,43 @@ struct ObservationReviewView: View {
     ) -> some View {
         FinanceSection {
             if !existingMatches.isEmpty {
-                Menu {
+                VStack(alignment: .leading, spacing: Theme.Space.md) {
+                    Text("Possibly already recorded").font(Theme.TypeStyle.section)
                     ForEach(existingMatches) { suggestion in
                         if let transactionID = suggestion.targetTransactionID {
-                            Button(activityTitle(snapshot, transactionID)) {
+                            Button("Link to \(activityTitle(snapshot, transactionID))") {
                                 act { try store.matchObservation(item.id, toTransaction: transactionID) }
+                            }
+                            .accessibilityIdentifier("review.matchExisting")
+                            if let recorded = snapshot.activity.first(where: { day in day.rows.contains { $0.id == transactionID } }),
+                               let row = recorded.rows.first(where: { $0.id == transactionID }) {
+                                HStack {
+                                    Text(recorded.date.formatted(.dateTime.day().month(.abbreviated).year()))
+                                    Spacer()
+                                    MoneyText(amount: row.amount, size: 16, showsSign: true)
+                                }
+                                .font(Theme.TypeStyle.metadata).foregroundStyle(.secondary)
+                                if let account = row.primaryAccountLabel {
+                                    Text(account).font(Theme.TypeStyle.metadata).foregroundStyle(.secondary)
+                                }
+                            }
+                            if let explanation = suggestion.explanation {
+                                Text(explanation).font(Theme.TypeStyle.metadata).foregroundStyle(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
                             }
                         }
                     }
-                } label: {
-                    Label("Match Existing", systemImage: "link")
+                    Text("Tap the recorded payment only if this is the same payment.")
+                        .font(Theme.TypeStyle.metadata).foregroundStyle(.secondary)
                 }
-                .accessibilityIdentifier("review.matchExisting")
             }
+
+            NavigationLink {
+                RecordedPaymentLookupView(observationID: item.id)
+            } label: {
+                Label("Find a recorded payment", systemImage: "magnifyingglass")
+            }
+            .accessibilityIdentifier("review.findRecordedPayment")
 
             if let crossProviderMatch,
                let related = crossProviderMatch.relatedObservationID,
@@ -618,14 +647,9 @@ struct ObservationReviewView: View {
             pendingExpenseLabel = userLabel
             return
         }
-        act {
-            try store.createExpense(
-                from: item.id,
-                userLabel: userLabel,
-                including: relatedObservationID,
-                settlingExpectedPaymentID: settlingExpectedPaymentID
-            )
-        }
+        expenseDraft = ExpenseReviewDraft(observationID: item.id, label: userLabel,
+                                         relatedObservationID: relatedObservationID,
+                                         expectedPaymentID: settlingExpectedPaymentID)
     }
 
     private func act(_ work: () throws -> Void) {
@@ -644,6 +668,14 @@ struct TrustedRulesView: View {
 
     private func content(_ rules: [TrustedRuleSummary]) -> some View {
         List {
+            Section {
+                NavigationLink { AutomationView() } label: {
+                    LabeledContent("Approved-rule automation", value: store.trustedAutomationEnabled ? "On" : "Off")
+                }
+                .listRowBackground(Theme.Surface.background)
+            } footer: {
+                Text("Automatic handling needs both an approved rule and this setting. Existing payments still wait for your confirmation.")
+            }
             if rules.isEmpty {
                 ContentUnavailableView(
                     "No trusted rules",

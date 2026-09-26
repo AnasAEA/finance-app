@@ -121,6 +121,7 @@ struct FinanceAppSnapshot: Hashable, Sendable {
     /// Provider observations awaiting a decision, followed by recent resolved
     /// evidence for audit. No item here is an economic transaction by itself.
     var syncedObservations: [SyncedObservationItem] = []
+    var bankHistory: [BankHistoryItem] = []
     var providerAccountBindings: [ProviderAccountBinding] = []
     var providerBalanceStatuses: [ProviderBalanceStatus] = []
     var trustedRules: [TrustedRuleSummary] = []
@@ -240,6 +241,7 @@ extension FinanceAppSnapshot {
     func withBanking(_ banking: DomainMapper.BankingSurface) -> FinanceAppSnapshot {
         var copy = self
         copy.syncedObservations = banking.observations
+        copy.bankHistory = banking.history
         copy.providerAccountBindings = banking.bindings
         copy.providerBalanceStatuses = banking.balances
         copy.trustedRules = banking.trustedRules

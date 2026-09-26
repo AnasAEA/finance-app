@@ -53,15 +53,6 @@ struct BankSyncView: View {
         }
         .financeList()
         .navigationTitle("Banks & Sync")
-        .task {
-            // Read what the service already holds, so the account list is
-            // there to map straight away. This asks the backend for its own
-            // records only; it does not make the banks do anything, which is
-            // what "Sync Now" is for.
-            if store.pairingState == .paired && store.snapshot.mappableRemoteAccounts.isEmpty {
-                await store.refreshFromService()
-            }
-        }
         .sheet(isPresented: $isPairing) { PairDeviceSheet() }
         .sheet(item: $mappingTarget) { account in
             MapAccountSheet(remote: account)
@@ -122,12 +113,40 @@ struct BankSyncView: View {
                 Task { await store.syncNow() }
             } label: {
                 HStack {
-                    Label("Sync Now", systemImage: "arrow.clockwise")
+                    Label(store.bankSyncActivity.isSyncing
+                          ? (allBanksChecked ? "Saving activity…" : "Checking banks…") : "Sync Now",
+                          systemImage: "arrow.clockwise")
                     Spacer()
                     if store.bankSyncActivity.isSyncing { ProgressView() }
                 }
             }
             .disabled(store.bankSyncActivity.isSyncing)
+
+            if !store.bankSyncRuns.isEmpty {
+                let completed = store.bankSyncRuns.filter { $0.state == "finished" || $0.state == nil }.count
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text(store.bankSyncActivity.isSyncing
+                             ? (allBanksChecked ? "Saving bank activity" : "Checking your banks")
+                             : "Latest bank check")
+                            .font(.subheadline.weight(.semibold))
+                        Spacer()
+                        Text("\(completed) of \(store.bankSyncRuns.count)")
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                    }
+                    ProgressView(value: Double(completed), total: Double(store.bankSyncRuns.count))
+                        .tint(hasBankWarning ? Theme.Role.caution : Theme.Role.accent)
+                        .accessibilityLabel("Banks checked")
+                        .accessibilityValue("\(completed) of \(store.bankSyncRuns.count)")
+                }
+                .padding(.vertical, 4)
+                .accessibilityIdentifier("bank.sync.progress")
+
+                ForEach(store.bankSyncRuns, id: \.provider) { run in
+                    BankProviderSyncRow(run: run)
+                }
+            }
 
             switch store.bankSyncActivity {
             case let .succeeded(at):
@@ -139,7 +158,9 @@ struct BankSyncView: View {
                     .foregroundStyle(Theme.Role.caution)
                     .font(.callout)
             case .syncing:
-                Text("Asking your banks for new activity…")
+                Text(allBanksChecked
+                     ? "Saving new bank activity on this device…"
+                     : "New bank activity will appear after the check finishes. You can leave this screen while it runs.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             case .idle:
@@ -149,6 +170,19 @@ struct BankSyncView: View {
             Text(store.trustedAutomationEnabled
                  ? "Syncing saves bank evidence first. Trusted Automation may then handle only newly eligible activity covered by an explicitly approved safe expense rule."
                  : "Syncing brings in bank evidence only. Nothing becomes spending or income until you review it in To Review.")
+        }
+    }
+
+    private var allBanksChecked: Bool {
+        !store.bankSyncRuns.isEmpty && store.bankSyncRuns.allSatisfy {
+            $0.state == "finished" || $0.state == nil
+        }
+    }
+
+    private var hasBankWarning: Bool {
+        store.bankSyncRuns.contains { run in
+            run.state == "finished" && run.outcome != "success" &&
+                run.outcome != "skipped_no_connection"
         }
     }
 
@@ -242,13 +276,63 @@ struct BankSyncView: View {
     private var deviceSection: some View {
         Section {
             Button(role: .destructive) {
-                store.unpairDevice()
+                do { try store.unpairDevice() }
+                catch { failure = "The device could not be disconnected. Try again." }
             } label: {
                 Label("Disconnect this device", systemImage: "minus.circle")
             }
         } footer: {
             Text("Disconnecting removes this device's sync key. Your accounts, transactions and reviewed items stay on this device.")
         }
+    }
+}
+
+private struct BankProviderSyncRow: View {
+    let run: MobileSyncRun
+
+    private var name: String {
+        switch run.provider {
+        case "bnp": "BNP"
+        case "paypal": "PayPal"
+        case "revolut": "Revolut"
+        default: "Bank"
+        }
+    }
+
+    private var status: String {
+        if run.state == "queued" { return "Waiting" }
+        if run.state == "running" { return "Checking…" }
+        switch run.outcome {
+        case "success": return "Up to date"
+        case "skipped_no_connection": return "Not connected"
+        case "skipped_rate_limited": return "Rate limited"
+        case "skipped_reauth_required": return "Reconnect bank"
+        case "skipped_in_progress": return "Already checking"
+        default: return "Couldn’t check"
+        }
+    }
+
+    private var needsAttention: Bool {
+        run.state == "finished" &&
+            run.outcome != "success" && run.outcome != "skipped_no_connection"
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: run.state == "finished"
+                  ? (needsAttention ? "exclamationmark.circle.fill" : "checkmark.circle.fill")
+                  : "circle.dotted")
+                .foregroundStyle(needsAttention ? Theme.Role.caution
+                                 : run.state == "finished" ? Theme.Role.positive : Theme.Role.accent)
+                .accessibilityHidden(true)
+            Text(name).font(.body.weight(.medium))
+            Spacer()
+            Text(status).font(.subheadline)
+                .foregroundStyle(needsAttention ? Theme.Role.caution : .secondary)
+            if run.state == "running" { ProgressView().controlSize(.small) }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("bank.sync.provider.\(run.provider)")
     }
 }
 
@@ -278,6 +362,7 @@ struct PairDeviceSheet: View {
                             // Dismiss on success, before anything slower runs.
                             if await store.pairDevice(code: code, label: deviceLabel) {
                                 dismiss()
+                                await store.refreshFromService()
                             }
                         }
                     } label: {

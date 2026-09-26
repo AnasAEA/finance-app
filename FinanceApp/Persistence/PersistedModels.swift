@@ -34,6 +34,8 @@ enum PersistenceMappingError: Error, Equatable, CustomStringConvertible {
     /// per account, so a second would silently replace the first.
     case duplicateAccountBalance(accountID: String)
     case duplicateAccountIdentifier(id: String)
+    case duplicateTransactionIdentifier(id: String)
+    case missingDocumentRoot
     /// A reconciliation that breaks one of the settlement invariants — an
     /// occurrence settled twice, one actual spent on two occurrences, a link
     /// to something that is not there. Never repaired by dropping the row:
@@ -42,6 +44,7 @@ enum PersistenceMappingError: Error, Equatable, CustomStringConvertible {
     case invalidReconciliation(String)
     case invalidExternalEvidence(String)
     case invalidPlanning(String)
+    case unrepresentableOperationalMoney
 
     var description: String {
         switch self {
@@ -57,9 +60,13 @@ enum PersistenceMappingError: Error, Equatable, CustomStringConvertible {
             "document schema \(found) is not supported (supported: \(supported.joined(separator: ", ")))"
         case let .duplicateAccountBalance(accountID): "more than one current balance for account '\(accountID)'"
         case let .duplicateAccountIdentifier(id): "more than one account with identifier '\(id)'"
+        case let .duplicateTransactionIdentifier(id): "more than one transaction with identifier '\(id)'"
+        case .missingDocumentRoot: "the operational document root is missing"
         case let .invalidReconciliation(reason): "reconciliation is not valid: \(reason)"
         case let .invalidExternalEvidence(reason): "external evidence is not valid: \(reason)"
         case let .invalidPlanning(reason): "planning is not valid: \(reason)"
+        case .unrepresentableOperationalMoney:
+            "an amount cannot be safely used in operational calculations"
         }
     }
 }
@@ -728,13 +735,21 @@ final class StoredEntryPreferences {
     /// 0 = unknown legacy cache (do not reconstruct). 1+ = immutable-anchor
     /// current-holdings model. Lightweight default keeps old stores readable.
     var currentHoldingsModelVersion: Int = 0
+    /// Opaque booked keyset checkpoint. This is app-local transport state,
+    /// outside the financial document and its exports.
+    var bankEvidenceCursor: String? = nil
+    var bankEvidenceCursorBindingIDs: [String] = []
+    var bankEvidenceCursorDeviceID: String? = nil
 
     init(
         lastExpenseAccountIdentifier: String?,
         lastIncomeAccountIdentifier: String?,
         trustedAutomationEnabled: Bool = false,
         trustedAutomationRetryObservationIdentifiers: [String] = [],
-        currentHoldingsModelVersion: Int = 0
+        currentHoldingsModelVersion: Int = 0,
+        bankEvidenceCursor: String? = nil,
+        bankEvidenceCursorBindingIDs: [String] = [],
+        bankEvidenceCursorDeviceID: String? = nil
     ) {
         self.lastExpenseAccountIdentifier = lastExpenseAccountIdentifier
         self.lastIncomeAccountIdentifier = lastIncomeAccountIdentifier
@@ -742,6 +757,9 @@ final class StoredEntryPreferences {
         self.trustedAutomationRetryObservationIdentifiers =
             trustedAutomationRetryObservationIdentifiers
         self.currentHoldingsModelVersion = currentHoldingsModelVersion
+        self.bankEvidenceCursor = bankEvidenceCursor
+        self.bankEvidenceCursorBindingIDs = bankEvidenceCursorBindingIDs
+        self.bankEvidenceCursorDeviceID = bankEvidenceCursorDeviceID
     }
 }
 
@@ -758,6 +776,9 @@ struct AppPersistenceMetadata: Hashable, Sendable {
     /// coverage for that account, which fails review coverage closed.
     var authoritativeLiveCoverage: [String: AuthoritativeLiveCoverage] = [:]
     var currentHoldingsModelVersion = 0
+    var bankEvidenceCursor: String? = nil
+    var bankEvidenceCursorBindingIDs: [String] = []
+    var bankEvidenceCursorDeviceID: String? = nil
 
     static let empty = AppPersistenceMetadata()
 }
@@ -2063,7 +2084,10 @@ enum StoredDocumentGraph {
                 coverageRows.compactMap(\.asDomain).map { ($0.remoteOpaqueAccountID, $0) },
                 uniquingKeysWith: { first, _ in first }
             ),
-            currentHoldingsModelVersion: preferences?.currentHoldingsModelVersion ?? 0
+            currentHoldingsModelVersion: preferences?.currentHoldingsModelVersion ?? 0,
+            bankEvidenceCursor: preferences?.bankEvidenceCursor,
+            bankEvidenceCursorBindingIDs: preferences?.bankEvidenceCursorBindingIDs ?? [],
+            bankEvidenceCursorDeviceID: preferences?.bankEvidenceCursorDeviceID
         )
     }
 
@@ -2151,7 +2175,7 @@ enum StoredDocumentGraph {
         .sorted { $0.documentSequence < $1.documentSequence }
         .map(\.asDomain)
 
-        return FinanceDocument(
+        let loaded = FinanceDocument(
             schemaVersion: meta.schemaVersion,
             documentKind: meta.documentKind,
             note: meta.note,
@@ -2183,16 +2207,170 @@ enum StoredDocumentGraph {
             trustedRuleAuditEvents: trustedRuleAuditEvents,
             trustedRuleObservationSuppressions: trustedRuleObservationSuppressions
         )
+        guard !containsUnrepresentableOperationalMoney(loaded) else {
+            throw PersistenceMappingError.unrepresentableOperationalMoney
+        }
+        return loaded
+    }
+
+    /// Full interchange export restores cold provisional evidence without
+    /// loading it into the operational document on every app launch.
+    static func loadForExport(from context: ModelContext) throws -> FinanceDocument? {
+        guard var loaded = try load(from: context) else { return nil }
+        let batches = try context.fetch(FetchDescriptor<StoredPendingEvidenceArchive>())
+            .sorted { ($0.archivedAt, $0.identifier) < ($1.archivedAt, $1.identifier) }
+        var known = Set(loaded.externalObservations.map(\.id))
+        for batch in batches {
+            let retired = try batch.decoded()
+            guard retired.observations.allSatisfy({ known.insert($0.id).inserted }) else {
+                throw PendingEvidenceArchive.ArchiveError.corrupt
+            }
+            loaded.externalObservations.append(contentsOf: retired.observations)
+            loaded.observationResolutions.append(contentsOf: retired.resolutions)
+        }
+        try validate(loaded)
+        return loaded
+    }
+
+    /// Adds one user-entered transaction without rebuilding unrelated rows.
+    /// The full document is still validated first; one context save commits
+    /// the row, its legs, preferences, and document revision together.
+    static func appendUserTransaction(
+        _ transaction: Transaction,
+        in document: FinanceDocument,
+        context: ModelContext,
+        writtenOn: Day,
+        presentation: DomainMapper.TransactionPresentation,
+        appMetadata: AppPersistenceMetadata
+    ) throws {
+        try validate(document)
+        guard document.transactions.last?.id == transaction.id else {
+            throw PersistenceMappingError.duplicateTransactionIdentifier(id: transaction.id)
+        }
+        let id = transaction.id
+        var existing = FetchDescriptor<StoredTransaction>(
+            predicate: #Predicate { $0.identifier == id }
+        )
+        existing.fetchLimit = 1
+        guard try context.fetch(existing).isEmpty else {
+            throw PersistenceMappingError.duplicateTransactionIdentifier(id: id)
+        }
+        let stored = try StoredTransaction(
+            transaction, sequence: document.transactions.count - 1,
+            categoryKey: presentation.categoryKey, merchant: presentation.merchant
+        )
+        let encodedDay = try PersistenceCoding.ordinal(writtenOn)
+        guard let meta = try context.fetch(FetchDescriptor<StoredDocumentMeta>()).first else {
+            throw PersistenceMappingError.missingDocumentRoot
+        }
+        let storedPreferences = try context.fetch(FetchDescriptor<StoredEntryPreferences>()).first
+        let preferences = storedPreferences ?? StoredEntryPreferences(
+            lastExpenseAccountIdentifier: nil, lastIncomeAccountIdentifier: nil
+        )
+
+        do {
+            context.insert(stored)
+            if storedPreferences == nil { context.insert(preferences) }
+            meta.documentRevision = UUID().uuidString
+            meta.writtenOnDay = encodedDay
+            meta.schemaVersion = document.schemaVersion
+            preferences.lastExpenseAccountIdentifier = appMetadata.lastExpenseAccountID
+            preferences.lastIncomeAccountIdentifier = appMetadata.lastIncomeAccountID
+            preferences.currentHoldingsModelVersion = appMetadata.currentHoldingsModelVersion
+            try context.save()
+        } catch {
+            context.rollback()
+            throw error
+        }
+    }
+
+    /// Commits only operational bank metadata when the financial document and
+    /// provider evidence rows are unchanged. The document revision and every
+    /// ledger row keep their identity.
+    static func updateBankMetadata(
+        _ appMetadata: AppPersistenceMetadata,
+        in context: ModelContext
+    ) throws {
+        guard try context.fetch(FetchDescriptor<StoredDocumentMeta>()).first != nil else {
+            throw PersistenceMappingError.missingDocumentRoot
+        }
+        // Encode before touching the context so an invalid day cannot leave
+        // part of the old coverage staged for deletion.
+        let coverageRows = try appMetadata.authoritativeLiveCoverage.mapValues {
+            try StoredAuthoritativeLiveCoverage($0)
+        }
+        let storedPending = try context.fetch(FetchDescriptor<StoredAuthoritativePendingSnapshot>())
+        let storedCoverage = try context.fetch(FetchDescriptor<StoredAuthoritativeLiveCoverage>())
+        let storedPreferences = try context.fetch(FetchDescriptor<StoredEntryPreferences>()).first
+        let preferences = storedPreferences ?? StoredEntryPreferences(
+            lastExpenseAccountIdentifier: appMetadata.lastExpenseAccountID,
+            lastIncomeAccountIdentifier: appMetadata.lastIncomeAccountID,
+            trustedAutomationEnabled: appMetadata.trustedAutomationEnabled,
+            trustedAutomationRetryObservationIdentifiers:
+                appMetadata.trustedAutomationRetryObservationIDs.sorted(),
+            currentHoldingsModelVersion: appMetadata.currentHoldingsModelVersion
+        )
+
+        do {
+            if storedPreferences == nil { context.insert(preferences) }
+            preferences.bankEvidenceCursor = appMetadata.bankEvidenceCursor
+            preferences.bankEvidenceCursorBindingIDs = appMetadata.bankEvidenceCursorBindingIDs
+            preferences.bankEvidenceCursorDeviceID = appMetadata.bankEvidenceCursorDeviceID
+
+            let existingPendingProviders = Set(storedPending.map(\.providerRaw))
+            for row in storedPending {
+                if let snapshot = appMetadata.authoritativePendingSnapshots[row.provider] {
+                    row.authoritativeAt = snapshot.authoritativeAt
+                    row.observationIdentifiers = snapshot.observationIDs.sorted()
+                } else {
+                    context.delete(row)
+                }
+            }
+            for (provider, snapshot) in appMetadata.authoritativePendingSnapshots
+                where !existingPendingProviders.contains(provider.rawValue) {
+                context.insert(StoredAuthoritativePendingSnapshot(provider: provider, snapshot: snapshot))
+            }
+
+            let existingCoverageIDs = Set(storedCoverage.map(\.remoteOpaqueAccountIdentifier))
+            for row in storedCoverage {
+                if let incoming = coverageRows[row.remoteOpaqueAccountIdentifier] {
+                    row.providerRaw = incoming.providerRaw
+                    row.localAccountIdentifier = incoming.localAccountIdentifier
+                    row.syncedFromDay = incoming.syncedFromDay
+                    row.syncedThroughDay = incoming.syncedThroughDay
+                    row.authoritativeAt = incoming.authoritativeAt
+                } else {
+                    context.delete(row)
+                }
+            }
+            for (id, incoming) in coverageRows where !existingCoverageIDs.contains(id) {
+                context.insert(incoming)
+            }
+            try context.save()
+        } catch {
+            context.rollback()
+            throw error
+        }
     }
 
     static func replace(
-        with document: FinanceDocument,
+        with source: FinanceDocument,
         in context: ModelContext,
         writtenOn: Day,
         presentation: [String: DomainMapper.TransactionPresentation] = [:],
-        appMetadata: AppPersistenceMetadata = .empty
+        appMetadata: AppPersistenceMetadata = .empty,
+        replaceArchivedHistory: Bool = false
     ) throws {
+        try validate(source)
+        let partition = PendingEvidenceArchive.partition(
+            source,
+            authority: appMetadata.authoritativePendingSnapshots,
+            retryObservationIDs: appMetadata.trustedAutomationRetryObservationIDs
+        )
+        let document = partition.live
         try validate(document)
+        let archive = partition.retired.observations.isEmpty
+            ? nil : try StoredPendingEvidenceArchive(partition.retired)
         // Encode and construct the complete incoming graph before any
         // destructive purge. An unpersistable date must leave the stored
         // document unchanged; rollback still covers a later save failure.
@@ -2226,7 +2404,10 @@ enum StoredDocumentGraph {
             trustedAutomationEnabled: appMetadata.trustedAutomationEnabled,
             trustedAutomationRetryObservationIdentifiers:
                 appMetadata.trustedAutomationRetryObservationIDs.sorted(),
-            currentHoldingsModelVersion: appMetadata.currentHoldingsModelVersion
+            currentHoldingsModelVersion: appMetadata.currentHoldingsModelVersion,
+            bankEvidenceCursor: appMetadata.bankEvidenceCursor,
+            bankEvidenceCursorBindingIDs: appMetadata.bankEvidenceCursorBindingIDs,
+            bankEvidenceCursorDeviceID: appMetadata.bankEvidenceCursorDeviceID
         )
         let pendingSnapshots = appMetadata.authoritativePendingSnapshots
             .sorted { $0.key.rawValue < $1.key.rawValue }
@@ -2289,6 +2470,10 @@ enum StoredDocumentGraph {
 
         do {
             try purge(from: context)
+            if replaceArchivedHistory {
+                try context.fetch(FetchDescriptor<StoredPendingEvidenceArchive>())
+                    .forEach(context.delete)
+            }
             context.insert(meta)
             accounts.forEach(context.insert)
             balances.forEach(context.insert)
@@ -2315,6 +2500,7 @@ enum StoredDocumentGraph {
             trustedRules.forEach(context.insert)
             trustedRuleEvents.forEach(context.insert)
             suppressions.forEach(context.insert)
+            if let archive { context.insert(archive) }
             try context.save()
         } catch {
             context.rollback()
@@ -2330,6 +2516,9 @@ enum StoredDocumentGraph {
     /// "keep the later one" would quietly pick a balance nobody chose.
     static func validate(_ document: FinanceDocument) throws {
         try PersistedSchema.validate(document.schemaVersion)
+        guard !containsUnrepresentableOperationalMoney(document) else {
+            throw PersistenceMappingError.unrepresentableOperationalMoney
+        }
 
         var seenAccounts: Set<String> = []
         for account in document.accounts {
@@ -2362,6 +2551,19 @@ enum StoredDocumentGraph {
         } catch let problem as PlanningValidationError {
             throw PersistenceMappingError.invalidPlanning(DomainMapper.planningValidationMessage(problem))
         }
+    }
+
+    /// The interchange format can round-trip Int64.min. Operational paths
+    /// sometimes need its magnitude, which has no signed Int64 representation.
+    /// Refuse it at the app boundary before a forecast or view can trap.
+    static func containsUnrepresentableOperationalMoney(_ value: Any) -> Bool {
+        if let money = value as? Money { return money.minorUnits == Int64.min }
+        if let bag = value as? MoneyBag {
+            return bag.currencies.contains { bag.amount(in: $0).minorUnits == Int64.min }
+        }
+        let mirror = Mirror(reflecting: value)
+        if mirror.displayStyle == .class { return false }
+        return mirror.children.contains { containsUnrepresentableOperationalMoney($0.value) }
     }
 
     private static func purge(from context: ModelContext) throws {
@@ -2412,6 +2614,7 @@ enum FinanceSchema {
         StoredOwnershipSplit.self,
         StoredIncomeSource.self,
         StoredAuthoritativePendingSnapshot.self,
+        StoredPendingEvidenceArchive.self,
         StoredAuthoritativeLiveCoverage.self,
         StoredEntryPreferences.self,
         StoredRecurringObligation.self,

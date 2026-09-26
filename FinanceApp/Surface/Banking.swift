@@ -62,6 +62,14 @@ struct ObservationSuggestion: Identifiable, Hashable, Sendable {
     let automaticResolutionEligible: Bool
 }
 
+struct RecordedPaymentCandidate: Identifiable, Hashable, Sendable {
+    let id: String
+    let title: String
+    let day: CalendarDay
+    let amount: Amount
+    let accountName: String
+}
+
 enum ObservationInboxPriority: Int, Hashable, Sendable, Comparable {
     case risky = 0
     case highConfidenceSuggestion = 1
@@ -109,7 +117,7 @@ struct ObservationDuplicateConflict: Hashable, Sendable {
     var context: String {
         switch kind {
         case .exactExisting:
-            "An existing transaction matches this provider activity."
+            "A recorded payment may represent this bank payment."
         case .aggregateExisting:
             "Two existing transactions together equal this provider activity. They cannot be linked as one record."
         case .settledRecurring:
@@ -122,7 +130,7 @@ struct ObservationDuplicateConflict: Hashable, Sendable {
     var warning: String {
         switch kind {
         case .exactExisting:
-            "This already matches an existing transaction. Creating a new expense can record it twice."
+            "Check the recorded payment below. Creating another expense could count the same payment twice."
         case .aggregateExisting:
             "This amount is already represented by multiple existing transactions. Creating a new expense can record it twice."
         case .settledRecurring:
@@ -159,7 +167,27 @@ struct SyncedObservationItem: Identifiable, Hashable, Sendable {
     /// disagree and a human should look.
     let hasProviderStatusWarning: Bool
 
+    var accountCurrencyCode: String? = nil
+    var accountCurrencyFractionDigits: Int? = nil
+
+    var requiresChargedAmount: Bool {
+        guard let accountCurrencyCode, let accountCurrencyFractionDigits else { return false }
+        return amount.currencyCode != accountCurrencyCode || amount.fractionDigits != accountCurrencyFractionDigits
+    }
+
     var primarySuggestion: ObservationSuggestion? { suggestions.first }
+
+    /// Browsing shortcut only. Choosing a category still requires an explicit
+    /// expense confirmation; signs and merchant text never authorize a save.
+    var canQuicklyCategorize: Bool {
+        resolution == .unreviewed && status == .booked && isAccountBindingActive
+            && amount.isNegative && !hasProviderStatusWarning
+            && duplicateCreationWarning == nil
+            && trustedAutomationReviewReason == nil
+            && !suggestions.contains {
+                [.likelyTransfer, .atmCashMovement, .refundOrReversal, .recurring].contains($0.kind)
+            }
+    }
 
     var trustedAutomationReviewReason: String? {
         let automaticMatches = suggestions.filter {
@@ -173,7 +201,7 @@ struct SyncedObservationItem: Identifiable, Hashable, Sendable {
     var duplicateCreationWarning: String? {
         if let duplicateConflict { return duplicateConflict.warning }
         if suggestions.contains(where: { $0.kind == .existingTransaction }) {
-            return "This already matches an existing transaction. Creating a new expense can record it twice."
+            return "A recorded payment may represent this payment. Check it before recording another expense."
         }
         if suggestions.contains(where: { $0.kind == .crossProvider && $0.relatedObservationID != nil }) {
             return "A unique cross-provider match exists. Creating a new expense can record the same movement twice."

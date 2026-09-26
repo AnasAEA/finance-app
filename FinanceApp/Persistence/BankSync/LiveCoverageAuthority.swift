@@ -83,6 +83,8 @@ enum LiveCoverageAuthority {
         previous: [String: AuthoritativeLiveCoverage],
         established: [String: AuthoritativeLiveCoverage]
     ) -> [String: AuthoritativeLiveCoverage] {
-        previous.merging(established) { _, new in new }
+        previous.merging(established) { old, new in
+            new.authoritativeAt >= old.authoritativeAt ? new : old
+        }
     }
 }

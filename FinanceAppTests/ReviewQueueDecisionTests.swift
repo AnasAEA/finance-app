@@ -67,7 +67,7 @@ struct ReviewQueueDecisionTests {
 
     /// A confirmed expense a person entered themselves, so an observation of
     /// the same money is a genuine duplicate rather than a first sighting.
-    private func confirmedExpense(_ id: String, minorUnits: Int64, day: Int) -> Transaction {
+    private func confirmedExpense(_ id: String, minorUnits: Int64, day: Int, evidenceReference: String? = nil) -> Transaction {
         Transaction(
             id: id,
             date: Day(year: 2026, month: 9, day: day),
@@ -75,7 +75,7 @@ struct ReviewQueueDecisionTests {
             legs: [AccountLeg(accountID: "local-bank", amount: euro(minorUnits))],
             factivity: .observed,
             lifecycle: .cleared,
-            provenance: Provenance(source: "TEST", evidenceGrade: .userConfirmed)
+            provenance: Provenance(source: "TEST", evidenceGrade: .userConfirmed, reference: evidenceReference)
         )
     }
 
@@ -140,7 +140,7 @@ struct ReviewQueueDecisionTests {
                 observation("obs-dup", minorUnits: -12_50, merchant: "CORNER SHOP",
                             code: "CARD_PURCHASE", day: 6)
             ],
-            transactions: [confirmedExpense("tx-existing", minorUnits: -12_50, day: 6)]
+            transactions: [confirmedExpense("tx-existing", minorUnits: -12_50, day: 6, evidenceReference: "obs-dup")]
         )
         let row = try row("obs-dup", in: store)
         let observation = try #require(

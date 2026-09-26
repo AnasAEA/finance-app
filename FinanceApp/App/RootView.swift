@@ -231,6 +231,8 @@ final class AppNavigation {
 }
 
 struct RootView: View {
+    @Environment(\.scenePhase) private var scenePhase
+    @Environment(FinanceStore.self) private var store
     @State private var navigation: AppNavigation
 
     init() {
@@ -296,6 +298,22 @@ struct RootView: View {
         .environment(navigation)
         .sheet(isPresented: $navigation.isAddingTransaction) {
             AddTransactionSheet()
+        }
+        .onChange(of: scenePhase, initial: true) { _, phase in
+            guard phase == .active, LaunchOptions.current.visualValidationScreen == nil,
+                  !LaunchOptions.current.usesHCIPrototype,
+                  !LaunchOptions.current.usesBankInboxPreview,
+                  !LaunchOptions.current.usesDailyUsePreview,
+                  !LaunchOptions.current.usesPlanningPreview,
+                  !LaunchOptions.current.usesEmptyPreview,
+                  !LaunchOptions.current.usesDevelopmentFixture,
+                  store.pairingState == .paired else { return }
+            // Cron may already have fresh evidence. Foreground reads that
+            // snapshot without asking the banks to run again.
+            Task {
+                await store.refreshFromService()
+                await store.resumeSyncIfNeeded()
+            }
         }
     }
 

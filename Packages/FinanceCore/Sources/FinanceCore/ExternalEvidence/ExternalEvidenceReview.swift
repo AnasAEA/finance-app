@@ -145,6 +145,18 @@ public enum ExternalEvidenceReview {
             candidate.externalAccountBindings.map { ($0.id, $0) },
             uniquingKeysWith: { first, _ in first }
         )
+        var observationIndex = Dictionary(
+            candidate.externalObservations.enumerated().map { ($0.element.id, $0.offset) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        var balanceIndex = Dictionary(
+            candidate.providerBalanceSnapshots.enumerated().map { ($0.element.id, $0.offset) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        var candidateIndex = Dictionary(
+            candidate.crossProviderCandidates.enumerated().map { ($0.element.id, $0.offset) },
+            uniquingKeysWith: { first, _ in first }
+        )
 
         for observation in batch.observations {
             guard let binding = bindings[observation.bindingID] else {
@@ -154,7 +166,7 @@ public enum ExternalEvidenceReview {
                 throw ExternalEvidenceError.providerBindingMismatch(observationID: observation.id)
             }
 
-            if let index = candidate.externalObservations.firstIndex(where: { $0.id == observation.id }) {
+            if let index = observationIndex[observation.id] {
                 let existing = candidate.externalObservations[index]
                 guard existing.bindingID == observation.bindingID else {
                     throw ExternalEvidenceError.duplicateIdentifier(kind: "observation", id: observation.id)
@@ -170,6 +182,7 @@ public enum ExternalEvidenceReview {
                     )
                 }
             } else {
+                observationIndex[observation.id] = candidate.externalObservations.count
                 candidate.externalObservations.append(observation)
                 candidate.observationResolutions.append(
                     ExternalObservationResolution(
@@ -187,17 +200,21 @@ public enum ExternalEvidenceReview {
             guard binding.provider == balance.provider else {
                 throw ExternalEvidenceError.balanceProviderBindingMismatch(balance.id)
             }
-            if let index = candidate.providerBalanceSnapshots.firstIndex(where: { $0.id == balance.id }) {
-                candidate.providerBalanceSnapshots[index] = balance
+            if let index = balanceIndex[balance.id] {
+                if balance.observedAt >= candidate.providerBalanceSnapshots[index].observedAt {
+                    candidate.providerBalanceSnapshots[index] = balance
+                }
             } else {
+                balanceIndex[balance.id] = candidate.providerBalanceSnapshots.count
                 candidate.providerBalanceSnapshots.append(balance)
             }
         }
 
         for crossProvider in batch.candidates {
-            if let index = candidate.crossProviderCandidates.firstIndex(where: { $0.id == crossProvider.id }) {
+            if let index = candidateIndex[crossProvider.id] {
                 candidate.crossProviderCandidates[index] = crossProvider
             } else {
+                candidateIndex[crossProvider.id] = candidate.crossProviderCandidates.count
                 candidate.crossProviderCandidates.append(crossProvider)
             }
         }
@@ -461,7 +478,8 @@ public enum ExternalEvidenceReview {
     /// still a proposal the caller must explicitly confirm through a resolver.
     public static func suggestions(
         for observationID: String,
-        in document: FinanceDocument
+        in document: FinanceDocument,
+        transactionLabels: [String: String] = [:]
     ) -> [ExternalObservationSuggestion] {
         guard let observation = document.externalObservations.first(where: { $0.id == observationID }),
               let binding = document.externalAccountBindings.first(where: { $0.id == observation.bindingID })
@@ -502,22 +520,9 @@ public enum ExternalEvidenceReview {
             }
         }
 
-        for transaction in document.transactions where transaction.lifecycle != .reversed {
-            guard transaction.legs.contains(where: {
-                $0.accountID == binding.localAccountID && $0.amount == observation.amount
-            }) else { continue }
-            // Finite five-day review window, asked as a bounded distance.
-            if let date, !date.isWithin(days: 5, of: transaction.date) { continue }
-            result.append(
-                ExternalObservationSuggestion(
-                    id: "existing-\(observation.id)-\(transaction.id)",
-                    observationID: observation.id,
-                    kind: .existingTransaction,
-                    title: "Matches an existing transaction",
-                    targetTransactionID: transaction.id
-                )
-            )
-        }
+        result.append(contentsOf: existingTransactionSuggestions(
+            for: observation, in: document, transactionLabels: transactionLabels
+        ))
 
         for candidate in document.crossProviderCandidates where
             candidate.bankObservationID == observation.id || candidate.walletObservationID == observation.id {
@@ -599,6 +604,76 @@ public enum ExternalEvidenceReview {
             if $0.confidence != $1.confidence { return $0.confidence > $1.confidence }
             return $0.id < $1.id
         }
+    }
+
+    /// Amount and date are a candidate lookup, never evidence of identity.
+    /// Only known-date, merchant-corroborated candidates become review prompts.
+    public static func existingTransactionSuggestions(
+        for observation: ExternalObservation,
+        in document: FinanceDocument,
+        transactionLabels: [String: String] = [:]
+    ) -> [ExternalObservationSuggestion] {
+        guard observation.eligibleForEconomicActual,
+              let binding = document.externalAccountBindings.first(where: { $0.id == observation.bindingID })
+        else { return [] }
+        let date = observation.suggestedEconomicDate
+        let merchant = matchingMerchant(observation)
+        let observations = Dictionary(document.externalObservations.map { ($0.id, $0) },
+                                      uniquingKeysWith: { first, _ in first })
+        let links = Dictionary(grouping: document.externalEvidenceLinks, by: \.transactionID)
+        let paymentDate = observation.transactionDate ?? observation.derivedTransactionDate
+        let candidates = document.transactions.filter { transaction in
+            guard transaction.lifecycle != .reversed,
+                  transaction.legs.contains(where: {
+                      $0.accountID == binding.localAccountID && $0.amount == observation.amount
+                  }) else { return false }
+            let attached = links[transaction.id] ?? []
+            // A different durable payment on this provider binding already
+            // owns the record. Repeated same-price purchases are distinct.
+            if attached.contains(where: { link in
+                guard link.role == .accountMovement, let other = observations[link.observationID] else { return false }
+                return other.bindingID == observation.bindingID && other.identity == .durable
+                    && observation.identity == .durable && other.id != observation.id
+            }) { return false }
+            if transaction.provenance.reference == observation.id { return true }
+            guard let date, let merchant, date.isWithin(days: 5, of: transaction.date),
+                  paymentDate == nil || paymentDate == transaction.date else { return false }
+            let labelMatches = transactionLabels[transaction.id].map(normalizedMatchLabel) == merchant
+            let evidenceMatches = attached.contains { link in
+                observations[link.observationID].flatMap(matchingMerchant) == merchant
+            }
+            return labelMatches || evidenceMatches
+        }
+        return candidates.map { transaction in
+            ExternalObservationSuggestion(
+                id: "existing-\(observation.id)-\(transaction.id)",
+                observationID: observation.id, kind: .existingTransaction,
+                title: "Possibly already recorded", targetTransactionID: transaction.id,
+                explanation: transaction.provenance.reference == observation.id
+                    ? "The recorded transaction names this exact bank evidence reference."
+                    : paymentDate != nil
+                    ? "Same account, amount, merchant and payment date. Confirm that it is the same payment."
+                    : "Same account, amount and merchant; recorded within five days of the bank date. Confirm that it is the same payment.",
+                confidence: candidates.count == 1 ? .high : .medium
+            )
+        }
+    }
+
+    private static func normalizedMatchLabel(_ value: String) -> String {
+        value.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "en_US_POSIX"))
+    }
+
+    private static func matchingMerchant(_ observation: ExternalObservation) -> String? {
+        guard let value = observation.observedMerchant else { return nil }
+        let normalized = normalizedMatchLabel(value)
+        let generic = Set(["paypal", "paypal europe", "paypal europe sarl", "card", "card purchase",
+                           "payment", "transfer", "topup", "cash", "atm", "unknown"])
+        guard normalized.unicodeScalars.filter(CharacterSet.letters.contains).count >= 3,
+              !generic.contains(normalized),
+              normalized != observation.bankTransactionCode.map(normalizedMatchLabel)
+        else { return nil }
+        return normalized
     }
 
     private static func isRiskSuggestion(_ kind: ExternalSuggestionKind) -> Bool {

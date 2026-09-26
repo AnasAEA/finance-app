@@ -61,7 +61,11 @@ struct BankSyncTests {
         let store: FinanceStore
     }
 
-    private func harness(_ document: FinanceDocument? = nil) throws -> Harness {
+    private func harness(
+        _ document: FinanceDocument? = nil,
+        writer: DocumentWriter? = nil,
+        forecastRunner: ((ForecastRequest) throws -> ForecastResult)? = nil
+    ) throws -> Harness {
         let container = try container()
         try StoredDocumentGraph.replace(
             with: document ?? localDocument(),
@@ -72,7 +76,9 @@ struct BankSyncTests {
             container: container,
             store: try FinanceStore(
                 context: container.mainContext,
-                now: fixtureInstant(Day(year: 2026, month: 8, day: 28)),
+                clock: { fixtureInstant(Day(year: 2026, month: 8, day: 28)) },
+                forecastRunner: forecastRunner ?? ForecastEngine.run,
+                writer: writer ?? .live,
                 identityStore: DeviceIdentityStore(service: "test.banksync.\(UUID().uuidString)")
             )
         )
@@ -179,6 +185,44 @@ struct BankSyncTests {
         LocalBankSyncProviderFromWire(snapshot: snapshot)
     }
 
+    @Test("An older overlapping bank read cannot replace the newer pending set")
+    func overlappingReadsKeepNewerResult() async throws {
+        let harness = try harness()
+        let store = harness.store
+        defer { withExtendedLifetime(harness) {} }
+        try await store.importBankEvidence(from: provider(remoteSnapshot(includePending: false)))
+        try mapRealAccounts(store)
+
+        let gate = SnapshotGate()
+        let old = replacing(remoteSnapshot(includePending: false), pending: [pendingRow("pending-old")])
+        let new = replacing(remoteSnapshot(includePending: false), pending: [pendingRow("pending-new")])
+        let olderTask = Task {
+            try await store.importBankEvidence(from: DelayedBankSyncProvider(snapshot: old, gate: gate))
+        }
+        await gate.waitForStart()
+        try await store.importBankEvidence(from: provider(new))
+        await gate.release()
+        try await olderTask.value
+        #expect(store.snapshot.currentPendingSyncedObservations.map(\.id) == ["pending-new"])
+    }
+
+    @Test("A successful empty directory clears old remote accounts")
+    func emptyDirectoryClearsReadThroughRows() async throws {
+        let harness = try harness()
+        let store = harness.store
+        defer { withExtendedLifetime(harness) {} }
+        try await store.importBankEvidence(from: provider(remoteSnapshot(includePending: false)))
+        #expect(!store.snapshot.mappableRemoteAccounts.isEmpty)
+        let empty = MobileSnapshot(
+            contractVersion: 1, serverTime: "2026-08-29T12:00:00.000Z",
+            connections: [], accounts: [], balances: [], observations: [], pending: [],
+            candidates: [], nextSince: nil
+        )
+        try await store.importBankEvidence(from: provider(empty))
+        #expect(store.snapshot.mappableRemoteAccounts.isEmpty)
+        #expect(store.snapshot.providerConnections.isEmpty)
+    }
+
     private func pendingRow(
         _ id: String,
         accountID: String = "acct_bnp",
@@ -206,25 +250,31 @@ struct BankSyncTests {
         _ snapshot: MobileSnapshot,
         pending: [MobileSnapshot.Pending],
         connections: [MobileSnapshot.Connection]? = nil,
-        nextSince: String? = nil
+        observations: [MobileSnapshot.Observation]? = nil,
+        candidates: [MobileSnapshot.Candidate]? = nil,
+        nextSince: String? = nil,
+        highWater: String? = nil
     ) -> MobileSnapshot {
-        MobileSnapshot(
+        var result = MobileSnapshot(
             contractVersion: snapshot.contractVersion,
             serverTime: snapshot.serverTime,
             connections: connections ?? snapshot.connections,
             accounts: snapshot.accounts,
             balances: snapshot.balances,
-            observations: snapshot.observations,
+            observations: observations ?? snapshot.observations,
             pending: pending,
-            candidates: snapshot.candidates,
+            candidates: candidates ?? snapshot.candidates,
             nextSince: nextSince
         )
+        result.highWater = highWater
+        return result
     }
 
     private func pageSnapshot(
         ids: [String],
         pending: [MobileSnapshot.Pending] = [],
-        nextSince: String?
+        nextSince: String?,
+        highWater: String? = nil
     ) -> MobileSnapshot {
         let base = remoteSnapshot(includePending: false)
         let observations = ids.map { id in
@@ -239,7 +289,7 @@ struct BankSyncTests {
                 observedAt: "2026-08-31T11:29:05.626Z"
             )
         }
-        return MobileSnapshot(
+        var result = MobileSnapshot(
             contractVersion: base.contractVersion,
             serverTime: base.serverTime,
             connections: base.connections,
@@ -250,6 +300,8 @@ struct BankSyncTests {
             candidates: [],
             nextSince: nextSince
         )
+        result.highWater = highWater
+        return result
     }
 
     /// Maps the three accounts this ledger actually tracks, leaving the dormant
@@ -337,6 +389,76 @@ struct BankSyncTests {
 
     // MARK: - Idempotency
 
+    @Test("Identical evidence avoids another document write")
+    func identicalEvidenceSkipsPersistence() async throws {
+        var writeCount = 0
+        let writer = DocumentWriter { document, context, day, presentation, metadata in
+            writeCount += 1
+            try StoredDocumentGraph.replace(
+                with: document, in: context, writtenOn: day,
+                presentation: presentation, appMetadata: metadata
+            )
+        }
+        let harness = try harness(writer: writer)
+        let store = harness.store
+        defer { withExtendedLifetime(harness) {} }
+        let snapshot = remoteSnapshot(includePending: false)
+        try await store.importBankEvidence(from: provider(snapshot))
+        try mapRealAccounts(store)
+
+        let beforeEvidence = writeCount
+        try await store.importBankEvidence(from: provider(snapshot))
+        #expect(writeCount == beforeEvidence + 1)
+        try await store.importBankEvidence(from: provider(snapshot))
+        #expect(writeCount == beforeEvidence + 1)
+    }
+
+    @Test("Fresh provider clock and cursor save without replacing the ledger graph")
+    func quietPullWritesOnlyBankMetadata() async throws {
+        var forecastRuns = 0
+        let harness = try harness(forecastRunner: { request in
+            forecastRuns += 1
+            return try ForecastEngine.run(request)
+        })
+        let store = harness.store
+        defer { withExtendedLifetime(harness) {} }
+        let base = remoteSnapshot(includePending: false)
+        try await store.importBankEvidence(from: provider(base))
+        try mapRealAccounts(store)
+        try await store.importBankEvidence(from: provider(base))
+        let context = harness.container.mainContext
+        let revision = try #require(context.fetch(FetchDescriptor<StoredDocumentMeta>()).first?.documentRevision)
+        let before = try #require(
+            StoredDocumentGraph.loadAppMetadata(from: context)
+                .authoritativePendingSnapshots[.bnp]?.authoritativeAt
+        )
+        let forecastRunsBefore = forecastRuns
+
+        let laterConnections = base.connections.map { connection in
+            connection.provider == "bnp"
+                ? MobileSnapshot.Connection(
+                    id: connection.id, provider: connection.provider,
+                    institution: connection.institution, status: connection.status,
+                    validUntil: connection.validUntil,
+                    lastSuccessfulSyncAt: "2026-08-29T11:00:00.000Z",
+                    lastErrorCode: connection.lastErrorCode
+                )
+                : connection
+        }
+        var later = replacing(base, pending: [], connections: laterConnections)
+        later.highWater = "2026-08-29T11:00:00.000Z\tobs_wallet"
+        try await store.importBankEvidence(from: provider(later))
+
+        let after = try #require(
+            StoredDocumentGraph.loadAppMetadata(from: context)
+                .authoritativePendingSnapshots[.bnp]?.authoritativeAt
+        )
+        #expect(after > before)
+        #expect(forecastRuns == forecastRunsBefore)
+        #expect(try context.fetch(FetchDescriptor<StoredDocumentMeta>()).first?.documentRevision == revision)
+        #expect(try StoredDocumentGraph.loadAppMetadata(from: context).bankEvidenceCursor == later.highWater)
+    }
+
     @Test("Syncing twice changes nothing the second time")
     func syncIsIdempotent() async throws {
         let harness = try harness()
@@ -385,6 +507,77 @@ struct BankSyncTests {
         #expect(exported.transactions.isEmpty)
     }
 
+    @Test("The terminal booked cursor survives a relaunch with a safe overlap")
+    func bookedCursorPersistsAfterCompleteImport() async throws {
+        let harness = try harness()
+        let store = harness.store
+        defer { withExtendedLifetime(harness) {} }
+        try await store.importBankEvidence(from: provider(remoteSnapshot(includePending: false)))
+        try mapRealAccounts(store)
+
+        let firstCursor = "2026-08-31T11:29:05.626Z\tobs_cursor_a"
+        let finalCursor = "2026-08-31T11:29:05.626Z\tobs_cursor_b"
+        let pages = PagingBankSyncProvider(pages: [
+            pageSnapshot(ids: ["obs_cursor_a"], nextSince: firstCursor, highWater: firstCursor),
+            pageSnapshot(ids: ["obs_cursor_b"], nextSince: nil, highWater: finalCursor),
+        ])
+        try await store.importBankEvidence(from: pages)
+        #expect(pages.receivedSince == [nil, firstCursor])
+
+        let reopened = try FinanceStore(
+            context: harness.container.mainContext,
+            now: fixtureInstant(Day(year: 2026, month: 8, day: 28)),
+            identityStore: DeviceIdentityStore(service: "test.banksync.reopened.\(UUID().uuidString)")
+        )
+        let empty = PagingBankSyncProvider(pages: [
+            pageSnapshot(ids: [], nextSince: nil, highWater: finalCursor),
+        ])
+        try await reopened.importBankEvidence(from: empty)
+        #expect(empty.receivedSince == ["2026-08-30T11:29:05.626Z"])
+        let exported = try reopened.exportDocument()
+        #expect(exported.externalObservations.contains { $0.id == "obs_cursor_a" })
+        #expect(exported.externalObservations.contains { $0.id == "obs_cursor_b" })
+    }
+
+    @Test("Mapping another account restarts the booked walk")
+    func bookedCursorResetsForNewBinding() async throws {
+        let harness = try harness()
+        let store = harness.store
+        defer { withExtendedLifetime(harness) {} }
+        try await store.importBankEvidence(from: provider(remoteSnapshot(includePending: false)))
+        try store.mapRemoteAccount("acct_bnp", toLocalAccount: "bnp")
+        let cursor = "2026-08-31T11:29:05.626Z\tobs_new_wallet"
+        let page = pageSnapshot(ids: ["obs_new_wallet"], nextSince: nil, highWater: cursor)
+        try await store.importBankEvidence(from: PagingBankSyncProvider(pages: [page]))
+        #expect(!(try store.exportDocument()).externalObservations.contains { $0.id == "obs_new_wallet" })
+
+        try store.mapRemoteAccount("acct_paypal", toLocalAccount: "paypal")
+        let refreshed = PagingBankSyncProvider(pages: [page])
+        try await store.importBankEvidence(from: refreshed)
+        #expect(refreshed.receivedSince == [nil])
+        #expect((try store.exportDocument()).externalObservations.contains { $0.id == "obs_new_wallet" })
+    }
+
+    @Test("A candidate resolves observations on different booked pages")
+    func candidateAcrossPages() async throws {
+        let harness = try harness()
+        let store = harness.store
+        defer { withExtendedLifetime(harness) {} }
+        let base = remoteSnapshot(includePending: false)
+        try await store.importBankEvidence(from: provider(base))
+        try mapRealAccounts(store)
+        let bank = try #require(base.observations.first { $0.id == "obs_bank" })
+        let wallet = try #require(base.observations.first { $0.id == "obs_wallet" })
+        let pages = PagingBankSyncProvider(pages: [
+            replacing(base, pending: [], observations: [bank], nextSince: "cursor-a"),
+            replacing(base, pending: [], observations: [wallet], nextSince: nil),
+        ])
+        try await store.importBankEvidence(from: pages)
+        let candidate = try #require(try store.exportDocument().crossProviderCandidates.first)
+        #expect(candidate.state == .unique)
+        #expect(candidate.walletObservationID == "obs_wallet")
+    }
+
     @Test("A later page failure does not import a partial snapshot")
     func pagedSnapshotFailureDoesNotPartialImport() async throws {
         let harness = try harness()
@@ -409,6 +602,122 @@ struct BankSyncTests {
         #expect(try store.exportDocument().externalObservations.count == before)
     }
 
+    @Test("Malformed booked evidence for a mapped account fails the whole pull")
+    func mappedBookedConversionFailureDoesNotCommit() async throws {
+        let harness = try harness()
+        let store = harness.store
+        defer { withExtendedLifetime(harness) {} }
+        let base = remoteSnapshot(includePending: false)
+        try await store.importBankEvidence(from: provider(base))
+        try mapRealAccounts(store)
+        let booked = try #require(base.observations.first { $0.id == "obs_bank" })
+        let invalid = MobileSnapshot.Observation(
+            id: "obs-invalid", accountId: booked.accountId, provider: booked.provider,
+            status: booked.status, creditDebitIndicator: booked.creditDebitIndicator,
+            amount: "invalid", currency: booked.currency, bookingDate: booked.bookingDate,
+            transactionDate: booked.transactionDate, valueDate: booked.valueDate,
+            derivedTransactionDate: booked.derivedTransactionDate,
+            derivedDateProvenance: booked.derivedDateProvenance,
+            rawMerchantText: booked.rawMerchantText,
+            structuredMerchantName: booked.structuredMerchantName,
+            merchantEmail: booked.merchantEmail,
+            bankTransactionCode: booked.bankTransactionCode,
+            bankTransactionSubCode: booked.bankTransactionSubCode,
+            eligibleForEconomicActual: booked.eligibleForEconomicActual,
+            observedAt: booked.observedAt
+        )
+        let incoming = replacing(base, pending: [], observations: [invalid], candidates: [])
+        await #expect(throws: BankSyncClientError.malformedResponse) {
+            try await store.importBankEvidence(from: provider(incoming))
+        }
+        #expect(!(try store.exportDocument()).externalObservations.contains { $0.id == "obs-invalid" })
+    }
+
+    @Test("Provider failure remains visible after the evidence pull succeeds")
+    func remoteProviderFailureIsNotReportedAsSuccess() async throws {
+        let harness = try harness()
+        let store = harness.store
+        defer { withExtendedLifetime(harness) {} }
+        await store.syncNow(using: OutcomeBankSyncProvider(
+            snapshot: remoteSnapshot(includePending: false),
+            outcomes: [
+                MobileSyncRun(provider: "bnp", outcome: "success", errorCode: nil),
+                MobileSyncRun(provider: "paypal", outcome: "skipped_rate_limited", errorCode: "ASPSP_RATE_LIMIT_EXCEEDED")
+            ]
+        ))
+        guard case let .failed(message) = store.bankSyncActivity else {
+            Issue.record("a rate-limited provider must not report success")
+            return
+        }
+        #expect(message.contains("PayPal"))
+        #expect(!store.snapshot.mappableRemoteAccounts.isEmpty)
+    }
+
+    @Test("An overlapping provider run is named after the evidence pull")
+    func overlappingProviderRunIsVisible() async throws {
+        let harness = try harness()
+        let store = harness.store
+        defer { withExtendedLifetime(harness) {} }
+        await store.syncNow(using: OutcomeBankSyncProvider(
+            snapshot: remoteSnapshot(includePending: false),
+            outcomes: [
+                MobileSyncRun(provider: "bnp", outcome: "skipped_in_progress", errorCode: nil)
+            ]
+        ))
+        guard case let .failed(message) = store.bankSyncActivity else {
+            Issue.record("an overlapping provider run must not report a completed sync")
+            return
+        }
+        #expect(message.contains("BNP sync is already in progress"))
+        #expect(!store.snapshot.mappableRemoteAccounts.isEmpty)
+    }
+
+    @Test("An accepted asynchronous job shows terminal provider results after evidence is saved")
+    func asynchronousJobCompletesWithProviderStatus() async throws {
+        let harness = try harness()
+        let store = harness.store
+        defer { withExtendedLifetime(harness) {} }
+        let job = MobileSyncJob(
+            jobId: "job_0123", createdAt: "2026-08-28T00:00:00.000Z", complete: true,
+            runs: [
+                MobileSyncRun(provider: "bnp", outcome: "success", errorCode: nil, state: "finished"),
+                MobileSyncRun(provider: "paypal", outcome: "skipped_rate_limited",
+                              errorCode: "ASPSP_RATE_LIMIT_EXCEEDED", state: "finished"),
+                MobileSyncRun(provider: "revolut", outcome: "success", errorCode: nil, state: "finished")
+            ]
+        )
+        await store.syncNow(using: AsyncOutcomeBankSyncProvider(
+            snapshot: remoteSnapshot(includePending: false), job: job
+        ))
+        #expect(store.bankSyncRuns.count == 3)
+        #expect(store.bankSyncRuns[1].outcome == "skipped_rate_limited")
+        guard case let .failed(message) = store.bankSyncActivity else {
+            Issue.record("a rate-limited bank must remain visible after the asynchronous pull")
+            return
+        }
+        #expect(message.contains("PayPal"))
+        #expect(!store.snapshot.mappableRemoteAccounts.isEmpty)
+    }
+
+    @Test("Unpairing invalidates an in-flight evidence pull")
+    func unpairInvalidatesInFlightPull() async throws {
+        let harness = try harness()
+        let store = harness.store
+        defer { withExtendedLifetime(harness) {} }
+        let gate = SnapshotGate()
+        let task = Task {
+            try await store.importBankEvidence(from: DelayedBankSyncProvider(
+                snapshot: remoteSnapshot(includePending: false), gate: gate
+            ))
+        }
+        await gate.waitForStart()
+        try store.unpairDevice()
+        await gate.release()
+        try await task.value
+        #expect(store.snapshot.mappableRemoteAccounts.isEmpty)
+        #expect((try store.exportDocument()).externalObservations.isEmpty)
+    }
+
     @Test("The final page supplies current pending membership")
     func finalPagePendingMembershipWins() async throws {
         let harness = try harness()
@@ -429,9 +738,9 @@ struct BankSyncTests {
             "pending-page-b", "pending-page-c",
         ])
         let exported = try store.exportDocument()
-        // Page-one provisional evidence remains historical, but it is not
-        // current because each page carried a complete pending snapshot.
-        #expect(exported.externalObservations.contains { $0.id == "pending-page-a" })
+        // Current state repeats per page, so only terminal provisional rows
+        // enter the document.
+        #expect(!exported.externalObservations.contains { $0.id == "pending-page-a" })
     }
 
     @Test("The page safety cap is incomplete and preserves prior authority")
@@ -554,6 +863,44 @@ struct BankSyncTests {
         #expect((1...4).allSatisfy { id in
             exported.externalObservations.contains { $0.id == "pending-old-\(id)" }
         })
+        let loaded = try StoredDocumentGraph.load(from: harness.container.mainContext)
+        let live = try #require(loaded)
+        #expect((1...4).allSatisfy { id in
+            !live.externalObservations.contains { $0.id == "pending-old-\(id)" }
+        })
+        let archived = try harness.container.mainContext.fetch(
+            FetchDescriptor<StoredPendingEvidenceArchive>()
+        )
+        #expect(archived.reduce(0) { $0 + $1.observationCount } == 4)
+        let reopened = try FinanceStore(
+            context: harness.container.mainContext,
+            now: fixtureInstant(Day(year: 2026, month: 8, day: 28))
+        )
+        #expect((try reopened.exportDocument()).externalObservations.contains {
+            $0.id == "pending-old-1"
+        })
+    }
+
+    @Test("Replacing the document replaces its cold pending archive")
+    func importReplacesPendingArchive() async throws {
+        let harness = try harness()
+        let store = harness.store
+        defer { withExtendedLifetime(harness) {} }
+        try await store.importBankEvidence(from: provider(remoteSnapshot()))
+        try mapRealAccounts(store)
+        try await store.importBankEvidence(from: provider(remoteSnapshot()))
+        try await store.importBankEvidence(from: provider(remoteSnapshot(includePending: false)))
+        #expect((try store.exportDocument()).externalObservations.contains { $0.id == "pend_1" })
+
+        var replacement = try store.exportDocument()
+        replacement.externalObservations.removeAll { $0.id == "pend_1" }
+        replacement.observationResolutions.removeAll { $0.observationID == "pend_1" }
+        try store.importDocument(replacement)
+
+        #expect(!(try store.exportDocument()).externalObservations.contains { $0.id == "pend_1" })
+        #expect(try harness.container.mainContext.fetch(
+            FetchDescriptor<StoredPendingEvidenceArchive>()
+        ).isEmpty)
     }
 
     @Test("Transport and decoding failures preserve current pending authority")
@@ -698,6 +1045,38 @@ struct BankSyncTests {
         #expect(exported.observationResolutions.first {
             $0.observationID == "pending-old"
         }?.state == .provisional)
+        let loaded = try StoredDocumentGraph.load(from: harness.container.mainContext)
+        let live = try #require(loaded)
+        #expect(!live.externalObservations.contains { $0.id == "pending-old" })
+        #expect(live.externalObservations.contains { $0.id == "pending-new" })
+    }
+
+    @Test("Repeated pending checks keep the operational graph bounded while exports retain each run")
+    func repeatedPendingChecksArchiveHistory() async throws {
+        let harness = try harness()
+        let store = harness.store
+        defer { withExtendedLifetime(harness) {} }
+        try await store.importBankEvidence(from: provider(remoteSnapshot(includePending: false)))
+        try mapRealAccounts(store)
+        for index in 1...8 {
+            try await store.importBankEvidence(from: provider(replacing(
+                remoteSnapshot(includePending: false),
+                pending: [pendingRow("pending-run-\(index)")]
+            )))
+        }
+
+        let loaded = try StoredDocumentGraph.load(from: harness.container.mainContext)
+        let live = try #require(loaded)
+        #expect(live.externalObservations.filter { $0.identity == .provisionalSnapshot }
+            .map(\.id) == ["pending-run-8"])
+        let exported = try store.exportDocument()
+        #expect((1...8).allSatisfy { index in
+            exported.externalObservations.contains { $0.id == "pending-run-\(index)" }
+        })
+        let archived = try harness.container.mainContext.fetch(
+            FetchDescriptor<StoredPendingEvidenceArchive>()
+        )
+        #expect(archived.reduce(0) { $0 + $1.observationCount } == 7)
     }
 
     @Test("A malformed pending row for an active mapping fails closed")
@@ -843,6 +1222,50 @@ struct BankSyncTests {
     }
 
     // MARK: - Economics
+
+    @Test("Review saves a selected category with the expense and learns an exact merchant proposal")
+    func reviewedExpenseCategory() async throws {
+        let harness = try harness()
+        let store = harness.store
+        defer { withExtendedLifetime(harness) {} }
+        try await store.importBankEvidence(from: provider(remoteSnapshot()))
+        try mapRealAccounts(store)
+        try await store.importBankEvidence(from: provider(remoteSnapshot()))
+        let id = try store.createExpense(from: "obs_bank", userLabel: "A subscription",
+                                         categoryKey: "subscriptions", allowingPotentialDuplicate: true)
+        #expect(store.snapshot.activity.flatMap(\.rows).first { $0.id == id }?.categoryLabel == "Subscriptions")
+        #expect(store.suggestedExpenseCategory(merchant: " a SUBSCRIPTION ", currency: "EUR") == "subscriptions")
+        #expect(store.suggestedExpenseCategory(merchant: "A subscription", currency: "USD") == nil)
+        #expect(store.suggestedExpenseCategory(merchant: "A similar subscription", currency: "EUR") == nil)
+        let reopened = try FinanceStore(context: harness.container.mainContext,
+                                       now: fixtureInstant(Day(year: 2026, month: 8, day: 28)),
+                                       identityStore: DeviceIdentityStore(service: "test.banksync.category.\(UUID().uuidString)"))
+        #expect(reopened.snapshot.activity.flatMap(\.rows).first { $0.id == id }?.categoryLabel == "Subscriptions")
+        try store.createExpense(from: "obs_wallet", userLabel: "A subscription",
+                                categoryKey: "shopping", allowingPotentialDuplicate: true)
+        #expect(store.suggestedExpenseCategory(merchant: "A subscription", currency: "EUR") == nil)
+    }
+
+    @Test("Unavailable or income categories refuse expense review without changing evidence")
+    func invalidReviewCategoryIsAtomic() async throws {
+        let harness = try harness()
+        let store = harness.store
+        defer { withExtendedLifetime(harness) {} }
+        try await store.importBankEvidence(from: provider(remoteSnapshot()))
+        try mapRealAccounts(store)
+        try await store.importBankEvidence(from: provider(remoteSnapshot()))
+        let before = try store.exportDocument()
+        for category in ["missing-category", "income", "transfers"] {
+            #expect(throws: BankReviewError.self) {
+                try store.createExpense(from: "obs_bank", userLabel: "A subscription",
+                                         categoryKey: category, allowingPotentialDuplicate: true)
+            }
+        }
+        let after = try store.exportDocument()
+        #expect(after.transactions == before.transactions)
+        #expect(after.observationResolutions == before.observationResolutions)
+        #expect(after.externalEvidenceLinks == before.externalEvidenceLinks)
+    }
 
     @Test("A synced debit does not become an expense on its own")
     func noAutomaticEconomics() async throws {
@@ -1011,9 +1434,13 @@ struct BankSyncTests {
         // replaced it has its own durable id. No fingerprint is invented.
         try await store.importBankEvidence(from: provider(remoteSnapshot(includePending: false)))
 
-        let stale = try #require(store.snapshot.syncedObservations.first { $0.id == "pend_1" })
-        #expect(stale.resolution == .provisional)
-        #expect(try store.exportDocument().transactions.isEmpty)
+        #expect(!store.snapshot.syncedObservations.contains { $0.id == "pend_1" })
+        let exported = try store.exportDocument()
+        #expect(exported.externalObservations.contains { $0.id == "pend_1" })
+        #expect(exported.observationResolutions.contains {
+            $0.observationID == "pend_1" && $0.state == .provisional
+        })
+        #expect(exported.transactions.isEmpty)
     }
 
     // MARK: - Status regression
@@ -1132,6 +1559,62 @@ private struct LocalBankSyncProviderFromWire: BankSyncProviding {
     func fetchSnapshot(
         bindings: [ExternalAccountBinding], since: String?
     ) async throws -> BankSyncSnapshot {
+        try MobileSnapshotMapper.map(snapshot, bindings: bindings)
+    }
+}
+
+private actor SnapshotGate {
+    private var started = false
+    private var startWaiter: CheckedContinuation<Void, Never>?
+    private var releaseWaiter: CheckedContinuation<Void, Never>?
+
+    func waitForStart() async {
+        if started { return }
+        await withCheckedContinuation { startWaiter = $0 }
+    }
+
+    func hold() async {
+        started = true
+        startWaiter?.resume()
+        startWaiter = nil
+        await withCheckedContinuation { releaseWaiter = $0 }
+    }
+
+    func release() {
+        releaseWaiter?.resume()
+        releaseWaiter = nil
+    }
+}
+
+private struct DelayedBankSyncProvider: BankSyncProviding {
+    let snapshot: MobileSnapshot
+    let gate: SnapshotGate
+
+    func runRemoteSync() async throws {}
+    func fetchSnapshot(bindings: [ExternalAccountBinding], since: String?) async throws -> BankSyncSnapshot {
+        await gate.hold()
+        return try MobileSnapshotMapper.map(snapshot, bindings: bindings)
+    }
+}
+
+private struct OutcomeBankSyncProvider: BankSyncProviding {
+    let snapshot: MobileSnapshot
+    let outcomes: [MobileSyncRun]
+
+    func runRemoteSync() async throws {}
+    func runRemoteSyncWithOutcomes() async throws -> [MobileSyncRun]? { outcomes }
+    func fetchSnapshot(bindings: [ExternalAccountBinding], since: String?) async throws -> BankSyncSnapshot {
+        try MobileSnapshotMapper.map(snapshot, bindings: bindings)
+    }
+}
+
+private struct AsyncOutcomeBankSyncProvider: BankSyncProviding {
+    let snapshot: MobileSnapshot
+    let job: MobileSyncJob
+
+    func runRemoteSync() async throws {}
+    func startRemoteSync() async throws -> MobileSyncJob? { job }
+    func fetchSnapshot(bindings: [ExternalAccountBinding], since: String?) async throws -> BankSyncSnapshot {
         try MobileSnapshotMapper.map(snapshot, bindings: bindings)
     }
 }

@@ -174,13 +174,13 @@ struct BankSyncClient: Sendable {
     // MARK: - Signed calls
 
     func snapshot(since: String?) async throws -> MobileSnapshot {
-        var pathAndQuery = "/v1/mobile/snapshot"
+        var components = URLComponents()
+        components.queryItems = [URLQueryItem(name: "limit", value: "500")]
         if let since, !since.isEmpty {
             // The query is signed, so it must be built once and used verbatim.
-            var components = URLComponents()
-            components.queryItems = [URLQueryItem(name: "since", value: since)]
-            if let query = components.percentEncodedQuery { pathAndQuery += "?\(query)" }
+            components.queryItems?.append(URLQueryItem(name: "since", value: since))
         }
+        let pathAndQuery = "/v1/mobile/snapshot?\(components.percentEncodedQuery ?? "limit=500")"
         let data = try await signed(method: "GET", pathAndQuery: pathAndQuery, body: Data())
         guard let snapshot = try? Self.decoder.decode(MobileSnapshot.self, from: data) else {
             throw BankSyncClientError.malformedResponse
@@ -191,17 +191,46 @@ struct BankSyncClient: Sendable {
         return snapshot
     }
 
-    @discardableResult
-    func runSync() async throws -> [MobileSyncRun] {
-        // The service contacts three institutions in turn; the default 60s
-        // would abandon a sync that is still perfectly healthy.
-        let data = try await signed(
-            method: "POST", pathAndQuery: "/v1/mobile/sync", body: Data(), timeout: 180
-        )
-        guard let decoded = try? Self.decoder.decode(MobileSyncResponse.self, from: data) else {
+    func startSync() async throws -> MobileSyncJob {
+        do {
+            let data = try await signed(
+                method: "POST", pathAndQuery: "/v1/mobile/sync/jobs", body: Data()
+            )
+            guard let job = try? Self.decoder.decode(MobileSyncJob.self, from: data) else {
+                throw BankSyncClientError.malformedResponse
+            }
+            return job
+        } catch BankSyncClientError.server(status: 404) {
+            // An app update can precede the Worker update. The old endpoint
+            // still returns terminal runs after its inline bank checks.
+            let data = try await signed(
+                method: "POST", pathAndQuery: "/v1/mobile/sync", body: Data(), timeout: 180
+            )
+            guard let legacy = try? Self.decoder.decode(LegacyMobileSyncResponse.self, from: data) else {
+                throw BankSyncClientError.malformedResponse
+            }
+            return MobileSyncJob(jobId: "job_legacy", createdAt: "", complete: true,
+                                 runs: legacy.runs)
+        }
+    }
+
+    func syncStatus(jobId: String) async throws -> MobileSyncJob {
+        guard jobId.range(of: #"^job_[0-9a-f]+$"#, options: .regularExpression) != nil else {
             throw BankSyncClientError.malformedResponse
         }
-        return decoded.runs
+        let data = try await signed(method: "GET", pathAndQuery: "/v1/mobile/sync/jobs/\(jobId)", body: Data())
+        guard let decoded = try? Self.decoder.decode(MobileSyncJob.self, from: data) else {
+            throw BankSyncClientError.malformedResponse
+        }
+        return decoded
+    }
+
+    func currentSync() async throws -> MobileSyncJob? {
+        let data = try await signed(method: "GET", pathAndQuery: "/v1/mobile/sync/jobs/current", body: Data())
+        guard let decoded = try? Self.decoder.decode(MobileCurrentSyncResponse.self, from: data) else {
+            throw BankSyncClientError.malformedResponse
+        }
+        return decoded.job
     }
 
     private func signed(
@@ -238,7 +267,7 @@ struct BankSyncClient: Sendable {
 
         let (data, response) = try await perform(request)
         switch response.statusCode {
-        case 200: return data
+        case 200, 202: return data
         case 401: throw BankSyncClientError.unauthorized
         case 403: throw BankSyncClientError.deviceRevoked
         default: throw BankSyncClientError.server(status: response.statusCode)

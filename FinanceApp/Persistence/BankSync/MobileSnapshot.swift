@@ -18,6 +18,9 @@ struct MobileSnapshot: Decodable, Sendable {
     let pending: [Pending]
     let candidates: [Candidate]
     let nextSince: String?
+    /// Last booked key delivered, including on the terminal page. Absent on
+    /// older Workers; the app then keeps using a full read.
+    var highWater: String? = nil
 
     struct Connection: Decodable, Sendable {
         let id: String
@@ -107,11 +110,31 @@ struct MobileSnapshot: Decodable, Sendable {
 
 struct MobileSyncRun: Decodable, Sendable {
     let provider: String
-    let outcome: String
+    let state: String?
+    let outcome: String?
     let errorCode: String?
+
+    init(provider: String, outcome: String?, errorCode: String?, state: String? = nil) {
+        self.provider = provider
+        self.state = state
+        self.outcome = outcome
+        self.errorCode = errorCode
+    }
 }
 
-struct MobileSyncResponse: Decodable, Sendable {
+struct MobileSyncJob: Decodable, Sendable {
+    let jobId: String
+    let createdAt: String
+    let complete: Bool
     let runs: [MobileSyncRun]
-    let psuContextForwarded: Bool?
+}
+
+struct MobileCurrentSyncResponse: Decodable, Sendable {
+    let job: MobileSyncJob?
+}
+
+/// The already-deployed Worker returns terminal runs inline. Kept only so an
+/// app update can arrive before the queue-backed Worker update.
+struct LegacyMobileSyncResponse: Decodable, Sendable {
+    let runs: [MobileSyncRun]
 }

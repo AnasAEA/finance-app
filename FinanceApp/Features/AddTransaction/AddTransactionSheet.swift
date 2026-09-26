@@ -84,6 +84,7 @@ private struct AddTransactionContent: View {
         switch failure {
         case .empty: return nil
         case .notANumber: return "Enter a number."
+        case .outOfRange: return "That amount is too large to record."
         case let .excessPrecision(allowed):
             return AppEntryError
                 .excessPrecision(currencyCode: currencyCode, allowedFractionDigits: allowed)

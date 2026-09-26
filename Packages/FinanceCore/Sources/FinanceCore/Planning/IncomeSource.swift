@@ -40,8 +40,8 @@ public struct IncomeSource: Identifiable, Hashable, Sendable, Codable {
     /// (transitively, cycle-safe).
     public var dependsOn: [String]
 
-    /// The account the money is expected to land in. nil means the composer
-    /// picks the primary euro account.
+    /// The account the money is expected to land in. nil means the engine
+    /// picks an active account in the source's currency.
     public var arrivesOnAccount: String?
 
     public var note: String?

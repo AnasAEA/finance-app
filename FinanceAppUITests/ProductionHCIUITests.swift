@@ -168,6 +168,100 @@ final class ProductionHCIUITests: XCTestCase {
         app.buttons["Cancel"].tap()
     }
 
+    func testSyncedBankMovementsAppearBeforeReviewInTransactions() {
+        launch(tab: "activity")
+        let row = revealIdentifier(AutomationTokenMirror.transaction("bank:obs-streaming"), as: .any)
+        XCTAssertTrue(row.isHittable)
+        row.tap()
+        XCTAssertTrue(app.navigationBars["Bank transaction"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Booked")).firstMatch.exists)
+        XCTAssertTrue(app.buttons["Review transaction"].exists)
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Booking date")).firstMatch.exists)
+    }
+
+    func testTimelinePendingSummaryExpandsAndSearchShowsMatchingPayments() {
+        launch(tab: "activity")
+        let summary = app.descendants(matching: .any)["activity.bank-pending-summary"].firstMatch
+        XCTAssertTrue(summary.waitForExistence(timeout: 8))
+        summary.tap()
+        let pending = app.descendants(matching: .any)[AutomationTokenMirror.transaction("bank:pending-snapshot")].firstMatch
+        XCTAssertTrue(pending.waitForExistence(timeout: 5), app.debugDescription)
+        let search = app.searchFields.firstMatch
+        search.tap()
+        search.typeText("Pending")
+        XCTAssertTrue(pending.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.descendants(matching: .any)["activity.bank-pending-summary"].exists)
+    }
+
+    func testTimelineFiltersRemainReachableAtAccessibilityXL() {
+        app.launchArguments = [
+            "-AppleInterfaceStyle", "Dark", "-HCIPrototype", "-HCIPrototypeVariant", "full",
+            "-startTab", "activity",
+            "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXL"
+        ]
+        app.launch()
+        let filters = revealIdentifier("activity.filters", as: .button)
+        XCTAssertTrue(filters.isHittable)
+        filters.tap()
+        XCTAssertTrue(app.navigationBars["Transaction filters"].waitForExistence(timeout: 5))
+    }
+
+    func testBankExpenseOffersCategoryBeforeSaving() {
+        launch(tab: "activity", section: "toReview")
+        revealIdentifier(AutomationTokenMirror.decision("obs-streaming"), as: .any).tap()
+        XCTAssertTrue(app.navigationBars["Review activity"].waitForExistence(timeout: 5))
+        revealIdentifier("review.createExpense", as: .button).tap()
+        XCTAssertTrue(app.navigationBars["Categorize payment"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["review.expense.save"].isEnabled)
+        revealIdentifier("review.category.subscriptions", as: .button).tap()
+        XCTAssertTrue(app.buttons["review.expense.save"].isEnabled)
+        let categoryCapture = XCTAttachment(screenshot: app.screenshot())
+        categoryCapture.name = "expense-categorization"
+        categoryCapture.lifetime = .keepAlways
+        add(categoryCapture)
+        app.buttons["Cancel"].tap()
+        XCTAssertTrue(app.navigationBars["Review activity"].waitForExistence(timeout: 5))
+    }
+
+    func testForeignExpenseRequiresTheAccountCurrencyChargeBeforeSaving() {
+        launch(variant: "foreignExpense", tab: "activity", section: "toReview")
+        revealIdentifier(AutomationTokenMirror.decision("obs-streaming"), as: .any).tap()
+        XCTAssertTrue(app.navigationBars["Categorize payment"].waitForExistence(timeout: 5))
+        let charge = app.textFields["review.expense.chargedAmount"]
+        XCTAssertTrue(charge.exists)
+        revealIdentifier("review.category.subscriptions", as: .button).tap()
+        XCTAssertFalse(app.buttons["review.expense.save"].isEnabled)
+        app.swipeDown()
+        charge.tap()
+        charge.typeText("9.25")
+        XCTAssertTrue(app.buttons["review.expense.save"].isEnabled)
+        app.buttons["review.expense.save"].tap()
+        XCTAssertTrue(app.navigationBars["Activity"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.alerts["Couldn’t record expense"].exists)
+        XCTAssertFalse(app.buttons[AutomationTokenMirror.decision("obs-streaming")].exists)
+    }
+
+    func testEverydayFilterSelectionAppliesToTimeline() {
+        launch(tab: "activity")
+        app.buttons["activity.filters"].tap()
+        XCTAssertTrue(app.navigationBars["Transaction filters"].waitForExistence(timeout: 5))
+        let filtersCapture = XCTAttachment(screenshot: app.screenshot())
+        filtersCapture.name = "everyday-filters"
+        filtersCapture.lifetime = .keepAlways
+        add(filtersCapture)
+        app.buttons["activity.filter.category"].tap()
+        XCTAssertTrue(app.navigationBars["Category"].waitForExistence(timeout: 5))
+        let category = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Groceries")).firstMatch
+        XCTAssertTrue(category.waitForExistence(timeout: 5))
+        category.tap()
+        XCTAssertTrue(category.isSelected, app.debugDescription)
+        app.navigationBars["Category"].buttons.firstMatch.tap()
+        XCTAssertTrue(app.navigationBars["Transaction filters"].waitForExistence(timeout: 5))
+        app.buttons["activity.filters.apply"].tap()
+        XCTAssertTrue(app.navigationBars["Activity"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["activity.filters"].label.contains("Filters on"), app.debugDescription)
+    }
+
     func testPlanHubExposesFourPushedDestinations() {
         launch(tab: "plan")
         XCTAssertTrue(app.buttons["plan.budget"].waitForExistence(timeout: 8))
@@ -375,6 +469,19 @@ final class ProductionHCIUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["This may already be recorded"].exists)
     }
 
+    func testManualRecordedPaymentLookupDoesNotResolveAnythingOnOpen() {
+        launch(variant: "exactExisting", tab: "activity", section: "toReview")
+        revealIdentifier(AutomationTokenMirror.decision("obs-streaming"), as: .any).tap()
+        revealIdentifier("review.findRecordedPayment", as: .button).tap()
+        XCTAssertTrue(app.navigationBars["Find recorded payment"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Recorded membership")).firstMatch.exists)
+        XCTAssertTrue(app.searchFields.firstMatch.exists)
+        app.navigationBars["Find recorded payment"].buttons.firstMatch.tap()
+        XCTAssertTrue(app.navigationBars["Review activity"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["review.matchExisting"].exists)
+        XCTAssertFalse(resolvedState.exists)
+    }
+
     /// The whole loop, in one pass: evidence is work, a person decides what it
     /// means, the queue goes quiet, and the row it produced can still say where
     /// it came from.
@@ -400,6 +507,9 @@ final class ProductionHCIUITests: XCTestCase {
         ).firstMatch
         XCTAssertTrue(override.waitForExistence(timeout: 5))
         override.tap()
+        XCTAssertTrue(app.navigationBars["Categorize payment"].waitForExistence(timeout: 5))
+        revealIdentifier("review.category.subscriptions", as: .button).tap()
+        app.buttons["review.expense.save"].tap()
 
         // The decision is recorded in place: the same screen now states the
         // state it was left in and offers nothing further to decide.
@@ -419,7 +529,7 @@ final class ProductionHCIUITests: XCTestCase {
         // The transaction it produced can now answer where it came from.
         app.buttons["Transactions"].tap()
         let transaction = app.buttons.matching(
-            NSPredicate(format: "label CONTAINS %@", "STREAMING MEMBERSHIP")
+            NSPredicate(format: "label CONTAINS[c] %@", "Streaming Membership")
         ).firstMatch
         XCTAssertTrue(transaction.waitForExistence(timeout: 8))
         transaction.tap()

@@ -7,6 +7,7 @@ enum HistoryArchiveQueryError: Error, Equatable, CustomStringConvertible {
     case invalidDate(Int32)
     case unrepresentableQueryRange
     case invalidAmountRange
+    case amountCurrencyRequired
 
     var description: String {
         switch self {
@@ -18,6 +19,8 @@ enum HistoryArchiveQueryError: Error, Equatable, CustomStringConvertible {
             "the requested history date range cannot be stored"
         case .invalidAmountRange:
             "minimum history amount is greater than maximum"
+        case .amountCurrencyRequired:
+            "amount filtering and sorting require exactly one currency"
         }
     }
 }
@@ -62,6 +65,11 @@ final class HistoryArchiveQueries {
            minimum > maximum {
             throw HistoryArchiveQueryError.invalidAmountRange
         }
+        let comparesAmounts = query.minimumAmountMinor != nil || query.maximumAmountMinor != nil
+            || query.sort == .amountHighToLow || query.sort == .amountLowToHigh
+        if comparesAmounts && (query.currencies.count != 1 || query.amountFractionDigits == nil) {
+            throw HistoryArchiveQueryError.amountCurrencyRequired
+        }
 
         let archiveID = archive.identifier
         let fromDay = try query.dateRange.map { try ordinal($0.lowerBound) } ?? Int32.min
@@ -69,6 +77,8 @@ final class HistoryArchiveQueries {
         let normalizedText = HistorySearchNormalizer.normalize(query.searchText)
         let minimumAmount = query.minimumAmountMinor ?? 0
         let maximumAmount = query.maximumAmountMinor ?? Int64.max
+        let singleCurrency = query.currencies.count == 1 ? (query.currencies.first ?? "") : ""
+        let amountDigits = query.amountFractionDigits ?? -1
 
         // Keep the SQL-facing predicate deliberately small. SwiftData's
         // Predicate macro cannot type-check one expression containing seven
@@ -83,12 +93,20 @@ final class HistoryArchiveQueries {
                 && row.valueDay <= throughDay
                 && row.absoluteAmountMinor >= minimumAmount
                 && row.absoluteAmountMinor <= maximumAmount
+                && (!comparesAmounts || row.currencyExponent == amountDigits)
+                && (singleCurrency.isEmpty || row.currencyCode == singleCurrency)
                 && (normalizedText.isEmpty || row.normalizedSearchText.contains(normalizedText))
         }
 
-        let batchSize = min(250, max(80, limit * 2))
-        var storageOffset = 0
-        var matchedOffset = 0
+        // When SQL contains every active filter, ask the store for precisely
+        // this page. Secondary token filters still need bounded scanning.
+        let hasSecondaryFilters = !query.accountIDs.isEmpty || !query.categoryIDs.isEmpty
+            || !query.economicTypes.isEmpty || !query.economicSourceIDs.isEmpty
+            || query.currencies.count > 1 || !query.sourceIDs.isEmpty
+            || !query.statuses.isEmpty || !query.provenanceValues.isEmpty
+        let batchSize = hasSecondaryFilters ? min(250, max(80, limit * 2)) : limit + 1
+        var storageOffset = hasSecondaryFilters ? 0 : offset
+        var matchedOffset = hasSecondaryFilters ? 0 : offset
         var selected: [StoredHistoricalTransaction] = []
         var exhausted = false
         while selected.count < limit + 1, !exhausted {
@@ -158,6 +176,7 @@ final class HistoryArchiveQueries {
 
     func filterCatalog() throws -> HistoryFilterCatalog {
         guard let context, let archive = try currentArchive(in: context) else { return .empty }
+        let archiveID = archive.identifier
         func options(_ ids: [String], _ names: [String]) -> [HistoryFilterOption] {
             zip(ids, names).map { HistoryFilterOption(id: $0.0, name: $0.1) }
         }
@@ -168,7 +187,30 @@ final class HistoryArchiveQueries {
             economicSources: archive.economicSources
                 .map(HistoryEconomicSource.option)
                 .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending },
-            currencies: archive.currencies.map { HistoryFilterOption(id: $0, name: $0) },
+            currencies: try archive.currencies.map { code in
+                var descriptor = FetchDescriptor<StoredHistoricalTransaction>(
+                    predicate: #Predicate { $0.archiveIdentifier == archiveID && $0.currencyCode == code }
+                )
+                descriptor.fetchLimit = 1
+                let first = try context.fetch(descriptor).first?.currencyExponent
+                let digits: Int?
+                if let first {
+                    var conflict = FetchDescriptor<StoredHistoricalTransaction>(
+                        predicate: #Predicate {
+                            $0.archiveIdentifier == archiveID
+                                && $0.currencyCode == code
+                                && $0.currencyExponent != first
+                        }
+                    )
+                    conflict.fetchLimit = 1
+                    digits = try context.fetch(conflict).isEmpty ? first : nil
+                } else {
+                    digits = nil
+                }
+                return HistoryFilterOption(
+                    id: code, name: code, fractionDigits: digits
+                )
+            },
             sources: options(archive.sourceIdentifiers, archive.sourceNames),
             statuses: archive.statuses.map { HistoryFilterOption(id: $0, name: $0) },
             provenanceValues: archive.provenanceValues.map { HistoryFilterOption(id: $0, name: $0) }

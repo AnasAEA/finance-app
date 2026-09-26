@@ -96,6 +96,37 @@ struct PersistenceHardeningTests {
         return context
     }
 
+    @Test("Manual entry appends without replacing existing stored rows")
+    func manualEntryPreservesStoredRowIdentity() throws {
+        _ = try loaded()
+        let existing = try #require(try context.fetch(FetchDescriptor<StoredTransaction>())
+            .first { $0.identifier == "tx" })
+        let persistentID = existing.persistentModelID
+        let store = try FinanceStore(context: context, now: fixtureInstant(Self.today))
+        try store.add(TransactionDraft(
+            day: CalendarDay(year: 2026, month: 9, day: 16), kind: .expense,
+            amount: Amount(minorUnits: 100, currencyCode: "EUR"), accountID: "bank"
+        ))
+        let rows = try context.fetch(FetchDescriptor<StoredTransaction>())
+        #expect(rows.count == 3)
+        #expect(rows.first { $0.identifier == "tx" }?.persistentModelID == persistentID)
+        #expect(try StoredDocumentGraph.load(from: context)?.transactions.count == 2)
+    }
+
+    @Test("Manual entry recreates optional preferences in a migrated store")
+    func manualEntryAfterMissingPreferences() throws {
+        _ = try loaded()
+        try context.fetch(FetchDescriptor<StoredEntryPreferences>()).forEach(context.delete)
+        try context.save()
+        let store = try FinanceStore(context: context, now: fixtureInstant(Self.today))
+        try store.add(TransactionDraft(
+            day: CalendarDay(year: 2026, month: 9, day: 16), kind: .expense,
+            amount: Amount(minorUnits: 100, currencyCode: "EUR"), accountID: "bank"
+        ))
+        #expect(try context.fetchCount(FetchDescriptor<StoredEntryPreferences>()) == 1)
+        #expect(try StoredDocumentGraph.load(from: context)?.transactions.count == 2)
+    }
+
     private func failure(loading context: ModelContext) -> PersistenceMappingError? {
         do { _ = try StoredDocumentGraph.load(from: context); return nil }
         catch let error as PersistenceMappingError { return error }

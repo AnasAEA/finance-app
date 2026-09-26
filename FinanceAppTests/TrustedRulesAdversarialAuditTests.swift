@@ -161,6 +161,24 @@ struct TrustedRulesAdversarialAuditTests {
         return document
     }
 
+    @Test("Approved automation cannot duplicate a transaction that names the incoming evidence")
+    func recordedEvidenceBlocksAutomaticDuplicate() throws {
+        let db = try container()
+        var document = try activatedDocument(includeTarget: true)
+        let target = try #require(document.externalObservations.first { $0.id == "target" })
+        document.transactions.append(Transaction(id: "already-recorded-target", date: try #require(target.suggestedEconomicDate),
+            kind: .expense, legs: [.init(accountID: "local-bank", amount: target.amount)], factivity: .observed,
+            provenance: Provenance(source: "AUDIT", evidenceGrade: .userConfirmed, reference: target.id)))
+        try persist(document, in: db.mainContext)
+        let store = try FinanceStore(context: db.mainContext, now: fixtureInstant(Day(year: 2026, month: 8, day: 25)))
+        try store.setTrustedAutomationEnabled(true)
+        let before = try load(from: db)
+        let result = try store.processTrustedRules(observationIDs: [target.id])
+        #expect(result.appliedObservationIDs.isEmpty)
+        #expect(result.ambiguousObservationIDs == [target.id])
+        #expect(try load(from: db) == before)
+    }
+
     @Test func evidenceAndAutomaticRuleUseAdvancingOperationTime() throws {
         let db = try container()
         var document = try activatedDocument(includeTarget: true)
@@ -301,13 +319,11 @@ struct TrustedRulesAdversarialAuditTests {
 
         try store.createExpense(from: "support-1", userLabel: "Synthetic label")
         #expect(try load(from: container).trustedRules.isEmpty)
-        // Same-account, same-amount activity inside the five-day review
-        // window now requires the same explicit duplicate acknowledgement as
-        // the production confirmation dialog.
+        // Distinct durable provider payments do not become duplicate warnings
+        // merely because their amount, merchant and nearby dates coincide.
         try store.createExpense(
             from: "support-2",
-            userLabel: "Synthetic label",
-            allowingPotentialDuplicate: true
+            userLabel: "Synthetic label"
         )
         let proposed = try load(from: container)
         let rule = try #require(proposed.trustedRules.first)

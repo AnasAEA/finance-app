@@ -77,6 +77,7 @@ enum AppImportError: Error, Hashable, Sendable {
         case carriedValueForUnknownAccount(accountID: String)
         case invalidExternalEvidence
         case invalidPlanning
+        case unrepresentableAmount
         /// A balance is dated so far from today that its age cannot be stated
         /// as a number of days. Presenting it without an age would show a
         /// figure of unknown vintage as though it were current.
@@ -108,6 +109,8 @@ enum AppImportError: Error, Hashable, Sendable {
                 "The provider-evidence graph contains a broken binding, review state, or transaction link."
             case .invalidPlanning:
                 "This export's planned purchases or sinking funds are not internally consistent."
+            case .unrepresentableAmount:
+                "This export contains an amount too large for the app's calculations. Nothing was restored."
             case let .undatableBalance(accountID):
                 "The balance for account “\(accountID)” is dated too far from today for its age to be stated."
             }

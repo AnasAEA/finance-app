@@ -143,6 +143,7 @@ extension Amount {
     enum ParseFailure: Error, Hashable, Sendable {
         case empty
         case notANumber
+        case outOfRange
         /// More decimals than the currency has minor units for.
         case excessPrecision(allowed: Int)
     }
@@ -184,8 +185,11 @@ extension Amount {
         NSDecimalRound(&rounded, &scaled, 0, .plain)
         guard rounded == scaled else { throw ParseFailure.excessPrecision(allowed: fractionDigits) }
 
+        guard let minorUnits = Int64(NSDecimalNumber(decimal: rounded).stringValue) else {
+            throw ParseFailure.outOfRange
+        }
         return Amount(
-            minorUnits: Int64(truncating: NSDecimalNumber(decimal: rounded)),
+            minorUnits: minorUnits,
             currencyCode: currencyCode,
             fractionDigits: fractionDigits
         )

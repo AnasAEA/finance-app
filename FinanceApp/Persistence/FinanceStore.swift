@@ -244,9 +244,15 @@ final class FinanceStore: FinanceProviding {
     // `FinanceDocument` and an export stays portable without them.
 
     private(set) var bankSyncActivity: BankSyncActivity = .idle
+    private(set) var bankSyncRuns: [MobileSyncRun] = []
     private(set) var remoteAccounts: [RemoteAccountSummary] = []
     private(set) var remoteConnections: [RemoteConnectionSummary] = []
     private(set) var pairingState: BankPairingState = .notConfigured
+    @ObservationIgnored private var nextEvidenceReadGeneration = 0
+    @ObservationIgnored private var lastAppliedEvidenceReadGeneration = 0
+    @ObservationIgnored private var bankIdentityGeneration = 0
+    @ObservationIgnored private var activeSyncJobID: String?
+    @ObservationIgnored private var lastObservedSyncJobID: String?
 
     /// One freshness answer for every product surface. Views do not re-derive
     /// connection relevance or choose their own fallback timestamp.
@@ -743,6 +749,27 @@ final class FinanceStore: FinanceProviding {
         guard let observed = DomainMapper.date(Day(year: 2027, month: 3, day: 6)) else { return preview() }
         store.pairingState = pairing
         store.bankSyncActivity = activity
+        switch activity {
+        case .syncing:
+            store.bankSyncRuns = [
+                MobileSyncRun(provider: "bnp", outcome: "success", errorCode: nil, state: "finished"),
+                MobileSyncRun(provider: "paypal", outcome: nil, errorCode: nil, state: "running"),
+                MobileSyncRun(provider: "revolut", outcome: nil, errorCode: nil, state: "queued")
+            ]
+        case .succeeded:
+            store.bankSyncRuns = ["bnp", "paypal", "revolut"].map {
+                MobileSyncRun(provider: $0, outcome: "success", errorCode: nil, state: "finished")
+            }
+        case .failed:
+            store.bankSyncRuns = [
+                MobileSyncRun(provider: "bnp", outcome: "success", errorCode: nil, state: "finished"),
+                MobileSyncRun(provider: "paypal", outcome: "skipped_rate_limited",
+                              errorCode: "ASPSP_RATE_LIMIT_EXCEEDED", state: "finished"),
+                MobileSyncRun(provider: "revolut", outcome: "success", errorCode: nil, state: "finished")
+            ]
+        case .idle:
+            break
+        }
         store.remoteConnections = [
             RemoteConnectionSummary(
                 id: "conn-bank", provider: .bnp, institution: "Synthetic Bank",
@@ -760,6 +787,19 @@ final class FinanceStore: FinanceProviding {
                 lastSuccessfulSyncAt: nil, lastErrorCode: "SESSION_EXPIRED"
             )
         ]
+        switch activity {
+        case .succeeded, .failed:
+            store.remoteConnections = store.remoteConnections.map { connection in
+                RemoteConnectionSummary(
+                    id: connection.id, provider: connection.provider,
+                    institution: connection.institution, status: "connected",
+                    validUntil: Day(year: 2027, month: 8, day: 24),
+                    lastSuccessfulSyncAt: observed, lastErrorCode: nil
+                )
+            }
+        case .idle, .syncing:
+            break
+        }
         store.remoteAccounts = [
             RemoteAccountSummary(
                 id: "acct_bank", provider: .bnp, displayName: "Current account",
@@ -802,6 +842,7 @@ final class FinanceStore: FinanceProviding {
         case "pendingOnly": return hciPendingOnlyPreview()
         case "aggregateConflict": return hciAggregateConflictPreview()
         case "exactExisting": return hciExactExistingPreview()
+        case "foreignExpense": return hciForeignExpensePreview()
         case "projectionFailure": return hciProjectionFailurePreview()
         default: return hciFullPreview()
         }
@@ -895,6 +936,21 @@ final class FinanceStore: FinanceProviding {
 
     /// Exact same-account amount/date candidate for the preferred Match
     /// Existing action.
+    private static func hciForeignExpensePreview() -> FinanceStore {
+        let store = bankSyncPreview()
+        let source = store.document.externalObservations.first { $0.id == "obs-streaming" }!
+        store.document.externalObservations = [ExternalObservation(
+            id: source.id, bindingID: source.bindingID, provider: source.provider,
+            status: .booked, creditDebitIndicator: .debit,
+            amount: Money(minorUnits: -1000, currency: Currency(code: "USD")),
+            bookingDate: source.bookingDate, structuredMerchantName: "Patreon",
+            eligibleForEconomicActual: true, observedAt: source.observedAt)]
+        store.document.observationResolutions = [.init(observationID: source.id, state: .unreviewed)]
+        store.document.crossProviderCandidates = []
+        store.recalculate()
+        return store
+    }
+
     private static func hciExactExistingPreview() -> FinanceStore {
         let store = bankSyncPreview()
         store.document.transactions.append(
@@ -907,7 +963,8 @@ final class FinanceStore: FinanceProviding {
                     amount: Money(minorUnits: -349, currency: .eur)
                 )],
                 factivity: .observed,
-                lifecycle: .cleared
+                lifecycle: .cleared,
+                provenance: Provenance(source: "HCI-SYNTHETIC", evidenceGrade: .userConfirmed, reference: "obs-streaming")
             )
         )
         store.transactionPresentation["hci-exact-existing"] = .init(
@@ -923,7 +980,15 @@ final class FinanceStore: FinanceProviding {
     /// cases.
     private static func hciHealthySyncPreview() -> FinanceStore {
         let store = bankSyncPreview()
-        store.remoteConnections = Array(store.remoteConnections.prefix(1))
+        let successfulAt = store.remoteConnections.first?.lastSuccessfulSyncAt
+        store.remoteConnections = store.remoteConnections.map { connection in
+            RemoteConnectionSummary(
+                id: connection.id, provider: connection.provider,
+                institution: connection.institution, status: "connected",
+                validUntil: Day(year: 2027, month: 8, day: 24),
+                lastSuccessfulSyncAt: successfulAt, lastErrorCode: nil
+            )
+        }
         store.recalculate()
         return store
     }
@@ -1148,7 +1213,7 @@ final class FinanceStore: FinanceProviding {
 
         if let context {
             do {
-                try writer.write(corrected, context, try requireCivilToday(), [:], importedMetadata)
+                try writer.writeImported(corrected, context, try requireCivilToday(), [:], importedMetadata)
             } catch {
                 // Atomicity is the store's guarantee, not one writer's: whatever
                 // the writer left half-done in the context is discarded here, so
@@ -1223,7 +1288,7 @@ final class FinanceStore: FinanceProviding {
         )
         if let context {
             do {
-                try writer.write(imported, context, try requireCivilToday(), [:], importedMetadata)
+                try writer.writeImported(imported, context, try requireCivilToday(), [:], importedMetadata)
             } catch {
                 context.rollback()
                 throw error
@@ -1241,7 +1306,7 @@ final class FinanceStore: FinanceProviding {
     }
 
     func exportDocument() throws -> FinanceDocument {
-        if let context, let stored = try StoredDocumentGraph.load(from: context) {
+        if let context, let stored = try StoredDocumentGraph.loadForExport(from: context) {
             return stored
         }
         return document
@@ -1394,6 +1459,7 @@ final class FinanceStore: FinanceProviding {
         let restoreTransactions = document.transactions
         let restoreBalances = document.balances
         let restoreMetadata = appMetadata
+        let restoreVersion = document.schemaVersion
         document.transactions.append(mapped.transaction)
         transactionPresentation[mapped.transaction.id] = mapped.presentation
         switch draft.kind {
@@ -1406,7 +1472,21 @@ final class FinanceStore: FinanceProviding {
         }
 
         do {
-            try persistCurrentDocument()
+            if let context, let append = writer.appendUserTransaction {
+                if let loadFailure { throw AppEntryError.persistenceFailed(loadFailure) }
+                appMetadata.currentHoldingsModelVersion = CurrentHoldings.modelVersion
+                if document.planning.containsDurablePlanningState {
+                    document.schemaVersion = Interchange.version(
+                        document.schemaVersion, atLeast: Interchange.planningStateSchemaVersion
+                    )
+                }
+                try append(
+                    document, mapped.transaction, context, try requireCivilToday(),
+                    mapped.presentation, appMetadata
+                )
+            } else {
+                try persistCurrentDocument()
+            }
         } catch {
             // The write failed, so the in-memory document must not keep an
             // entry the store does not have. Leaving it would show a saved
@@ -1414,6 +1494,7 @@ final class FinanceStore: FinanceProviding {
             document.transactions = restoreTransactions
             document.balances = restoreBalances
             appMetadata = restoreMetadata
+            document.schemaVersion = restoreVersion
             transactionPresentation.removeValue(forKey: mapped.transaction.id)
             throw AppEntryError.persistenceFailed(String(describing: error))
         }
@@ -1911,6 +1992,13 @@ final class FinanceStore: FinanceProviding {
                 transactionPresentation,
                 appMetadata
             )
+            if writer.archivesPendingHistory {
+                document = PendingEvidenceArchive.partition(
+                    document,
+                    authority: appMetadata.authoritativePendingSnapshots,
+                    retryObservationIDs: appMetadata.trustedAutomationRetryObservationIDs
+                ).live
+            }
         } catch {
             // The live writer already rolls back inside `replace`, but a
             // failing stand-in can tear down rows and throw. Callers restore
@@ -2596,7 +2684,8 @@ final class FinanceStore: FinanceProviding {
     func importBankEvidence(
         _ batch: ExternalEvidenceBatch,
         authoritativePendingSnapshots: [ExternalProvider: AuthoritativePendingSnapshot]? = nil,
-        authoritativeLiveCoverage: [String: AuthoritativeLiveCoverage]? = nil
+        authoritativeLiveCoverage: [String: AuthoritativeLiveCoverage]? = nil,
+        cursorCheckpoint: (cursor: String?, bindingIDs: [String], deviceID: String?)? = nil
     ) throws -> TrustedRuleProcessingResult {
         let previous = beginOperation()
         defer { operationDate = previous }
@@ -2636,6 +2725,10 @@ final class FinanceStore: FinanceProviding {
                     // Merge provider scopes. A response that establishes one
                     // provider must not silently erase another provider whose
                     // authority was not present in that response.
+                    if let previous = appMetadata.authoritativePendingSnapshots[provider],
+                       previous.authoritativeAt > snapshot.authoritativeAt {
+                        continue
+                    }
                     appMetadata.authoritativePendingSnapshots[provider] = snapshot
                 }
             }
@@ -2647,13 +2740,35 @@ final class FinanceStore: FinanceProviding {
                     established: authoritativeLiveCoverage
                 )
             }
-            try persistCurrentDocument()
+            if let cursorCheckpoint {
+                appMetadata.bankEvidenceCursor = cursorCheckpoint.cursor
+                appMetadata.bankEvidenceCursorBindingIDs = cursorCheckpoint.bindingIDs
+                appMetadata.bankEvidenceCursorDeviceID = cursorCheckpoint.deviceID
+            }
+            let hasRetiredPendingEvidence = !PendingEvidenceArchive.partition(
+                document,
+                authority: appMetadata.authoritativePendingSnapshots,
+                retryObservationIDs: appMetadata.trustedAutomationRetryObservationIDs
+            ).retired.observations.isEmpty
+            if document != restoreDocument || hasRetiredPendingEvidence {
+                try persistCurrentDocument()
+            } else if appMetadata != restoreMetadata {
+                if let context, let update = writer.updateBankMetadata {
+                    try update(context, appMetadata)
+                } else {
+                    try persistCurrentDocument()
+                }
+            }
         } catch {
             document = restoreDocument
             appMetadata = restoreMetadata
             throw bankReviewError(error)
         }
-        recalculate()
+        if document != restoreDocument {
+            recalculate()
+        } else if appMetadata != restoreMetadata {
+            refreshBankPresentation()
+        }
 
         guard trustedAutomationEnabled else {
             trustedAutomationDiagnostic = nil
@@ -2696,6 +2811,26 @@ final class FinanceStore: FinanceProviding {
         try await readAllEvidence(from: provider)
     }
 
+    /// User-requested lookup, separate from automatic duplicate suggestions.
+    /// The bound leg supplies the signed amount; no activity-row approximation.
+    func recordedPaymentCandidates(for observationID: String, search: String = "") -> [RecordedPaymentCandidate] {
+        guard let observation = document.externalObservations.first(where: { $0.id == observationID }),
+              observation.eligibleForEconomicActual,
+              let binding = document.externalAccountBindings.first(where: { $0.id == observation.bindingID && $0.isActive })
+        else { return [] }
+        let accountName = document.accounts.first { $0.id == binding.localAccountID }?.name ?? "Account"
+        let rows = document.transactions.compactMap { transaction -> RecordedPaymentCandidate? in
+            guard transaction.lifecycle != .reversed,
+                  transaction.legs.contains(where: { $0.accountID == binding.localAccountID && $0.amount == observation.amount })
+            else { return nil }
+            let title = transactionPresentation[transaction.id]?.merchant ?? "Recorded \(transaction.kind.rawValue)"
+            guard search.isEmpty || title.localizedCaseInsensitiveContains(search) else { return nil }
+            return RecordedPaymentCandidate(id: transaction.id, title: title, day: DomainMapper.civilDay(transaction.date),
+                                            amount: DomainMapper.amount(observation.amount), accountName: accountName)
+        }
+        return Array(rows.sorted { ($0.day, $0.id) > ($1.day, $1.id) }.prefix(100))
+    }
+
     /// Explicitly attaches provider evidence to a transaction already entered
     /// by the person. It creates no second economic actual and moves no balance.
     func matchObservation(_ observationID: String, toTransaction transactionID: String) throws {
@@ -2728,6 +2863,21 @@ final class FinanceStore: FinanceProviding {
         recalculate()
     }
 
+    /// A visible proposal from exact prior labels, never a saved classification.
+    func suggestedExpenseCategory(merchant: String, currency: String) -> String? {
+        let normalized = merchant.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !normalized.isEmpty else { return nil }
+        let categories = Set(document.transactions.compactMap { transaction -> String? in
+            guard transaction.kind == .expense,
+                  transaction.legs.contains(where: { $0.amount.currency.code == currency }),
+                  let presentation = transactionPresentation[transaction.id],
+                  presentation.merchant?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == normalized
+            else { return nil }
+            return presentation.categoryKey
+        })
+        return categories.count == 1 ? categories.first : nil
+    }
+
     /// Confirms a debit as spending. A unique cross-provider candidate may be
     /// included only when its second observation id is passed by an explicit UI
     /// action; the candidate itself never links anything.
@@ -2735,6 +2885,8 @@ final class FinanceStore: FinanceProviding {
     func createExpense(
         from observationID: String,
         userLabel: String,
+        categoryKey: String? = nil,
+        chargedAmount: Amount? = nil,
         including relatedObservationID: String? = nil,
         settlingExpectedPaymentID: String? = nil,
         allowingPotentialDuplicate: Bool = false
@@ -2743,7 +2895,8 @@ final class FinanceStore: FinanceProviding {
            let observation = document.externalObservations.first(where: {
                $0.id == observationID
            }),
-           let conflict = mapper.duplicateConflict(for: observation, in: document) {
+           let conflict = mapper.duplicateConflict(for: observation, in: document,
+                                                  transactionLabels: transactionPresentation.compactMapValues(\.merchant)) {
             throw BankReviewError.invalidAction(
                 "This may already be accounted for. \(conflict.warning) Confirm the duplicate warning before creating another transaction."
             )
@@ -2752,6 +2905,8 @@ final class FinanceStore: FinanceProviding {
             from: observationID,
             kind: .expense,
             userLabel: userLabel,
+            categoryKey: categoryKey,
+            chargedAmount: chargedAmount,
             including: relatedObservationID,
             settlingExpectedPaymentID: settlingExpectedPaymentID
         )
@@ -2763,6 +2918,7 @@ final class FinanceStore: FinanceProviding {
             from: observationID,
             kind: .income,
             userLabel: userLabel,
+            categoryKey: nil,
             including: nil,
             settlingExpectedPaymentID: nil
         )
@@ -2773,6 +2929,8 @@ final class FinanceStore: FinanceProviding {
         from observationID: String,
         kind: TransactionKind,
         userLabel: String,
+        categoryKey: String?,
+        chargedAmount: Amount? = nil,
         including relatedObservationID: String?,
         settlingExpectedPaymentID: String?
     ) throws -> String {
@@ -2780,6 +2938,14 @@ final class FinanceStore: FinanceProviding {
         defer { operationDate = previous }
         let eventNow = operationInstant()
         guard !isFixed else { throw BankReviewError.storeIsReadOnly }
+        if let categoryKey {
+            guard kind == .expense,
+                  snapshot.entryOptions.categories.contains(where: {
+                      $0.key == categoryKey && !$0.isIncome && !$0.isTransfer
+                  }) else {
+                throw BankReviewError.invalidAction("Choose an available spending category.")
+            }
+        }
         guard let selected = document.externalObservations.first(where: { $0.id == observationID }) else {
             throw BankReviewError.unknownObservation
         }
@@ -2812,8 +2978,26 @@ final class FinanceStore: FinanceProviding {
         }
 
         guard let binding = document.externalAccountBindings.first(where: { $0.id == movement.bindingID }),
-              document.accounts.contains(where: { $0.id == binding.localAccountID }) else {
+              let account = document.accounts.first(where: { $0.id == binding.localAccountID }) else {
             throw BankReviewError.unknownAccount
+        }
+        let isForeignCurrency = movement.amount.currency != account.currency
+        let accountAmount: Money
+        if isForeignCurrency {
+            guard kind == .expense, let chargedAmount else {
+                throw BankReviewError.invalidAction("This payment is in \(movement.amount.currency.code), but the account is in \(account.currency.code). Enter the exact amount charged in the account currency.")
+            }
+            guard chargedAmount.isPositive,
+                  chargedAmount.currencyCode == account.currency.code,
+                  chargedAmount.fractionDigits == account.currency.minorUnitDigits else {
+                throw BankReviewError.invalidAction("Enter a positive amount charged in \(account.currency.code), using the account’s currency precision.")
+            }
+            accountAmount = Money(minorUnits: -chargedAmount.minorUnits, currency: account.currency)
+        } else {
+            guard chargedAmount == nil else {
+                throw BankReviewError.invalidAction("This payment already has an amount in the account currency. Use its recorded amount.")
+            }
+            accountAmount = movement.amount
         }
         let occurrence = try settlingExpectedPaymentID.map { id -> OccurrenceID in
             guard let value = DomainMapper.occurrenceID(id) else {
@@ -2829,11 +3013,14 @@ final class FinanceStore: FinanceProviding {
             id: transactionID,
             date: valueDay,
             kind: kind,
-            legs: [AccountLeg(accountID: binding.localAccountID, amount: movement.amount)],
+            legs: [AccountLeg(accountID: binding.localAccountID, amount: accountAmount)],
             factivity: .observed,
             lifecycle: .cleared,
             bookedDate: movement.bookingDate,
             datePrecision: movement.suggestedEconomicDate == nil ? .estimated : .exact,
+            note: isForeignCurrency
+                ? "Account-currency amount explicitly confirmed by the user; original foreign-currency provider evidence retained."
+                : nil,
             provenance: Provenance(
                 source: "EXTERNAL-EVIDENCE-REVIEW",
                 evidenceGrade: .userConfirmed,
@@ -2841,7 +3028,7 @@ final class FinanceStore: FinanceProviding {
             )
         )
         var evidence = [
-            ExternalEvidenceAssignment(observationID: movement.id, role: .accountMovement)
+            ExternalEvidenceAssignment(observationID: movement.id, role: isForeignCurrency ? .supportingEvidence : .accountMovement)
         ]
         if let merchantEvidence {
             evidence.append(
@@ -2864,7 +3051,7 @@ final class FinanceStore: FinanceProviding {
                 in: &document
             )
             transactionPresentation[transactionID] = .init(
-                categoryKey: kind == .income ? "income" : nil,
+                categoryKey: kind == .income ? "income" : categoryKey,
                 merchant: userLabel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                     ? nil : userLabel
             )
@@ -2986,6 +3173,12 @@ final class FinanceStore: FinanceProviding {
                 continue
             }
             guard let decision = automatic.first else { continue }
+            if let observation = document.externalObservations.first(where: { $0.id == observationID }),
+               mapper.duplicateConflict(for: observation, in: document,
+                                        transactionLabels: transactionPresentation.compactMapValues(\.merchant)) != nil {
+                ambiguous.append(observationID)
+                continue
+            }
             do {
                 try applyTrustedRule(
                     decision.ruleID,
@@ -3012,6 +3205,11 @@ final class FinanceStore: FinanceProviding {
         defer { operationDate = previous }
         let eventNow = operationInstant()
         _ = try requireCivilToday()
+        if let observation = document.externalObservations.first(where: { $0.id == observationID }),
+           mapper.duplicateConflict(for: observation, in: document,
+                                    transactionLabels: transactionPresentation.compactMapValues(\.merchant)) != nil {
+            throw BankReviewError.invalidAction("A recorded payment may already represent this bank evidence. Review it before automatic handling.")
+        }
         var candidate = document
         var candidatePresentation = transactionPresentation
         let application = try TrustedRuleEngine.applyAutomatically(
@@ -3112,7 +3310,7 @@ final class FinanceStore: FinanceProviding {
             return "Some trusted automation could not be completed. The bank evidence is saved for review."
         }
         if !result.ambiguousObservationIDs.isEmpty {
-            return "Some new activity remains for review because multiple trusted rules match."
+            return "Some new activity needs review: multiple trusted rules or previously recorded payments may match."
         }
         return nil
     }
@@ -3291,6 +3489,7 @@ final class FinanceStore: FinanceProviding {
         bankSyncActivity = .syncing
         do {
             _ = try await provider.pair(code: code, label: label)
+            bankIdentityGeneration += 1
             pairingState = .paired
             bankSyncActivity = .idle
         } catch {
@@ -3313,22 +3512,32 @@ final class FinanceStore: FinanceProviding {
     /// accounts and evidence are already there to be read in a second or two.
     func refreshFromService() async {
         guard let client = liveClient() else { return }
+        let identityGeneration = bankIdentityGeneration
         do {
             try await readAllEvidence(from: LiveBankSyncProvider(client: client))
         } catch let error as BankSyncClientError {
-            if error == .deviceRevoked || error == .unauthorized { pairingState = .revoked }
+            guard identityGeneration == bankIdentityGeneration else { return }
+            if error == .deviceRevoked || error == .unauthorized {
+                bankIdentityGeneration += 1
+                pairingState = .revoked
+            }
             bankSyncActivity = .failed(error.message)
         } catch {
+            guard identityGeneration == bankIdentityGeneration else { return }
             bankSyncActivity = .failed(Self.syncMessage(error))
         }
     }
 
     /// Forgets this device's pairing and its signing key.
-    func unpairDevice() {
-        try? identityStore.clear()
+    func unpairDevice() throws {
+        try identityStore.clear()
+        bankIdentityGeneration += 1
         pairingState = BankSyncConfiguration.baseURL() == nil ? .notConfigured : .unpaired
         remoteAccounts = []
         remoteConnections = []
+        bankSyncRuns = []
+        activeSyncJobID = nil
+        lastObservedSyncJobID = nil
         bankSyncActivity = .idle
     }
 
@@ -3347,17 +3556,135 @@ final class FinanceStore: FinanceProviding {
     }
 
     func syncNow(using provider: any BankSyncProviding) async {
+        guard !bankSyncActivity.isSyncing else { return }
+        let identityGeneration = bankIdentityGeneration
         bankSyncActivity = .syncing
+        bankSyncRuns = []
         do {
-            try await provider.runRemoteSync()
+            if let job = try await provider.startRemoteSync() {
+                guard identityGeneration == bankIdentityGeneration else { return }
+                await finishAsyncSync(job, using: provider, identityGeneration: identityGeneration)
+                return
+            }
+            let outcomes = try await provider.runRemoteSyncWithOutcomes()
+            guard identityGeneration == bankIdentityGeneration else { return }
+            bankSyncRuns = outcomes ?? []
             try await readAllEvidence(from: provider)
-            bankSyncActivity = .succeeded(at: clock())
+            guard identityGeneration == bankIdentityGeneration else { return }
+            if let outcomes, let failure = Self.remoteSyncFailure(outcomes) {
+                bankSyncActivity = .failed(failure)
+            } else {
+                bankSyncActivity = .succeeded(at: clock())
+            }
         } catch let error as BankSyncClientError {
-            if error == .deviceRevoked || error == .unauthorized { pairingState = .revoked }
+            guard identityGeneration == bankIdentityGeneration else { return }
+            if error == .deviceRevoked || error == .unauthorized {
+                bankIdentityGeneration += 1
+                pairingState = .revoked
+            }
             bankSyncActivity = .failed(error.message)
         } catch {
+            guard identityGeneration == bankIdentityGeneration else { return }
             bankSyncActivity = .failed(Self.syncMessage(error))
         }
+    }
+
+    /// Rejoin a queued run after the app returns to the foreground or launches
+    /// again. The run is owned by this signed device on the service.
+    func resumeSyncIfNeeded() async {
+        guard pairingState == .paired, !bankSyncActivity.isSyncing,
+              activeSyncJobID == nil,
+              let client = liveClient() else { return }
+        do {
+            guard let job = try await client.currentSync(),
+                  job.jobId != lastObservedSyncJobID else { return }
+            await finishAsyncSync(job, using: LiveBankSyncProvider(client: client),
+                                  identityGeneration: bankIdentityGeneration)
+        } catch {
+            // Foreground evidence refresh has its own error presentation. A
+            // status query must not replace it with a second transient error.
+        }
+    }
+
+    private func finishAsyncSync(
+        _ initial: MobileSyncJob,
+        using provider: any BankSyncProviding,
+        identityGeneration: Int
+    ) async {
+        guard activeSyncJobID == nil || activeSyncJobID == initial.jobId else { return }
+        activeSyncJobID = initial.jobId
+        bankSyncActivity = .syncing
+        var job = initial
+        bankSyncRuns = job.runs
+        do {
+            while !job.complete {
+                try await Task.sleep(for: .seconds(2))
+                guard identityGeneration == bankIdentityGeneration else { return }
+                job = try await provider.remoteSyncStatus(jobId: job.jobId)
+                guard job.jobId == initial.jobId else { throw BankSyncClientError.malformedResponse }
+                bankSyncRuns = job.runs
+            }
+            guard identityGeneration == bankIdentityGeneration else { return }
+            try await readAllEvidence(from: provider)
+            guard identityGeneration == bankIdentityGeneration else { return }
+            lastObservedSyncJobID = job.jobId
+            if let failure = Self.remoteSyncFailure(job.runs) {
+                bankSyncActivity = .failed(failure)
+            } else {
+                bankSyncActivity = .succeeded(at: clock())
+            }
+        } catch let error as BankSyncClientError {
+            guard identityGeneration == bankIdentityGeneration else { return }
+            if error == .deviceRevoked || error == .unauthorized {
+                bankIdentityGeneration += 1
+                pairingState = .revoked
+            }
+            bankSyncActivity = .failed(error.message)
+        } catch {
+            guard identityGeneration == bankIdentityGeneration else { return }
+            bankSyncActivity = .failed(Self.syncMessage(error))
+        }
+        activeSyncJobID = nil
+    }
+
+    private static func remoteSyncFailure(_ runs: [MobileSyncRun]) -> String? {
+        guard !runs.isEmpty else { return "The sync service returned no bank results." }
+        if runs.allSatisfy({ $0.outcome == "skipped_no_connection" }) {
+            return "No banks are connected yet. Connect a bank, then try again."
+        }
+        let failures = runs.compactMap { run -> String? in
+            let name: String
+            switch run.provider {
+            case "bnp": name = "BNP"
+            case "paypal": name = "PayPal"
+            case "revolut": name = "Revolut"
+            default: return "An unknown bank returned an unreadable result"
+            }
+            switch run.outcome ?? "error" {
+            case "success", "skipped_no_connection": return nil
+            case "skipped_rate_limited": return "\(name) is rate limited"
+            case "skipped_in_progress": return "\(name) sync is already in progress"
+            case "skipped_reauth_required": return "\(name) needs reconnection"
+            default: return "\(name) could not sync"
+            }
+        }
+        return failures.isEmpty ? nil : failures.joined(separator: "; ") + "."
+    }
+
+    /// Re-read a bounded change window around the committed high-water key.
+    /// A device can pull while the Worker is still writing one provider run;
+    /// later rows in that run can share its timestamp and sort before the last
+    /// id already seen. An inclusive, one-day overlap also covers another
+    /// provider invocation that began earlier but finishes later. Upsert by
+    /// opaque id makes this replay idempotent.
+    private static func overlappingSince(_ highWater: String?) -> String? {
+        guard let highWater,
+              let timestamp = highWater.components(separatedBy: "\t").first
+        else { return nil }
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        guard let date = formatter.date(from: timestamp) else { return nil }
+        return formatter.string(from: date.addingTimeInterval(-86_400))
     }
 
     /// Reads every page of evidence, then imports once.
@@ -3365,7 +3692,17 @@ final class FinanceStore: FinanceProviding {
     /// Importing per page would leave a partial sync visible if a later page
     /// failed; one import keeps the document's evidence graph consistent.
     private func readAllEvidence(from provider: any BankSyncProviding) async throws {
-        var since: String?
+        nextEvidenceReadGeneration += 1
+        let generation = nextEvidenceReadGeneration
+        let identityGeneration = bankIdentityGeneration
+        let bindings = document.externalAccountBindings
+        let activeBindingIDs = bindings.filter(\.isActive).map(\.id).sorted()
+        let deviceID = identityStore.pairedDeviceID
+        let committedHighWater: String? =
+            appMetadata.bankEvidenceCursorBindingIDs == activeBindingIDs
+            && appMetadata.bankEvidenceCursorDeviceID == deviceID
+            ? appMetadata.bankEvidenceCursor : nil
+        var since = Self.overlappingSince(committedHighWater)
         var combined = ExternalEvidenceBatch()
         var directory: BankSyncSnapshot?
         var finalPendingAuthority: PendingSnapshotAuthority = .unavailable
@@ -3373,7 +3710,7 @@ final class FinanceStore: FinanceProviding {
         // Bounded: a runaway cursor must not loop forever against a live service.
         for _ in 0..<20 {
             let page = try await provider.fetchSnapshot(
-                bindings: document.externalAccountBindings,
+                bindings: bindings,
                 // Opaque keyset cursor from `nextSince`. Not a timestamp.
                 since: since
             )
@@ -3381,9 +3718,18 @@ final class FinanceStore: FinanceProviding {
             // the final page keeps displayed provider freshness aligned with
             // the pending membership authority chosen below.
             directory = page
-            combined.observations.append(contentsOf: page.batch.observations)
-            combined.balances.append(contentsOf: page.batch.balances)
-            combined.candidates.append(contentsOf: page.batch.candidates)
+            if page.wireCandidates != nil {
+                // The wire repeats complete current state on every booked page.
+                // Only durable observations are paged; take current state from
+                // the terminal page once.
+                combined.observations.append(contentsOf: page.batch.observations.filter {
+                    $0.identity == .durable
+                })
+            } else {
+                combined.observations.append(contentsOf: page.batch.observations)
+                combined.balances.append(contentsOf: page.batch.balances)
+                combined.candidates.append(contentsOf: page.batch.candidates)
+            }
             // Pending is a complete current snapshot on every booked-evidence
             // page. Keep the final successfully received page, not a union of
             // states observed at different moments during the page walk.
@@ -3398,6 +3744,22 @@ final class FinanceStore: FinanceProviding {
             // Hitting the safety cap with another cursor is incomplete, not a
             // successful twenty-page snapshot.
             throw BankSyncClientError.malformedResponse
+        }
+
+        if let terminal = directory, let wireCandidates = terminal.wireCandidates {
+            combined.observations.append(contentsOf: terminal.batch.observations.filter {
+                $0.identity == .provisionalSnapshot
+            })
+            combined.balances = terminal.batch.balances
+            let activeBindingIDs = Set(bindings.filter(\.isActive).map(\.id))
+            let knownIDs = Set(combined.observations.map(\.id)).union(
+                document.externalObservations
+                    .filter { activeBindingIDs.contains($0.bindingID) && $0.identity == .durable }
+                    .map(\.id)
+            )
+            combined.candidates = try MobileSnapshotMapper.mapCandidates(
+                wireCandidates, knownObservationIDs: knownIDs
+            )
         }
 
         let authoritativePendingSnapshots: [ExternalProvider: AuthoritativePendingSnapshot]?
@@ -3416,15 +3778,27 @@ final class FinanceStore: FinanceProviding {
             LiveCoverageAuthority.coverage(
                 accounts: $0.accounts,
                 connections: $0.connections,
-                bindings: document.externalAccountBindings
+                bindings: bindings
             )
         }
+
+        // A complete older request may finish after a newer one has already
+        // committed. Its directory and evidence must not turn the clock back.
+        guard generation > lastAppliedEvidenceReadGeneration,
+              identityGeneration == bankIdentityGeneration,
+              bindings == document.externalAccountBindings else { return }
 
         _ = try importBankEvidence(
             combined,
             authoritativePendingSnapshots: authoritativePendingSnapshots,
-            authoritativeLiveCoverage: authoritativeLiveCoverage
+            authoritativeLiveCoverage: authoritativeLiveCoverage,
+            cursorCheckpoint: (
+                cursor: directory?.highWater,
+                bindingIDs: activeBindingIDs,
+                deviceID: deviceID
+            )
         )
+        lastAppliedEvidenceReadGeneration = generation
         if let directory { applyRemoteDirectory(directory) }
     }
 
@@ -3433,11 +3807,14 @@ final class FinanceStore: FinanceProviding {
     /// Keeping them out of `FinanceDocument` means an export stays a financial
     /// document rather than a record of which backend accounts exist.
     private func applyRemoteDirectory(_ snapshot: BankSyncSnapshot) {
+        guard remoteAccounts != snapshot.accounts || remoteConnections != snapshot.connections else {
+            return
+        }
         let previous = beginOperation()
         defer { operationDate = previous }
-        if !snapshot.accounts.isEmpty { remoteAccounts = snapshot.accounts }
-        if !snapshot.connections.isEmpty { remoteConnections = snapshot.connections }
-        recalculate()
+        remoteAccounts = snapshot.accounts
+        remoteConnections = snapshot.connections
+        refreshBankPresentation()
     }
 
     /// Binds one remote account to one local account.
@@ -3573,20 +3950,42 @@ final class FinanceStore: FinanceProviding {
         )
     }
 
+    /// The provider clock, coverage and directory do not change the forecast.
+    /// Reuse its exact result when the document and civil day are unchanged.
+    private func refreshBankPresentation() {
+        let previous = beginOperation()
+        defer { operationDate = previous }
+        guard !isFixed else { return }
+        guard let start = civilToday(),
+              publishedEvaluation.snapshot.snapshot.asOf == DomainMapper.civilDay(start)
+        else {
+            recalculate()
+            return
+        }
+        currentDayEvaluation = nil
+        let existing = publishedEvaluation.snapshot
+        publishedEvaluation = PublishedFinanceEvaluation(
+            snapshot: SnapshotEvaluationContext(
+                snapshot: existing.snapshot.withBanking(bankingSurface(asOf: start)),
+                projection: existing.projection
+            ),
+            attention: publishedEvaluation.attention
+        )
+    }
+
     func snapshot(under scenario: PlanScenario) -> FinanceAppSnapshot {
         let previous = beginOperation()
         defer { operationDate = previous }
         return isFixed ? snapshot : makeSnapshotEvaluation(scenario: scenario).snapshot
     }
 
-    private func makeSnapshotEvaluation(scenario: PlanScenario) -> SnapshotEvaluationContext {
-        guard let start = civilToday() else {
-            return SnapshotEvaluationContext(snapshot: publishedEvaluation.snapshot.snapshot, projection: .failure)
-        }
+    private func bankingSurface(asOf start: Day) -> DomainMapper.BankingSurface {
         var banking = mapper.bankingSurface(
             document: document,
             transactionPresentation: transactionPresentation,
-            asOf: start
+            asOf: start,
+            currentPendingIDs: appMetadata.authoritativePendingSnapshots.values
+                .reduce(into: Set<String>()) { $0.formUnion($1.observationIDs) }
         )
         let directory = mapper.syncDirectory(
             connections: remoteConnections,
@@ -3605,6 +4004,14 @@ final class FinanceStore: FinanceProviding {
                 )
             }
             .sorted { $0.id < $1.id }
+        return banking
+    }
+
+    private func makeSnapshotEvaluation(scenario: PlanScenario) -> SnapshotEvaluationContext {
+        guard let start = civilToday() else {
+            return SnapshotEvaluationContext(snapshot: publishedEvaluation.snapshot.snapshot, projection: .failure)
+        }
+        let banking = bankingSurface(asOf: start)
         guard !document.accounts.isEmpty, !document.balances.isEmpty else {
             var empty = FinanceAppSnapshot.empty(asOf: DomainMapper.civilDay(start))
             empty.scenario = scenario

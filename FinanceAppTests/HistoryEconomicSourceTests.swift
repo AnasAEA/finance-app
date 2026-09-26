@@ -259,6 +259,8 @@ struct HistoryEconomicSourceTests {
         query.accountIDs = ["bnp"]
         query.minimumAmountMinor = 100_000
         query.maximumAmountMinor = 200_000
+        query.currencies = ["EUR"]
+        query.amountFractionDigits = 2
         query.searchText = "sibling"
         #expect(try queries.page(matching: query).transactions.map(\.id) == ["routed-via-sibling"])
 

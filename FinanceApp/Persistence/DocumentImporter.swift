@@ -118,6 +118,10 @@ enum DocumentImporter {
             .inconsistentDocument(problem)
         }
 
+        guard !StoredDocumentGraph.containsUnrepresentableOperationalMoney(document) else {
+            throw fail(.unrepresentableAmount)
+        }
+
         guard !document.accounts.isEmpty else { throw fail(.noAccounts) }
 
         var accountsByID: [String: Account] = [:]

@@ -212,6 +212,26 @@ struct LiveCoveragePersistenceTests {
         #expect(merged["acct_bnp"]?.syncedThrough == Day(year: 2026, month: 9, day: 2))
     }
 
+    @Test("Older coverage cannot replace a newer complete window")
+    func olderCoverageDoesNotRegress() {
+        let newest = AuthoritativeLiveCoverage(
+            provider: .bnp, remoteOpaqueAccountID: "acct_bnp", localAccountID: "bank",
+            syncedFrom: Day(year: 2026, month: 6, day: 1),
+            syncedThrough: Day(year: 2026, month: 9, day: 2),
+            authoritativeAt: syncedAt
+        )
+        let older = AuthoritativeLiveCoverage(
+            provider: .bnp, remoteOpaqueAccountID: "acct_bnp", localAccountID: "bank",
+            syncedFrom: Day(year: 2026, month: 8, day: 1),
+            syncedThrough: Day(year: 2026, month: 8, day: 28),
+            authoritativeAt: syncedAt.addingTimeInterval(-60)
+        )
+        let merged = LiveCoverageAuthority.merged(
+            previous: ["acct_bnp": newest], established: ["acct_bnp": older]
+        )
+        #expect(merged["acct_bnp"] == newest)
+    }
+
     // MARK: - C/D. Persistence and migration
 
     @Test("Coverage survives a store restart")
