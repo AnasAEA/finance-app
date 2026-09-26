@@ -30,14 +30,14 @@ enum DocumentExporter {
     /// Throws `AppExportError` — never a decoder's own description, which
     /// quotes the value it choked on and would put a person's money into an
     /// alert.
-    static func backup(of document: FinanceDocument, on day: Day) throws -> FinanceBackup {
+    static func backup(of document: FinanceDocument, on day: Day, metadata: AppBackupMetadata = .init()) throws -> FinanceBackup {
         // Gate 1. `Interchange.encode` picks the oldest wire format that
         // represents this data exactly and validates planning on the way out,
         // so an unrepresentable document fails here rather than silently
         // losing a field.
         let data: Data
         do {
-            data = try Interchange.encode(document)
+            data = try metadata.encoding(document)
         } catch {
             throw AppExportError.documentUnencodable
         }
@@ -56,7 +56,8 @@ enum DocumentExporter {
         }
 
         // Gate 3. A faithful file is a fixed point of this encoder.
-        guard let again = try? Interchange.encode(reread), again == data else {
+        guard let rereadMetadata = try? AppBackupMetadata.read(from: data, document: reread),
+              let again = try? rereadMetadata.encoding(reread), again == data else {
             throw AppExportError.incompleteBackup
         }
 

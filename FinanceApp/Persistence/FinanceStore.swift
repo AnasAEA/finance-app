@@ -233,6 +233,7 @@ final class FinanceStore: FinanceProviding {
     /// two are separate steps: the person sees what is in the file before any
     /// of it becomes the store.
     @ObservationIgnored private var pendingImport: FinanceDocument?
+    @ObservationIgnored private var pendingBackupMetadata = AppBackupMetadata()
 
     /// The summary on screen while an import is being reviewed.
     private(set) var pendingImportPreview: ImportPreview?
@@ -296,7 +297,7 @@ final class FinanceStore: FinanceProviding {
         clock: @escaping () -> Date = Date.init,
         timeZone: TimeZone = .current,
         forecastRunner: @escaping (ForecastRequest) throws -> ForecastResult = ForecastEngine.run,
-        writer: DocumentWriter = .live,
+        writer: DocumentWriter? = nil,
         identityStore: DeviceIdentityStore = .init(),
         unavailableReason: String? = nil
     ) throws {
@@ -310,7 +311,7 @@ final class FinanceStore: FinanceProviding {
         self.clock = clock
         self.initialDay = DomainMapper.civilDay(day)
         self.civilTimeZone = timeZone
-        self.writer = writer
+        self.writer = writer ?? .live
         self.forecastRunner = forecastRunner
         self.identityStore = identityStore
         self.document = Self.emptyDocument()
@@ -329,7 +330,7 @@ final class FinanceStore: FinanceProviding {
 
     convenience init(
         context: ModelContext?, now: Date,
-        writer: DocumentWriter = .live,
+        writer: DocumentWriter? = nil,
         identityStore: DeviceIdentityStore = .init(),
         unavailableReason: String? = nil
     ) throws {
@@ -1154,14 +1155,18 @@ final class FinanceStore: FinanceProviding {
         // Asked before the file is opened: a store that cannot accept an import
         // has no business reading someone's finances off disk to tell them so.
         if let importBlocker { throw importBlocker }
-        return try stage(DocumentImporter.read(contentsOf: url))
+        return try prepareImport(from: DocumentImporter.readData(contentsOf: url))
     }
 
     /// The same path from bytes already in hand.
     @discardableResult
     func prepareImport(from data: Data) throws -> ImportPreview {
         if let importBlocker { throw importBlocker }
-        return try stage(DocumentImporter.decode(data))
+        let candidate = try DocumentImporter.decode(data)
+        let metadata = try AppBackupMetadata.read(from: data, document: candidate)
+        let preview = try stage(candidate)
+        pendingBackupMetadata = metadata
+        return preview
     }
 
     private func stage(_ candidate: FinanceDocument) throws -> ImportPreview {
@@ -1178,6 +1183,7 @@ final class FinanceStore: FinanceProviding {
     /// undo — but the decoded personal data should not outlive the sheet.
     func cancelImport() {
         pendingImport = nil
+        pendingBackupMetadata = .init()
         pendingImportPreview = nil
     }
 
@@ -1206,14 +1212,15 @@ final class FinanceStore: FinanceProviding {
         let summary = try DocumentImporter.summary(of: corrected, today: try requireCivilToday())
         let importedMetadata = AppPersistenceMetadata(
             incomeSourceActive: Dictionary(
-                uniqueKeysWithValues: corrected.incomeSources.map { ($0.id, true) }
+                uniqueKeysWithValues: corrected.incomeSources.map { ($0.id, pendingBackupMetadata.incomeSourceActive[$0.id] ?? true) }
             ),
             currentHoldingsModelVersion: CurrentHoldings.modelVersion
         )
 
+        let restoredPresentation = pendingBackupMetadata.transactionPresentation
         if let context {
             do {
-                try writer.writeImported(corrected, context, try requireCivilToday(), [:], importedMetadata)
+                try writer.writeImported(corrected, context, try requireCivilToday(), restoredPresentation, importedMetadata)
             } catch {
                 // Atomicity is the store's guarantee, not one writer's: whatever
                 // the writer left half-done in the context is discarded here, so
@@ -1228,10 +1235,11 @@ final class FinanceStore: FinanceProviding {
         // move. Nothing above it changed a published value.
         loadFailure = nil
         document = corrected
-        transactionPresentation = [:]
+        transactionPresentation = restoredPresentation
         appMetadata = importedMetadata
         trustedAutomationEnabled = importedMetadata.trustedAutomationEnabled
         pendingImport = nil
+        pendingBackupMetadata = .init()
         pendingImportPreview = nil
         // Assigning the scenario recalculates; the snapshot is rebuilt from the
         // imported document before this returns, so Home is correct on the next
@@ -1248,8 +1256,7 @@ final class FinanceStore: FinanceProviding {
     /// alone: a store-level error can quote the row it choked on, and that row
     /// is the person's money.
     private static func safeReason(_ error: Error) -> String {
-        if let mapping = error as? PersistenceMappingError { return mapping.description }
-        return String(describing: type(of: error))
+        "The local data could not be read or saved. Try again; existing records were preserved."
     }
 
     // MARK: - FinanceDocument import/export
@@ -1300,6 +1307,7 @@ final class FinanceStore: FinanceProviding {
         appMetadata = importedMetadata
         trustedAutomationEnabled = importedMetadata.trustedAutomationEnabled
         pendingImport = nil
+        pendingBackupMetadata = .init()
         pendingImportPreview = nil
         scenario = DomainMapper.scenario(imported.planning.defaultScenario ?? .base)
         recalculate()
@@ -1367,7 +1375,11 @@ final class FinanceStore: FinanceProviding {
             // late rather than at launch.
             throw AppExportError.storeUnreadable
         }
-        return try DocumentExporter.backup(of: stored, on: day)
+        let metadata = AppBackupMetadata(
+            transactionPresentation: transactionPresentation.filter { $0.value.categoryKey != nil || $0.value.merchant != nil },
+            incomeSourceActive: appMetadata.incomeSourceActive
+        )
+        return try DocumentExporter.backup(of: stored, on: day, metadata: metadata)
     }
 
     // MARK: - Loading
@@ -1400,7 +1412,7 @@ final class FinanceStore: FinanceProviding {
             // opens empty and read-only, because the alternative is that the
             // first new entry purges rows that could not be read but are still
             // the only copy of them.
-            loadFailure = String(describing: error)
+            loadFailure = Self.safeReason(error)
             document = Self.emptyDocument()
             transactionPresentation = [:]
             appMetadata = .empty
@@ -1496,7 +1508,7 @@ final class FinanceStore: FinanceProviding {
             appMetadata = restoreMetadata
             document.schemaVersion = restoreVersion
             transactionPresentation.removeValue(forKey: mapped.transaction.id)
-            throw AppEntryError.persistenceFailed(String(describing: error))
+            throw AppEntryError.persistenceFailed(Self.safeReason(error))
         }
         recalculate()
     }
@@ -1652,7 +1664,7 @@ final class FinanceStore: FinanceProviding {
             document.transactions = restoreTransactions
             document.balances = restoreBalances
             transactionPresentation = restorePresentation
-            throw AppRemovalError.persistenceFailed(String(describing: error))
+            throw AppRemovalError.persistenceFailed(Self.safeReason(error))
         }
         recalculate()
     }
@@ -1702,7 +1714,7 @@ final class FinanceStore: FinanceProviding {
         } catch {
             document.accounts = restoreAccounts
             document.balances = restoreBalances
-            throw AppManagementError.persistenceFailed(String(describing: error))
+            throw AppManagementError.persistenceFailed(Self.safeReason(error))
         }
         recalculate()
     }
@@ -1756,7 +1768,7 @@ final class FinanceStore: FinanceProviding {
         } catch {
             document.incomeSources = restoreSources
             appMetadata = restoreMetadata
-            throw AppManagementError.persistenceFailed(String(describing: error))
+            throw AppManagementError.persistenceFailed(Self.safeReason(error))
         }
         recalculate()
     }
@@ -1784,7 +1796,7 @@ final class FinanceStore: FinanceProviding {
             try persistCurrentDocument()
         } catch {
             document.planning.monthlyEconomicCeiling = restore
-            throw AppManagementError.persistenceFailed(String(describing: error))
+            throw AppManagementError.persistenceFailed(Self.safeReason(error))
         }
         recalculate()
     }
@@ -1810,7 +1822,7 @@ final class FinanceStore: FinanceProviding {
             try persistCurrentDocument()
         } catch {
             document.planning.safetyFloor = restore
-            throw AppManagementError.persistenceFailed(String(describing: error))
+            throw AppManagementError.persistenceFailed(Self.safeReason(error))
         }
         recalculate()
     }
@@ -1869,7 +1881,7 @@ final class FinanceStore: FinanceProviding {
             try persistCurrentDocument()
         } catch {
             document.planning.budgets = restore
-            throw AppManagementError.persistenceFailed(String(describing: error))
+            throw AppManagementError.persistenceFailed(Self.safeReason(error))
         }
         recalculate()
     }
@@ -1896,7 +1908,7 @@ final class FinanceStore: FinanceProviding {
         } catch {
             document.planning.budgets = restore
             document.planning.recurringObligations = restoreObligations
-            throw AppManagementError.persistenceFailed(String(describing: error))
+            throw AppManagementError.persistenceFailed(Self.safeReason(error))
         }
         recalculate()
     }
@@ -1917,7 +1929,7 @@ final class FinanceStore: FinanceProviding {
             try persistCurrentDocument()
         } catch {
             document.planning.budgets = restore
-            throw AppManagementError.persistenceFailed(String(describing: error))
+            throw AppManagementError.persistenceFailed(Self.safeReason(error))
         }
         recalculate()
     }
@@ -1940,7 +1952,7 @@ final class FinanceStore: FinanceProviding {
             try persistCurrentDocument()
         } catch {
             document.planning.recurringObligations = restore
-            throw AppManagementError.persistenceFailed(String(describing: error))
+            throw AppManagementError.persistenceFailed(Self.safeReason(error))
         }
         recalculate()
     }
@@ -2364,9 +2376,9 @@ final class FinanceStore: FinanceProviding {
             if case let .invalidPlanning(reason) = mapping {
                 return .planningInvalid(reason)
             }
-            return .persistenceFailed(mapping.description)
+            return .persistenceFailed(Self.safeReason(error))
         }
-        return .persistenceFailed(String(describing: error))
+        return .persistenceFailed(Self.safeReason(error))
     }
 
     // MARK: - External provider evidence
@@ -2685,6 +2697,7 @@ final class FinanceStore: FinanceProviding {
         _ batch: ExternalEvidenceBatch,
         authoritativePendingSnapshots: [ExternalProvider: AuthoritativePendingSnapshot]? = nil,
         authoritativeLiveCoverage: [String: AuthoritativeLiveCoverage]? = nil,
+        authoritativeCandidateBindingIDs: Set<String>? = nil,
         cursorCheckpoint: (cursor: String?, bindingIDs: [String], deviceID: String?)? = nil
     ) throws -> TrustedRuleProcessingResult {
         let previous = beginOperation()
@@ -2693,6 +2706,7 @@ final class FinanceStore: FinanceProviding {
         guard !batch.observations.isEmpty || !batch.balances.isEmpty || !batch.candidates.isEmpty
                 || authoritativePendingSnapshots != nil
                 || authoritativeLiveCoverage != nil
+                || authoritativeCandidateBindingIDs != nil
         else { return .empty }
         _ = try requireCivilToday()
         let beforeImport = document
@@ -2700,6 +2714,13 @@ final class FinanceStore: FinanceProviding {
         let restoreMetadata = appMetadata
         do {
             try ExternalEvidenceReview.importBatch(batch, into: &document)
+            if let scope = authoritativeCandidateBindingIDs {
+                let scopedObservationIDs = Set(document.externalObservations.filter { scope.contains($0.bindingID) }.map(\.id))
+                let currentIDs = Set(batch.candidates.map(\.id))
+                document.crossProviderCandidates.removeAll {
+                    scopedObservationIDs.contains($0.bankObservationID) && !currentIDs.contains($0.id)
+                }
+            }
             if let authoritativePendingSnapshots {
                 let observations = Dictionary(
                     uniqueKeysWithValues: document.externalObservations.map { ($0.id, $0) }
@@ -3490,6 +3511,8 @@ final class FinanceStore: FinanceProviding {
         do {
             _ = try await provider.pair(code: code, label: label)
             bankIdentityGeneration += 1
+            activeSyncJobID = nil
+            lastObservedSyncJobID = nil
             pairingState = .paired
             bankSyncActivity = .idle
         } catch {
@@ -3595,11 +3618,13 @@ final class FinanceStore: FinanceProviding {
         guard pairingState == .paired, !bankSyncActivity.isSyncing,
               activeSyncJobID == nil,
               let client = liveClient() else { return }
+        let identityGeneration = bankIdentityGeneration
         do {
             guard let job = try await client.currentSync(),
+                  identityGeneration == bankIdentityGeneration, pairingState == .paired,
                   job.jobId != lastObservedSyncJobID else { return }
             await finishAsyncSync(job, using: LiveBankSyncProvider(client: client),
-                                  identityGeneration: bankIdentityGeneration)
+                                  identityGeneration: identityGeneration)
         } catch {
             // Foreground evidence refresh has its own error presentation. A
             // status query must not replace it with a second transient error.
@@ -3611,16 +3636,23 @@ final class FinanceStore: FinanceProviding {
         using provider: any BankSyncProviding,
         identityGeneration: Int
     ) async {
-        guard activeSyncJobID == nil || activeSyncJobID == initial.jobId else { return }
+        guard activeSyncJobID == nil, identityGeneration == bankIdentityGeneration else { return }
         activeSyncJobID = initial.jobId
+        defer {
+            if activeSyncJobID == initial.jobId { activeSyncJobID = nil }
+        }
+        let pollingDeadline = Date().addingTimeInterval(21 * 60)
         bankSyncActivity = .syncing
         var job = initial
         bankSyncRuns = job.runs
         do {
             while !job.complete {
+                guard Date() < pollingDeadline else { throw BankSyncClientError.offline }
+                try Task.checkCancellation()
                 try await Task.sleep(for: .seconds(2))
                 guard identityGeneration == bankIdentityGeneration else { return }
                 job = try await provider.remoteSyncStatus(jobId: job.jobId)
+                guard identityGeneration == bankIdentityGeneration else { return }
                 guard job.jobId == initial.jobId else { throw BankSyncClientError.malformedResponse }
                 bankSyncRuns = job.runs
             }
@@ -3644,7 +3676,6 @@ final class FinanceStore: FinanceProviding {
             guard identityGeneration == bankIdentityGeneration else { return }
             bankSyncActivity = .failed(Self.syncMessage(error))
         }
-        activeSyncJobID = nil
     }
 
     private static func remoteSyncFailure(_ runs: [MobileSyncRun]) -> String? {
@@ -3714,6 +3745,7 @@ final class FinanceStore: FinanceProviding {
                 // Opaque keyset cursor from `nextSince`. Not a timestamp.
                 since: since
             )
+            try Task.checkCancellation()
             // Connections/accounts are complete on every page too. Retaining
             // the final page keeps displayed provider freshness aligned with
             // the pending membership authority chosen below.
@@ -3772,6 +3804,7 @@ final class FinanceStore: FinanceProviding {
             throw BankSyncClientError.malformedResponse
         }
 
+        try Task.checkCancellation()
         // Only a terminal page walk reaches here, so the final directory is a
         // complete provider statement rather than a page-shaped fragment.
         let authoritativeLiveCoverage = directory.map {
@@ -3792,6 +3825,7 @@ final class FinanceStore: FinanceProviding {
             combined,
             authoritativePendingSnapshots: authoritativePendingSnapshots,
             authoritativeLiveCoverage: authoritativeLiveCoverage,
+            authoritativeCandidateBindingIDs: directory?.wireCandidates == nil ? nil : Set(activeBindingIDs),
             cursorCheckpoint: (
                 cursor: directory?.highWater,
                 bindingIDs: activeBindingIDs,
@@ -4400,7 +4434,7 @@ final class FinanceStore: FinanceProviding {
             try persistCurrentDocument()
         } catch {
             document.planning.settlements = restore
-            throw AppReconciliationError.persistenceFailed(String(describing: error))
+            throw AppReconciliationError.persistenceFailed(Self.safeReason(error))
         }
         recalculate()
     }
@@ -4419,7 +4453,7 @@ final class FinanceStore: FinanceProviding {
             throw AppReconciliationError.refused(problem.description)
         } catch {
             document.planning.settlements = restore
-            throw AppReconciliationError.persistenceFailed(String(describing: error))
+            throw AppReconciliationError.persistenceFailed(Self.safeReason(error))
         }
         recalculate()
     }

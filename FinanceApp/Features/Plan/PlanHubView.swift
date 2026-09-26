@@ -95,8 +95,16 @@ struct PlanView: View {
         NavigationLink(value: PlanRoute.goals) {
             VStack(alignment: .leading, spacing: Theme.Space.sm) {
                 ActionLabel(title: "Goals & Set Aside")
-                Text(PlanningTotals.setAside(from: snapshot).formatted())
-                    .font(Theme.TypeStyle.numeric).foregroundStyle(.primary)
+                let totals = PlanningTotals.setAsideTotals(from: snapshot)
+                if totals.isEmpty {
+                    Text(Amount.zero(snapshot.currencyCode).formatted())
+                        .font(Theme.TypeStyle.numeric).foregroundStyle(.primary)
+                } else {
+                    ForEach(totals) { total in
+                        Text(total.amount.formatted())
+                            .font(Theme.TypeStyle.numeric).foregroundStyle(.primary)
+                    }
+                }
                 Text(Self.goalsDetail(snapshot))
                     .font(Theme.TypeStyle.supporting).foregroundStyle(.secondary)
             }

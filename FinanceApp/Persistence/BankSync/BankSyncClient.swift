@@ -105,9 +105,11 @@ enum BankSyncRequestSigner {
         SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
 
-    static func nonce() -> String {
+    static func nonce() throws -> String {
         var bytes = [UInt8](repeating: 0, count: 16)
-        _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
+        guard SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes) == errSecSuccess else {
+            throw DeviceIdentityError.keyUnusable
+        }
         return bytes.map { String(format: "%02x", $0) }.joined()
     }
 
@@ -129,7 +131,7 @@ struct BankSyncClient: Sendable {
     let session: URLSession
     let identity: DeviceIdentityStore
 
-    init(baseURL: URL, session: URLSession = .shared, identity: DeviceIdentityStore = .init()) {
+    init(baseURL: URL, session: URLSession = BankSyncTransport.session, identity: DeviceIdentityStore = .init()) {
         self.baseURL = baseURL
         self.session = session
         self.identity = identity
@@ -243,7 +245,7 @@ struct BankSyncClient: Sendable {
         guard let key = try identity.loadKey() else { throw BankSyncClientError.notPaired }
 
         let timestamp = BankSyncRequestSigner.timestampFormatter.string(from: Date())
-        let nonce = BankSyncRequestSigner.nonce()
+        let nonce = try BankSyncRequestSigner.nonce()
         let canonical = BankSyncRequestSigner.canonicalRequest(
             method: method,
             pathAndQuery: pathAndQuery,

@@ -200,7 +200,7 @@ enum CurrentStateExport {
     }
 
     @MainActor
-    static func harness(writer: DocumentWriter = .live) throws -> Harness {
+    static func harness(writer: DocumentWriter? = nil) throws -> Harness {
         let container = try ModelContainer(
             for: Schema(FinanceSchema.models),
             configurations: ModelConfiguration(isStoredInMemoryOnly: true)

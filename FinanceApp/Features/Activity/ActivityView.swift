@@ -41,6 +41,7 @@ struct ActivityView: View {
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(navigation.activitySection == section ? Theme.Role.accent : .secondary)
+                    .accessibilityIdentifier("activity.section.\(section.rawValue)")
                     .accessibilityLabel(section.title)
                     .accessibilityValue(section == .toReview && reviewCount > 0
                                         ? "\(reviewCount) items need a decision" : "")
@@ -51,6 +52,7 @@ struct ActivityView: View {
             .padding(.horizontal, Theme.Metric.screenPadding)
             .padding(.top, Theme.Space.sm)
             .overlay(alignment: .bottom) { Rectangle().fill(Theme.Surface.separator).frame(height: 0.5) }
+            .accessibilityElement(children: .contain)
             .accessibilityIdentifier(RouteID.activitySection)
 
             switch navigation.activitySection {

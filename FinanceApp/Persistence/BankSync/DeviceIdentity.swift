@@ -120,13 +120,15 @@ struct DeviceIdentityStore {
                 throw DeviceIdentityError.keyUnusable
             }
             try write(key.dataRepresentation, account: Self.keyAccount)
-            try write(Data([1]), account: Self.hardwareAccount)
+            do { try write(Data([1]), account: Self.hardwareAccount) }
+            catch { try? delete(account: Self.keyAccount); throw error }
             return SecureEnclaveSigningKey(key: key)
         }
 
         let key = P256.Signing.PrivateKey()
         try write(key.rawRepresentation, account: Self.keyAccount)
-        try write(Data([0]), account: Self.hardwareAccount)
+        do { try write(Data([0]), account: Self.hardwareAccount) }
+        catch { try? delete(account: Self.keyAccount); throw error }
         return SoftwareSigningKey(key: key)
     }
 
@@ -173,7 +175,10 @@ struct DeviceIdentityStore {
     }
 
     private func write(_ data: Data, account: String) throws {
-        try delete(account: account)
+        let updates: [String: Any] = [kSecValueData as String: data]
+        let updated = SecItemUpdate(query(account: account) as CFDictionary, updates as CFDictionary)
+        if updated == errSecSuccess { return }
+        guard updated == errSecItemNotFound else { throw DeviceIdentityError.keychainFailure(updated) }
         var request = query(account: account)
         request[kSecValueData as String] = data
         // Never synchronized to iCloud, never restored to another device.

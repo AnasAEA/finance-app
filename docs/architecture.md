@@ -222,9 +222,15 @@ graph. It validates the resulting document, then saves the new transaction,
 its legs, entry preferences, and document revision together. A failed save
 rolls the context back. Import, bank evidence, and other structural edits use
 the full validate-then-replace writer; checkpoint and archive rows remain
-outside its purge. The operational store refuses an `Int64.min` money value
-before preview, write, or load because its signed magnitude cannot be
-calculated. The interchange format can still round-trip that wire value.
+outside its purge. OperationalDocumentValidation runs before preview, write, and load. It checks
+leg currency/exponent identity, relationship existence, schedule currencies,
+and aggregate unsigned money magnitude. Its limit is `Int64.max / 1_000_000`
+minor units summed across the document (9,223,372,036,854), reserving headroom
+for repeated forecast events and derived totals. This is an operational
+acceptance limit; interchange still preserves the complete Int64 wire range.
+Invalid existing stores remain intact and read-only, rather than being repaired
+or purged. Backup metadata and encryption adapters live in Persistence;
+views consume Surface values and do not import FinanceCore or SwiftData.
 
 Bank snapshot reads retain the binding set with which their page walk began.
 An older completed read cannot replace a newer completed read. Pending and

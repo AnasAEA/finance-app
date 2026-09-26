@@ -20,8 +20,8 @@ final class VisualExperienceUITests: XCTestCase {
 
     func testTransactionStoryAndReserveWarning() {
         continueAfterFailure = false
-        launch(["-HCIPrototype", "-startTab", "activity"])
-        let transaction = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'activity.transaction.'")).firstMatch
+        launch(["-useAuditRecoveryPreview", "-startTab", "activity"])
+        let transaction = app.buttons[AutomationTokenMirror.transaction("live:audit-ui-expense")]
         XCTAssertTrue(transaction.waitForExistence(timeout: 8))
         transaction.tap()
         XCTAssertTrue(app.navigationBars["Transaction"].waitForExistence(timeout: 8))

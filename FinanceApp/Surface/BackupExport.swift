@@ -107,6 +107,7 @@ struct BackupSummary: Hashable, Sendable {
     /// the decisions already made about it.
     let bankEvidenceCount: Int
 
+    /// Categories, merchant labels and income-source activation are included.
     /// What a backup deliberately does not carry.
     ///
     /// The historical archive, the local checkpoint history and the device's

@@ -244,6 +244,7 @@ enum AutomationID {
 }
 
 struct AppSettingsView: View {
+    @AppStorage(FinancePrivacy.lockPreference) private var appLock = false
     var body: some View {
         List {
             Section("Interface") {
@@ -251,6 +252,11 @@ struct AppSettingsView: View {
                 LabeledContent("Text size", value: "System setting")
             }
             Section("Privacy") {
+                Toggle("Require device authentication", isOn: $appLock)
+                    .disabled(!FinancePrivacy.canAuthenticate && !appLock)
+                    .accessibilityIdentifier("privacy.app-lock")
+                Text("Protects access with Face ID, Touch ID, or your device passcode. Amounts are hidden in the app switcher.")
+                    .font(.footnote).foregroundStyle(.secondary)
                 LabeledContent("Analytics", value: "None")
                 LabeledContent("Storage", value: "On this device")
             }

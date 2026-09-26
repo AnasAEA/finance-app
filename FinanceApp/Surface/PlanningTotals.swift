@@ -15,13 +15,24 @@ enum PlanningTotals {
     /// print it beside that figure: two available-money numbers side by side
     /// would imply the first already excluded the second.
     static func setAside(from snapshot: FinanceAppSnapshot) -> Amount {
-        let zero = Amount.zero(snapshot.currencyCode)
-        let fundTotal = snapshot.sinkingFunds.reduce(zero) { $0 + $1.reserved }
-        let directGoal = snapshot.plannedPurchases.reduce(zero) { running, goal in
-            guard goal.funding != .sinkingFund else { return running }
-            return running + goal.reserved
+        setAsideTotals(from: snapshot).first {
+            $0.amount.currencyCode == snapshot.currencyCode && $0.amount.fractionDigits == 2
+        }?.amount ?? .zero(snapshot.currencyCode)
+    }
+
+    static func setAsideTotals(from snapshot: FinanceAppSnapshot) -> [CurrencyTotal] {
+        let values = snapshot.sinkingFunds.map(\.reserved)
+            + snapshot.plannedPurchases.filter { $0.funding != .sinkingFund }.map(\.reserved)
+        return totals(values)
+    }
+
+    static func totals(_ values: [Amount]) -> [CurrencyTotal] {
+        var grouped: [String: Amount] = [:]
+        for value in values {
+            let key = "\(value.currencyCode)/\(value.fractionDigits)"
+            grouped[key] = grouped[key].map { $0 + value } ?? value
         }
-        return fundTotal + directGoal
+        return grouped.keys.sorted().compactMap { grouped[$0].map(CurrencyTotal.init(amount:)) }
     }
 
     /// What is worth naming on Home for the week ahead.

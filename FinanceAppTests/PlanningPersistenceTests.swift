@@ -89,7 +89,7 @@ struct PlanningPersistenceAppTests {
         try StoredDocumentGraph.replace(with: document, in: context, writtenOn: today)
     }
 
-    private func store(in container: ModelContainer, writer: DocumentWriter = .live) throws -> FinanceStore {
+    private func store(in container: ModelContainer, writer: DocumentWriter? = nil) throws -> FinanceStore {
         try FinanceStore(
             context: container.mainContext,
             now: todayDate,

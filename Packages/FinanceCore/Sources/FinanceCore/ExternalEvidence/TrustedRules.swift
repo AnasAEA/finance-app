@@ -766,9 +766,9 @@ public enum TrustedRuleEngine {
         .sorted { $0.id < $1.id }
 
         let items = observations.map { observation -> TrustedRulePreviewItem in
-            if let suppression = activeSuppression(
+            if activeSuppression(
                 ruleID: rule.id, observationID: observation.id, in: document
-            ) {
+            ) != nil {
                 return TrustedRulePreviewItem(
                     observationID: observation.id,
                     outcome: .blocked,

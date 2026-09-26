@@ -181,6 +181,7 @@ public struct OwnershipSplit: Hashable, Sendable, Codable {
 public enum OwnershipError: Error, Hashable, Sendable, CustomStringConvertible {
     /// The shares sum to less than the economic base — money with no owner.
     case underAllocation(allocated: Money, base: Money)
+    case unrepresentableAmount
     /// The shares sum to more than the economic base — ownership invented
     /// out of thin air.
     case overAllocation(allocated: Money, base: Money)
@@ -189,6 +190,8 @@ public enum OwnershipError: Error, Hashable, Sendable, CustomStringConvertible {
 
     public var description: String {
         switch self {
+        case .unrepresentableAmount:
+            return "ownership allocation exceeds the representable range"
         case let .underAllocation(allocated, base):
             return "ownership under-allocation: \(allocated) allocated against \(base) economic base"
         case let .overAllocation(allocated, base):
@@ -223,12 +226,22 @@ public enum OwnershipValidation {
         )
     }
 
+    private static func checkedSum(_ amounts: [Money], currency: Currency) throws -> Money {
+        var total: Int64 = 0
+        for amount in amounts {
+            let (next, overflow) = total.addingReportingOverflow(amount.minorUnits)
+            guard !overflow else { throw OwnershipError.unrepresentableAmount }
+            total = next
+        }
+        return Money(minorUnits: total, currency: currency)
+    }
+
     /// Throws `OwnershipError` unless `splits` account for `base` exactly.
     public static func validate(splits: [OwnershipSplit], against base: Money) throws {
         for split in splits where split.amount.currency != base.currency {
             throw OwnershipError.currencyMismatch(splitCurrency: split.amount.currency.code, baseCurrency: base.currency.code)
         }
-        let allocated = Money.sum(splits.map(\.amount), currency: base.currency)
+        let allocated = try checkedSum(splits.map(\.amount), currency: base.currency)
         if allocated.minorUnits < base.minorUnits {
             throw OwnershipError.underAllocation(allocated: allocated, base: base)
         }
@@ -250,7 +263,7 @@ public enum OwnershipValidation {
         // The base currency is taken from the splits; the legs must actually
         // carry inflow in that currency for the base to be non-zero.
         guard let baseCurrency = splits.map(\.amount.currency).min(by: { $0.code < $1.code }) else { return }
-        let base = Money.sum(
+        let base = try checkedSum(
             legs.filter { $0.isInflow && $0.amount.currency == baseCurrency }.map(\.amount),
             currency: baseCurrency
         )

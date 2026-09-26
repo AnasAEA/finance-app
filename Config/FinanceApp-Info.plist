@@ -38,6 +38,8 @@
 	  host, before a signed request — and the signature with it — could go
 	  over a readable link.
 	-->
+	<key>NSFaceIDUsageDescription</key>
+	<string>Unlock your financial records when app lock is enabled.</string>
 	<key>BankSyncBaseURL</key>
 	<string>https://$(BANK_SYNC_HOST)</string>
 </dict>

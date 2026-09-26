@@ -699,6 +699,27 @@ struct BankSyncTests {
         #expect(!store.snapshot.mappableRemoteAccounts.isEmpty)
     }
 
+    @Test("Revocation releases the asynchronous job slot for a subsequent identity")
+    func revokedAsynchronousJobDoesNotLeaveAnOccupiedSlot() async throws {
+        let harness = try harness()
+        let store = harness.store
+        defer { withExtendedLifetime(harness) {} }
+        let rejected = MobileSyncJob(
+            jobId: "job_old_identity", createdAt: "2026-08-28T00:00:00.000Z", complete: true,
+            runs: [MobileSyncRun(provider: "bnp", outcome: "success", errorCode: nil, state: "finished")]
+        )
+        await store.syncNow(using: AsyncOutcomeBankSyncProvider(
+            snapshot: remoteSnapshot(includePending: false), job: rejected, fetchError: .deviceRevoked))
+        #expect(store.pairingState == .revoked)
+        let subsequent = MobileSyncJob(jobId: "job_new_identity", createdAt: rejected.createdAt, complete: true, runs: rejected.runs)
+        await store.syncNow(using: AsyncOutcomeBankSyncProvider(
+            snapshot: remoteSnapshot(includePending: false), job: subsequent))
+        guard case .succeeded = store.bankSyncActivity else {
+            Issue.record("the old identity's polling slot must be released")
+            return
+        }
+    }
+
     @Test("Unpairing invalidates an in-flight evidence pull")
     func unpairInvalidatesInFlightPull() async throws {
         let harness = try harness()
@@ -1611,11 +1632,13 @@ private struct OutcomeBankSyncProvider: BankSyncProviding {
 private struct AsyncOutcomeBankSyncProvider: BankSyncProviding {
     let snapshot: MobileSnapshot
     let job: MobileSyncJob
+    var fetchError: BankSyncClientError? = nil
 
     func runRemoteSync() async throws {}
     func startRemoteSync() async throws -> MobileSyncJob? { job }
     func fetchSnapshot(bindings: [ExternalAccountBinding], since: String?) async throws -> BankSyncSnapshot {
-        try MobileSnapshotMapper.map(snapshot, bindings: bindings)
+        if let fetchError { throw fetchError }
+        return try MobileSnapshotMapper.map(snapshot, bindings: bindings)
     }
 }
 

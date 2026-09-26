@@ -116,6 +116,37 @@ final class FirstRunRecoveryUITests: XCTestCase {
         XCTAssertFalse(app.buttons["Import current state"].exists)
     }
 
+    func testBackupDefaultsToEncryptionAndPlaintextRequiresOptOut() {
+        launch(arguments: ["-useAuditRecoveryPreview"], route: "data")
+        let export = app.descendants(matching: .any)["data.export"]
+        XCTAssertTrue(export.waitForExistence(timeout: 8))
+        export.tap()
+        XCTAssertTrue(app.navigationBars["Your backup"].waitForExistence(timeout: 8))
+        let encrypt = app.switches["backup.encrypt"]
+        XCTAssertTrue(encrypt.exists)
+        XCTAssertEqual(encrypt.value as? String, "1")
+        XCTAssertTrue(app.secureTextFields["backup.password"].exists)
+        XCTAssertTrue(app.secureTextFields["backup.password-confirmation"].exists)
+        let save = app.buttons["data.export.save"]
+        for _ in 0..<8 where !save.exists { app.swipeUp() }
+        XCTAssertTrue(save.exists)
+        XCTAssertFalse(save.isEnabled)
+        for _ in 0..<8 where !encrypt.isHittable { app.swipeDown() }
+        encrypt.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap()
+        let disabledEncryption = NSPredicate(format: "value == '0'")
+        expectation(for: disabledEncryption, evaluatedWith: encrypt)
+        waitForExpectations(timeout: 5)
+        XCTAssertFalse(app.secureTextFields["backup.password"].exists)
+        for _ in 0..<8 where !save.exists { app.swipeUp() }
+        XCTAssertTrue(save.exists)
+        XCTAssertTrue(save.isEnabled)
+    }
+
+    func testForeignFundOpensInProductionPlan() {
+        launch(arguments: ["-useAuditRecoveryPreview"], route: "goals")
+        XCTAssertTrue(app.staticTexts["Synthetic foreign fund"].waitForExistence(timeout: 8))
+    }
+
     // MARK: - Helpers
 
     /// An onboarding card, addressed by the sentence it reads out. The card

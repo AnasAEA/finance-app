@@ -109,32 +109,38 @@ public struct Money: Hashable, Sendable, CustomStringConvertible, Codable {
     /// Splits this amount into parts proportional to `ratios` such that the
     /// parts sum exactly back to `self` (largest-remainder method).
     ///
-    /// Deterministic: residual minor units go to the earliest indices.
+    /// Deterministic: residual units follow largest fractional remainders; ties
+    /// go to the earliest indices.
     /// - Requires: ratios are non-negative and sum > 0.
     public func allocated(ratios: [Int]) -> [Money] {
         precondition(!ratios.isEmpty, "ratios must not be empty")
-        let total = ratios.reduce(0, +)
-        precondition(total > 0, "ratios must sum above zero")
         precondition(ratios.allSatisfy { $0 >= 0 }, "ratios must be non-negative")
-
-        let negative = self.minorUnits < 0
-        let magnitudeUnits = negative ? -self.minorUnits : self.minorUnits
-        var floors = ratios.map { ratio -> Int64 in
-            // (magnitudeUnits * ratio) may exceed Int64 only for absurd values;
-            // guard the multiplication explicitly.
-            let (result, overflow) = magnitudeUnits.multipliedReportingOverflow(by: Int64(ratio))
-            precondition(!overflow, "allocation overflow")
-            return result / Int64(total)
+        let total = ratios.reduce(UInt64(0)) { sum, ratio in
+            let (next, overflow) = sum.addingReportingOverflow(UInt64(ratio))
+            precondition(!overflow, "ratio total overflow")
+            return next
         }
-        let remainder = magnitudeUnits - floors.reduce(Int64(0), +)
-        // Hand out leftover minor units one cent at a time, earliest index first.
-        var index = 0
-        for _ in 0..<remainder {
-            floors[index % floors.count] += 1
-            index += 1
+        precondition(total > 0, "ratios must sum above zero")
+        let magnitude = minorUnits.magnitude
+        // Full-width products keep even Int64.min and large ratios exact.
+        let shares = ratios.map { ratio in
+            total.dividingFullWidth(magnitude.multipliedFullWidth(by: UInt64(ratio)))
         }
-        return floors.map {
-            Money(minorUnits: negative ? -$0 : $0, currency: currency)
+        var floors = shares.map(\.quotient)
+        let remainder = magnitude - floors.reduce(0, +)
+        let ranked = ratios.indices.sorted {
+            shares[$0].remainder == shares[$1].remainder
+                ? $0 < $1 : shares[$0].remainder > shares[$1].remainder
+        }
+        for index in ranked.prefix(Int(remainder)) { floors[index] += 1 }
+        return floors.map { value in
+            let signed: Int64
+            if minorUnits < 0 {
+                signed = value == UInt64(Int64.max) + 1 ? Int64.min : -Int64(value)
+            } else {
+                signed = Int64(value)
+            }
+            return Money(minorUnits: signed, currency: currency)
         }
     }
 

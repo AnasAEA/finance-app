@@ -25,6 +25,12 @@ enum DocumentImporter {
     /// actually uses. A second copy of a document holding someone's salary and
     /// arrears is a liability with no reader.
     static func read(contentsOf url: URL) throws -> FinanceDocument {
+        try decode(readData(contentsOf: url))
+    }
+
+    static let maximumFileBytes = 64 * 1024 * 1024
+
+    static func readData(contentsOf url: URL) throws -> Data {
         // A file handed over by the document picker lives outside the app
         // container and needs its scope opened before it can be read.
         let scoped = url.startAccessingSecurityScopedResource()
@@ -32,18 +38,23 @@ enum DocumentImporter {
 
         let data: Data
         do {
-            data = try Data(contentsOf: url)
+            let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize
+            guard let size, size <= maximumFileBytes else { throw AppImportError.fileUnreadable }
+            data = try Data(contentsOf: url, options: [.mappedIfSafe])
+            guard data.count <= maximumFileBytes else { throw AppImportError.fileUnreadable }
         } catch {
             // The underlying error can name a path outside the container. The
             // path is not the person's money, but it is not ours to print
             // either, and nothing downstream can act on it.
             throw AppImportError.fileUnreadable
         }
-        return try decode(data)
+        return data
     }
 
     /// Gate 1 and gate 2: decode, then check the schema version.
     static func decode(_ data: Data) throws -> FinanceDocument {
+        guard data.count <= maximumFileBytes else { throw AppImportError.fileUnreadable }
+        if EncryptedBackup.isEncrypted(data) { throw AppImportError.backupPasswordRequired }
         let document: FinanceDocument
         do {
             document = try Interchange.decode(data)
@@ -63,6 +74,7 @@ enum DocumentImporter {
                 supported: PersistedSchema.supported
             )
         }
+        _ = try AppBackupMetadata.read(from: data, document: document)
         return document
     }
 
@@ -118,7 +130,7 @@ enum DocumentImporter {
             .inconsistentDocument(problem)
         }
 
-        guard !StoredDocumentGraph.containsUnrepresentableOperationalMoney(document) else {
+        guard OperationalDocumentValidation.moneyIsSafe(document) else {
             throw fail(.unrepresentableAmount)
         }
 
@@ -189,6 +201,8 @@ enum DocumentImporter {
         } catch {
             throw fail(.invalidExternalEvidence)
         }
+        do { try OperationalDocumentValidation.validate(document) }
+        catch { throw fail(.invalidLedger) }
     }
 
     private static func requireUniqueIdentifiers(_ document: FinanceDocument) throws {
@@ -233,7 +247,7 @@ enum DocumentImporter {
         )
 
         let electronic = CurrentHoldings.euroFinancialAccountLiquidity(in: document, asOf: today)
-        var cashByCurrency: [String: Amount] = [:]
+        var cashAmounts: [Amount] = []
         var accounts: [ImportAccountPreview] = []
 
         for account in document.accounts.sorted(by: { $0.drawOrder < $1.drawOrder }) {
@@ -242,8 +256,7 @@ enum DocumentImporter {
             let spendable = !isCash && account.currency == .eur
             if isCash, let holding = current[account.id] {
                 let amount = DomainMapper.amount(holding.balance)
-                cashByCurrency[amount.currencyCode] = cashByCurrency[amount.currencyCode]
-                    .map { $0 + amount } ?? amount
+                cashAmounts.append(amount)
             }
             accounts.append(
                 ImportAccountPreview(
@@ -261,12 +274,14 @@ enum DocumentImporter {
             )
         }
 
-        let debtOutstanding = document.debts
-            .filter { $0.status == .active }
-            .reduce(Int64(0)) { $0 + $1.originalAmount.minorUnits }
-        let installmentRemaining = document.installments
-            .filter { $0.status == .active }
-            .reduce(Int64(0)) { $0 + $1.remainingAmount.minorUnits }
+        let debtTotals = PlanningTotals.totals(document.debts.filter { $0.status == .active }.map {
+            let paid = Money.sum($0.paymentSchedule.filter { $0.status == .paid }.map(\.amount), currency: $0.originalAmount.currency)
+            return DomainMapper.amount($0.originalAmount - paid)
+        })
+        let installmentTotals = PlanningTotals.totals(document.installments.filter { $0.status == .active }.map {
+            DomainMapper.amount($0.remainingAmount)
+        })
+        let isEUR: (CurrencyTotal) -> Bool = { $0.amount.currencyCode == "EUR" && $0.amount.fractionDigits == 2 }
 
         return ImportPreview(
             sourceLabel: document.documentKind,
@@ -274,18 +289,15 @@ enum DocumentImporter {
             note: document.note,
             accounts: accounts,
             electronicLiquidity: DomainMapper.amount(electronic),
-            physicalCash: cashByCurrency.values
-                .sorted { $0.currencyCode < $1.currencyCode }
-                .map(CurrencyTotal.init(amount:)),
-            debtOutstanding: Amount(minorUnits: debtOutstanding, currencyCode: Currency.eur.code),
+            physicalCash: PlanningTotals.totals(cashAmounts),
+            foreignDebtOutstanding: debtTotals.filter { !isEUR($0) },
+            debtOutstanding: debtTotals.first(where: isEUR)?.amount ?? .zeroEUR,
             debtCount: document.debts.filter { $0.status == .active }.count,
             unscheduledDebtCount: document.debts
                 .filter { $0.status == .active && $0.paymentSchedule.isEmpty }.count,
             installmentCount: document.installments.filter { $0.status == .active }.count,
-            installmentRemaining: Amount(
-                minorUnits: installmentRemaining,
-                currencyCode: Currency.eur.code
-            ),
+            foreignInstallmentRemaining: installmentTotals.filter { !isEUR($0) },
+            installmentRemaining: installmentTotals.first(where: isEUR)?.amount ?? .zeroEUR,
             recurringCommitmentCount: document.planning.recurringObligations
                 .filter { $0.commitmentStatus == .committed }.count,
             uncommittedCommitmentCount: document.planning.recurringObligations
@@ -377,6 +389,7 @@ enum DocumentImporter {
             installmentCount: document.installments.count,
             expectedTransactionCount: document.expectedTransactions.count,
             observedTransactionCount: document.transactions.count,
+            foreignDebtOutstanding: preview.foreignDebtOutstanding,
             debtOutstanding: preview.debtOutstanding,
             electronicLiquidity: preview.electronicLiquidity,
             physicalCash: preview.physicalCash

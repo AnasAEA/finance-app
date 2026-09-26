@@ -45,9 +45,11 @@ enum PersistenceMappingError: Error, Equatable, CustomStringConvertible {
     case invalidExternalEvidence(String)
     case invalidPlanning(String)
     case unrepresentableOperationalMoney
+    case invalidDocument
 
     var description: String {
         switch self {
+        case .invalidDocument: "The financial document has inconsistent records or currency relationships."
         case .invalidCurrencyMetadata: "stored currency metadata is invalid"
         case .unrepresentableDay: "this calendar day cannot be stored"
         case .unrepresentableMonth: "this calendar month cannot be stored"
@@ -2210,6 +2212,7 @@ enum StoredDocumentGraph {
         guard !containsUnrepresentableOperationalMoney(loaded) else {
             throw PersistenceMappingError.unrepresentableOperationalMoney
         }
+        try validate(loaded)
         return loaded
     }
 
@@ -2533,6 +2536,8 @@ enum StoredDocumentGraph {
                 throw PersistenceMappingError.duplicateAccountBalance(accountID: balance.accountID)
             }
         }
+
+        try OperationalDocumentValidation.validate(document)
 
         // Reconciliation invariants are checked here, on the way in, because
         // this is the boundary an untrusted document crosses.
