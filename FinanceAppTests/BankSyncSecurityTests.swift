@@ -170,12 +170,12 @@ struct BankSyncSecurityTests {
     }
 
     @Test("Nonces do not repeat")
-    func noncesAreUnique() {
-        let nonces = Set((0..<500).map { _ in BankSyncRequestSigner.nonce() })
+    func noncesAreUnique() throws {
+        let nonces = Set(try (0..<500).map { _ in try BankSyncRequestSigner.nonce() })
         #expect(nonces.count == 500)
         // Long enough that the service accepts them: it refuses anything under
         // 16 characters as too small a space to be unguessable.
-        #expect(BankSyncRequestSigner.nonce().count >= 16)
+        #expect(try BankSyncRequestSigner.nonce().count >= 16)
     }
 
     // MARK: - Transport

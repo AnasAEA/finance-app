@@ -22,7 +22,7 @@ struct ImportCurrentStateView: View {
     @Environment(AppNavigation.self) private var navigation
     @Environment(\.dismiss) private var dismiss
 
-    private enum Stage: Hashable { case choose, preview, balances, done }
+    private enum Stage: Hashable { case choose, unlock, preview, balances, done }
 
     @State private var stage: Stage = .choose
     @State private var isPickingFile = false
@@ -30,12 +30,29 @@ struct ImportCurrentStateView: View {
     @State private var summary: ImportSummary?
     @State private var edits: [String: BalanceEdit] = [:]
     @State private var failure: AppImportError?
+    @State private var encryptedData: Data?
+    @State private var password = ""
+    @State private var unlocking = false
+    @State private var unlockTask: Task<Void, Never>?
 
     var body: some View {
         NavigationStack {
             Group {
                 switch stage {
                 case .choose: ChooseFileStep(blocker: store.importBlocker) { isPickingFile = true }
+                case .unlock:
+                    Form {
+                        Section("Encrypted backup") {
+                            SecureField("Backup password", text: $password)
+                                .textContentType(.password).accessibilityIdentifier("restore.password")
+                            Text("Enter the password used when this file was saved.")
+                                .font(.footnote).foregroundStyle(.secondary)
+                            Button("Unlock backup", action: unlockBackup)
+                                .disabled(password.isEmpty || unlocking)
+                                .accessibilityIdentifier("restore.unlock")
+                            if unlocking { ProgressView("Checking backup") }
+                        }
+                    }
                 case .preview:
                     if let preview {
                         PreviewStep(preview: preview) { stage = .balances }
@@ -68,6 +85,7 @@ struct ImportCurrentStateView: View {
                 }
             }
         }
+        .onDisappear { unlockTask?.cancel(); password = ""; encryptedData = nil; store.cancelImport() }
         .fileImporter(
             isPresented: $isPickingFile,
             allowedContentTypes: [.json],
@@ -92,6 +110,7 @@ struct ImportCurrentStateView: View {
     private var title: String {
         switch stage {
         case .choose: "Restore backup"
+        case .unlock: "Unlock backup"
         case .preview: "Review file"
         case .balances: "Review balances"
         case .done: "Restored"
@@ -105,7 +124,14 @@ struct ImportCurrentStateView: View {
         case let .success(urls):
             guard let url = urls.first else { return }
             do {
-                let decoded = try store.prepareImport(from: url)
+                let data = try store.readBackupFile(at: url)
+                if BackupProtection.isEncrypted(data) {
+                    encryptedData = data
+                    password = ""
+                    stage = .unlock
+                    return
+                }
+                let decoded = try store.prepareImport(from: data)
                 preview = decoded
                 edits = Dictionary(
                     uniqueKeysWithValues: decoded.accounts.map { ($0.id, BalanceEdit($0)) }
@@ -119,6 +145,25 @@ struct ImportCurrentStateView: View {
         case .failure:
             // The picker's own error names a path and nothing actionable.
             failure = .fileUnreadable
+        }
+    }
+
+    private func unlockBackup() {
+        guard let data = encryptedData, !unlocking else { return }
+        unlocking = true
+        let selectedPassword = password
+        unlockTask = Task {
+            defer { unlocking = false }
+            do {
+                let decoded = try await store.prepareEncryptedImport(from: data, password: selectedPassword)
+                guard !Task.isCancelled else { return }
+                preview = decoded
+                edits = Dictionary(uniqueKeysWithValues: decoded.accounts.map { ($0.id, BalanceEdit($0)) })
+                password = ""
+                encryptedData = nil
+                stage = .preview
+            } catch let error as AppImportError { failure = error }
+            catch { failure = .fileUnreadable }
         }
     }
 
@@ -300,11 +345,17 @@ struct PreviewStep: View {
                 }
                 CountRow(label: "Instalments", count: preview.installmentCount)
                 if preview.installmentCount > 0 {
-                    LedgerRow(label: "Instalments remaining", value: preview.installmentRemaining)
+                    LedgerRow(label: "Instalments remaining · EUR", value: preview.installmentRemaining)
+                    ForEach(preview.foreignInstallmentRemaining) { total in
+                        LedgerRow(label: "Instalments remaining · \(total.amount.currencyCode)", value: total.amount)
+                    }
                 }
                 CountRow(label: "Debts", count: preview.debtCount)
                 if preview.debtCount > 0 {
-                    LedgerRow(label: "Debt outstanding", value: preview.debtOutstanding)
+                    LedgerRow(label: "Debt outstanding · EUR", value: preview.debtOutstanding)
+                    ForEach(preview.foreignDebtOutstanding) { total in
+                        LedgerRow(label: "Debt outstanding · \(total.amount.currencyCode)", value: total.amount)
+                    }
                 }
                 if preview.unscheduledDebtCount > 0 {
                     CountRow(
@@ -553,7 +604,10 @@ struct ImportResultStep: View {
                     Divider()
                     ResultLine(label: "Expected transactions", value: "\(summary.expectedTransactionCount)")
                     Divider()
-                    ResultLine(label: "Debt", value: summary.debtOutstanding.formatted())
+                    ResultLine(label: "Debt · EUR", value: summary.debtOutstanding.formatted())
+                    ForEach(summary.foreignDebtOutstanding) { total in
+                        ResultLine(label: "Debt · \(total.amount.currencyCode)", value: total.amount.formatted())
+                    }
                     Divider()
                     ResultLine(label: "In accounts", value: summary.electronicLiquidity.formatted())
                     ForEach(summary.physicalCash) { total in

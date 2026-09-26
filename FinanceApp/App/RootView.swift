@@ -299,8 +299,8 @@ struct RootView: View {
         .sheet(isPresented: $navigation.isAddingTransaction) {
             AddTransactionSheet()
         }
-        .onChange(of: scenePhase, initial: true) { _, phase in
-            guard phase == .active, LaunchOptions.current.visualValidationScreen == nil,
+        .task(id: scenePhase) {
+            guard scenePhase == .active, LaunchOptions.current.visualValidationScreen == nil,
                   !LaunchOptions.current.usesHCIPrototype,
                   !LaunchOptions.current.usesBankInboxPreview,
                   !LaunchOptions.current.usesDailyUsePreview,
@@ -310,10 +310,9 @@ struct RootView: View {
                   store.pairingState == .paired else { return }
             // Cron may already have fresh evidence. Foreground reads that
             // snapshot without asking the banks to run again.
-            Task {
-                await store.refreshFromService()
-                await store.resumeSyncIfNeeded()
-            }
+            await store.refreshFromService()
+            guard !Task.isCancelled else { return }
+            await store.resumeSyncIfNeeded()
         }
     }
 

@@ -9,7 +9,7 @@ struct DomainMapper {
         case invalidPlannedEventDate
     }
 
-    struct TransactionPresentation: Hashable, Sendable {
+    struct TransactionPresentation: Codable, Hashable, Sendable {
         var categoryKey: String?
         var merchant: String?
     }

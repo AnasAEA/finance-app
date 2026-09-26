@@ -81,7 +81,7 @@ struct Amount: Hashable, Sendable, Codable {
 extension Amount {
     private static func requireSameCurrency(_ a: Amount, _ b: Amount) {
         precondition(
-            a.currencyCode == b.currencyCode,
+            a.currencyCode == b.currencyCode && a.fractionDigits == b.fractionDigits,
             "cannot combine \(a.currencyCode) with \(b.currencyCode)"
         )
     }

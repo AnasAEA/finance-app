@@ -5,7 +5,29 @@
 FinanceDocument is the portable financial interchange format. SwiftData stores
 the normalized operational graph locally; FinanceCore validates domain content.
 Export a backup before migrations or replacing a document, and keep exports
-private. A restore must validate before replacing the current document.
+private. Restore is available only for an empty operational store and validates
+before the atomic write. New backups preserve transaction categories, merchant
+labels, and income-source activation in versioned additive metadata. Legacy
+FinanceDocument JSON remains readable. Trusted Automation always restores off.
+
+Export defaults to password protection. Version 1 uses AES-256-GCM with a random
+16-byte salt, a random GCM nonce, fixed domain authentication, and
+PBKDF2-HMAC-SHA256 (600,000 iterations), following the
+[OWASP password-storage guidance](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html#pbkdf2). Passwords require at least 12 characters;
+they are never saved and cannot be recovered. Wrong passwords and modified
+ciphertext refuse before staging records. Selecting readable JSON remains an
+explicit export choice for portable tooling. The encrypted envelope itself is
+an app backup format, not plain FinanceDocument JSON.
+
+Operational backups exclude historical archive and checkpoint lineage,
+device pairing keys, endpoint settings, and transport state. They are not a
+complete device recovery image. Keep archive source files separately until a
+versioned full recovery package is available.
+
+App Settings offers device authentication using biometrics or device passcode.
+An inactive/background cover hides app-switcher contents even without this
+optional lock. This does not replace device encryption or verify SQLite/WAL
+file-protection attributes; those need a physical-device read-only check.
 
 Historical archive imports and FinanceDocument restores are separate formats
 and flows. An archive preserves past history; it is not an operational-ledger
@@ -47,6 +69,9 @@ records. A current balance does not prove complete activity coverage. Imports
 use incremental paging and provider authority to determine current pending
 membership; failed or incomplete reads must not erase previously known evidence.
 Sync Now reports the service job outcome separately from the local import.
+A complete mapped candidate snapshot retires missing suggestions only inside
+its binding scope; partial reads and offline delta batches retain membership.
+The signed transport refuses redirects and does not retain cookies or caches.
 
 Activity includes recorded transactions and bank movements, including unreviewed
 booked history. A persisted evidence link suppresses the corresponding bank row

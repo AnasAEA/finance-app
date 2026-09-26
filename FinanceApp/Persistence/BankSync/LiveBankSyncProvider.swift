@@ -296,7 +296,7 @@ enum MobileSnapshotMapper {
         for row in snapshot.balances {
             guard let binding = bindingByRemote[row.accountId] else { continue }
             guard accountProviderByRemote[row.accountId] == binding.provider,
-                  let currency = row.currency.map({ Currency(code: $0) }),
+                  let currency = row.currency.flatMap({ validatedCurrency($0) }),
                   let amount = Money(exactDecimal: row.amount, currency: currency)
             else { throw BankSyncClientError.malformedResponse }
             batch.balances.append(
@@ -368,8 +368,8 @@ enum MobileSnapshotMapper {
             // across accounts this device has not mapped.
             let resolvedState: CrossProviderCandidateState =
                 (state == .unique && wallet == nil) ? .unresolved : state
-            guard let code = row.currency,
-                  let amount = Money(exactDecimal: row.amount, currency: Currency(code: code))
+            guard let code = row.currency, let currency = validatedCurrency(code),
+                  let amount = Money(exactDecimal: row.amount, currency: currency)
             else { throw BankSyncClientError.malformedResponse }
             result.append(
                 CrossProviderCandidate(
@@ -393,8 +393,14 @@ enum MobileSnapshotMapper {
     /// The backend reports a signed amount already, but a provider that ever
     /// sent a positive figure with `DBIT` would otherwise turn a debit into a
     /// credit. The indicator is the authority on direction.
+    private static func validatedCurrency(_ code: String) -> Currency? {
+        try? Currency.validating(code: code, exponent: Currency.legacyDefaultDigits(code))
+    }
+
     static func signedMoney(_ decimal: String, _ code: String?, _ indicator: String?) -> Money? {
-        guard let code, let money = Money(exactDecimal: decimal, currency: Currency(code: code))
+        guard let code, let currency = validatedCurrency(code),
+              let money = Money(exactDecimal: decimal, currency: currency),
+              money.minorUnits != Int64.min, OperationalDocumentValidation.moneyIsSafe(money)
         else { return nil }
         switch ExternalCreditDebitIndicator(providerToken: indicator ?? "") {
         case .debit: return money.isPositive ? money.negated : money

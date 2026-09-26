@@ -46,7 +46,7 @@ struct ImportAccountPreview: Identifiable, Hashable, Sendable {
 
 /// A per-currency total, for the figures that must never be summed together.
 struct CurrencyTotal: Identifiable, Hashable, Sendable {
-    var id: String { amount.currencyCode }
+    var id: String { "\(amount.currencyCode)/\(amount.fractionDigits)" }
     let amount: Amount
 }
 
@@ -74,6 +74,7 @@ struct ImportPreview: Hashable, Sendable {
     /// debit, and a combined total would claim it can.
     let physicalCash: [CurrencyTotal]
 
+    var foreignDebtOutstanding: [CurrencyTotal] = []
     let debtOutstanding: Amount
     let debtCount: Int
     /// Debts that arrived with no agreed repayment schedule. They are owed and
@@ -81,6 +82,7 @@ struct ImportPreview: Hashable, Sendable {
     let unscheduledDebtCount: Int
 
     let installmentCount: Int
+    var foreignInstallmentRemaining: [CurrencyTotal] = []
     let installmentRemaining: Amount
 
     let recurringCommitmentCount: Int
@@ -118,6 +120,7 @@ struct ImportSummary: Hashable, Sendable {
     let installmentCount: Int
     let expectedTransactionCount: Int
     let observedTransactionCount: Int
+    var foreignDebtOutstanding: [CurrencyTotal] = []
     let debtOutstanding: Amount
     let electronicLiquidity: Amount
     let physicalCash: [CurrencyTotal]

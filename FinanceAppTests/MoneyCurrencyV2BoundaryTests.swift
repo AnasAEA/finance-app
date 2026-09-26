@@ -143,7 +143,8 @@ struct MoneyCurrencyV2BoundaryTests {
         #expect(try failure { $0.currencyExponent = -1 } == .invalidCurrencyMetadata)
         #expect(try failure { $0.currencyExponent = 7 } == .invalidCurrencyMetadata)
 
-        // A legal non-canonical exponent is not corruption: it loads.
-        #expect(try failure { $0.currencyExponent = 0 } == nil)
+        // The currency itself is legal, but changing only the account leaves
+        // its persisted balance with another exponent and must refuse.
+        #expect(try failure { $0.currencyExponent = 0 } == .invalidDocument)
     }
 }

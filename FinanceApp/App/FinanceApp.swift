@@ -10,6 +10,12 @@ struct FinanceApp: App {
 
     init() {
         #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-useAuditRecoveryPreview"),
+           let preview = try? AuditRecoveryPreview.make() {
+            container = preview.0
+            _store = State(initialValue: preview.1)
+            return
+        }
         if LaunchOptions.current.usesHCIPrototype {
             container = nil
             _store = State(
@@ -75,7 +81,7 @@ struct FinanceApp: App {
                 try PersistenceLocation.prepareApplicationSupport()
                 return nil
             } catch {
-                return String(describing: error)
+                return "The local storage folder could not be opened."
             }
         }()
 
@@ -105,7 +111,7 @@ struct FinanceApp: App {
     var body: some Scene {
         WindowGroup {
             if let store {
-                RootView().environment(store)
+                FinancePrivacyView { RootView().environment(store) }
             } else {
                 ContentUnavailableView("Current date unavailable", systemImage: "calendar.badge.exclamationmark",
                     description: Text("Check your device’s date and time, then reopen the app."))

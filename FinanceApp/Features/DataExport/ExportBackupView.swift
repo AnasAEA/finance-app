@@ -27,6 +27,13 @@ struct ExportBackupView: View {
     @State private var problem: AppExportError?
     @State private var isSaving = false
     @State private var savedFileName: String?
+    @State private var encryptionEnabled = true
+    @State private var password = ""
+    @State private var passwordConfirmation = ""
+    @State private var exportData: Data?
+    @State private var protecting = false
+    @State private var protectionError: String?
+    @State private var protectionTask: Task<Void, Never>?
 
     var body: some View {
         NavigationStack {
@@ -42,7 +49,9 @@ struct ExportBackupView: View {
                     }
                 case .ready:
                     if let backup {
-                        ExportReadyStep(backup: backup) { isSaving = true }
+                        ExportReadyStep(backup: backup, encryptionEnabled: $encryptionEnabled,
+                            password: $password, passwordConfirmation: $passwordConfirmation,
+                            protecting: protecting, protectionError: protectionError, onSave: beginSave)
                     }
                 case .saved:
                     if let savedFileName {
@@ -62,9 +71,10 @@ struct ExportBackupView: View {
             }
         }
         .task { prepare() }
+        .onDisappear { protectionTask?.cancel(); password = ""; passwordConfirmation = ""; exportData = nil }
         .fileExporter(
             isPresented: $isSaving,
-            document: backup.map { FinanceBackupFile(data: $0.data) },
+            document: exportData.map { FinanceBackupFile(data: $0) },
             contentType: .json,
             defaultFilename: backup?.fileName
         ) { result in
@@ -93,6 +103,26 @@ struct ExportBackupView: View {
         } catch {
             problem = .documentUnencodable
             stage = .blocked
+        }
+    }
+
+    private func beginSave() {
+        guard let backup, !protecting else { return }
+        guard encryptionEnabled else { exportData = backup.data; isSaving = true; return }
+        guard password.count >= 12, password.utf8.count <= 1024, password == passwordConfirmation else { return }
+        protecting = true
+        protectionError = nil
+        let selectedPassword = password
+        protectionTask = Task {
+            defer { protecting = false }
+            do {
+                let data = try await backup.encrypted(password: selectedPassword)
+                guard !Task.isCancelled else { return }
+                exportData = data
+                password = ""
+                passwordConfirmation = ""
+                isSaving = true
+            } catch { protectionError = "The backup could not be protected. Try again." }
         }
     }
 
@@ -178,7 +208,24 @@ struct ExportBlockedStep: View {
 /// What is in the file, before it is saved anywhere.
 struct ExportReadyStep: View {
     let backup: FinanceBackup
+    @Binding var encryptionEnabled: Bool
+    @Binding var password: String
+    @Binding var passwordConfirmation: String
+    var protecting: Bool
+    var protectionError: String?
     let onSave: () -> Void
+
+    init(backup: FinanceBackup, encryptionEnabled: Binding<Bool> = .constant(false),
+         password: Binding<String> = .constant(""), passwordConfirmation: Binding<String> = .constant(""),
+         protecting: Bool = false, protectionError: String? = nil, onSave: @escaping () -> Void) {
+        self.backup = backup
+        self._encryptionEnabled = encryptionEnabled
+        self._password = password
+        self._passwordConfirmation = passwordConfirmation
+        self.protecting = protecting
+        self.protectionError = protectionError
+        self.onSave = onSave
+    }
 
     private var summary: BackupSummary { backup.summary }
 
@@ -199,6 +246,22 @@ struct ExportReadyStep: View {
             } footer: {
                 Text("Checked by reading it back before it was offered. Everything below was counted from the file itself, not from this device.")
             }
+
+            Section("Protection") {
+                Toggle("Encrypt backup", isOn: $encryptionEnabled)
+                    .accessibilityIdentifier("backup.encrypt")
+                if encryptionEnabled {
+                    SecureField("Password (at least 12 characters)", text: $password)
+                        .textContentType(.newPassword).accessibilityIdentifier("backup.password")
+                    SecureField("Confirm password", text: $passwordConfirmation)
+                        .textContentType(.newPassword).accessibilityIdentifier("backup.password-confirmation")
+                    Text("Keep this password somewhere safe. It is not stored in the app and cannot be recovered.")
+                        .font(.footnote).foregroundStyle(.secondary)
+                }
+                if protecting { ProgressView("Protecting and checking backup") }
+                if let protectionError { Text(protectionError).foregroundStyle(.red) }
+            }
+            .disabled(protecting)
 
             Section("What is in it") {
                 ExportCountRow(label: "Accounts", count: summary.accountCount)
@@ -245,8 +308,9 @@ struct ExportReadyStep: View {
                 .listRowBackground(Color.clear)
                 .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
                 .accessibilityIdentifier(DataID.exportSave)
+                .disabled(protecting || (encryptionEnabled && (password.count < 12 || password.utf8.count > 1024 || password != passwordConfirmation)))
             } footer: {
-                Text("The file holds your accounts, balances, transactions and plan in readable text. Put it somewhere you are willing to keep that.")
+                Text(encryptionEnabled ? "The file is password protected. Your accounts, classifications and plan can be read only with its password." : "The file holds your accounts, classifications and plan in readable text. Put it somewhere you are willing to keep that.")
             }
         }
         .listStyle(.insetGrouped)

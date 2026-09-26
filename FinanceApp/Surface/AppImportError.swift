@@ -30,6 +30,9 @@ enum AppImportError: Error, Hashable, Sendable {
 
     /// The file could not be opened or read at all.
     case fileUnreadable
+    case invalidBackupMetadata
+    case backupPasswordRequired
+    case backupPasswordInvalid
 
     /// Confirm was reached with nothing staged — no file has been previewed.
     case noDocumentStaged
@@ -77,6 +80,7 @@ enum AppImportError: Error, Hashable, Sendable {
         case carriedValueForUnknownAccount(accountID: String)
         case invalidExternalEvidence
         case invalidPlanning
+        case invalidLedger
         case unrepresentableAmount
         /// A balance is dated so far from today that its age cannot be stated
         /// as a number of days. Presenting it without an age would show a
@@ -107,6 +111,8 @@ enum AppImportError: Error, Hashable, Sendable {
                 "A carried value refers to account “\(accountID)”, which is not in this export."
             case .invalidExternalEvidence:
                 "The provider-evidence graph contains a broken binding, review state, or transaction link."
+            case .invalidLedger:
+                "This export has inconsistent transaction relationships or currencies."
             case .invalidPlanning:
                 "This export's planned purchases or sinking funds are not internally consistent."
             case .unrepresentableAmount:
@@ -128,6 +134,12 @@ enum AppImportError: Error, Hashable, Sendable {
             "Your existing data could not be opened, so it will not be replaced. Nothing was restored."
         case .fileUnreadable:
             "That file could not be opened."
+        case .backupPasswordRequired:
+            "This backup is encrypted. Enter its password to continue."
+        case .backupPasswordInvalid:
+            "The password was not accepted, or the encrypted file is damaged."
+        case .invalidBackupMetadata:
+            "This backup contains unsupported or inconsistent app metadata. Nothing was restored."
         case .noDocumentStaged:
             "Choose a file to restore from first."
         case let .notAFinanceDocument(field, reason):

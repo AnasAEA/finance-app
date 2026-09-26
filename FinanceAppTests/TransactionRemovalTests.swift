@@ -459,11 +459,9 @@ struct TransactionRemovalAdversarialTests {
 
     /// And the two that nothing else would catch. A document missing the
     /// target of an inbound transaction link, or of a goal's purchase, is
-    /// perfectly valid as far as every validator is concerned — so the
-    /// eligibility check is the only thing standing between a person and a
-    /// silently changed month.
-    @Test("Nothing else refuses a dangling inbound link or goal purchase")
-    func domainAcceptsWhatOnlyEligibilityRefuses() throws {
+    /// rejected at the persistence boundary as well as by removal eligibility.
+    @Test("Persistence refuses dangling inbound links and goal purchases")
+    func persistenceRefusesBrokenInboundReferences() throws {
         var linked = RemovalFixtures.document(transactions: [
             RemovalFixtures.stated(id: "tx-expense", amount: "40.00"),
             RemovalFixtures.stated(
@@ -472,9 +470,9 @@ struct TransactionRemovalAdversarialTests {
             )
         ])
         linked.transactions.removeAll { $0.id == "tx-expense" }
-        // No throw: the refund now points at nothing and every validator is
-        // content. This is the defect the eligibility check exists to prevent.
-        try StoredDocumentGraph.validate(linked)
+        // Defense in depth: even a bypass of removal eligibility cannot persist
+        // a refund whose original transaction no longer exists.
+        #expect(throws: PersistenceMappingError.invalidDocument) { try StoredDocumentGraph.validate(linked) }
 
         var goal = RemovalFixtures.document(
             transactions: [],
@@ -491,7 +489,7 @@ struct TransactionRemovalAdversarialTests {
             )
         )
         goal.transactions = []
-        try StoredDocumentGraph.validate(goal)
+        #expect(throws: PersistenceMappingError.invalidDocument) { try StoredDocumentGraph.validate(goal) }
     }
 
     /// The screen's answer is a courtesy; the store's is the guarantee.

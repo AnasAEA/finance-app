@@ -32,7 +32,7 @@ public func roundDivide(_ dividend: Int64, by divisor: Int64, rule: RoundingRule
 
     let negative = dividend < 0
     let magnitude = remainder < 0 ? -remainder : remainder // |remainder|, in (0, divisor)
-    let twice = magnitude * 2                     // cannot overflow: < 2*divisor
+    let complement = divisor - magnitude // Compare halves without overflowing.
 
     var bump = false
     switch rule {
@@ -41,11 +41,11 @@ public func roundDivide(_ dividend: Int64, by divisor: Int64, rule: RoundingRule
     case .up:
         bump = true
     case .halfUp:
-        bump = twice >= divisor
+        bump = magnitude >= complement
     case .halfEven:
-        if twice > divisor {
+        if magnitude > complement {
             bump = true
-        } else if twice == divisor {
+        } else if magnitude == complement {
             bump = quotient % 2 != 0             // tie: choose the even neighbor
         }
     }

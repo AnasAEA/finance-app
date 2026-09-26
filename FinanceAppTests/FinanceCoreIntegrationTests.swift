@@ -163,7 +163,9 @@ struct FinanceDocumentPersistenceTests {
             legs: [AccountLeg(accountID: "bank-a", amount: Money(minorUnits: -8_123, currency: .eur))],
             installment: "plan"
         )
-        #expect(try roundTrip(document([value])).transactions == [value])
+        var d = document([value])
+        d.installments = [InstallmentPlan(id: "plan", provider: "Synthetic", purchaseDescription: "Synthetic", originalPurchaseAmount: Money(minorUnits: 8123, currency: .eur), installments: [], paymentRequirement: .euroBankPayment())]
+        #expect(try roundTrip(d).transactions == [value])
         #expect(Economics.effect(of: value, currency: .eur).spending.isZero)
     }
 
@@ -174,7 +176,8 @@ struct FinanceDocumentPersistenceTests {
             legs: [AccountLeg(accountID: "bank-a", amount: Money(minorUnits: 999, currency: .eur))],
             linked: "expense"
         )
-        #expect(try roundTrip(document([value])).transactions == [value])
+        let origin = transaction(id: "expense", kind: .expense, legs: [.init(accountID: "bank-a", amount: Money(minorUnits: -999, currency: .eur))])
+        #expect(try roundTrip(document([origin, value])).transactions.last == value)
         #expect(Economics.effect(of: value, currency: .eur).income.isZero)
     }
 
@@ -215,7 +218,8 @@ struct FinanceDocumentPersistenceTests {
             legs: [AccountLeg(accountID: "bank-a", amount: Money(minorUnits: -60_000, currency: .eur))],
             linked: "custody"
         )
-        #expect(try roundTrip(document([value])).transactions == [value])
+        let arrival = transaction(id: "custody", kind: .passThrough, legs: [.init(accountID: "bank-a", amount: Money(minorUnits: 60000, currency: .eur))])
+        #expect(try roundTrip(document([arrival, value])).transactions.last == value)
         #expect(Economics.effect(of: value, currency: .eur).spending.isZero)
     }
 

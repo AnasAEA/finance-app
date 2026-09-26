@@ -482,7 +482,7 @@ public enum ExternalEvidenceReview {
         transactionLabels: [String: String] = [:]
     ) -> [ExternalObservationSuggestion] {
         guard let observation = document.externalObservations.first(where: { $0.id == observationID }),
-              let binding = document.externalAccountBindings.first(where: { $0.id == observation.bindingID })
+              document.externalAccountBindings.contains(where: { $0.id == observation.bindingID })
         else { return [] }
 
         var result: [ExternalObservationSuggestion] = []
