@@ -3511,6 +3511,8 @@ final class FinanceStore: FinanceProviding {
         do {
             _ = try await provider.pair(code: code, label: label)
             bankIdentityGeneration += 1
+            activeSyncJobID = nil
+            lastObservedSyncJobID = nil
             pairingState = .paired
             bankSyncActivity = .idle
         } catch {
@@ -3637,7 +3639,7 @@ final class FinanceStore: FinanceProviding {
         guard activeSyncJobID == nil, identityGeneration == bankIdentityGeneration else { return }
         activeSyncJobID = initial.jobId
         defer {
-            if identityGeneration == bankIdentityGeneration { activeSyncJobID = nil }
+            if activeSyncJobID == initial.jobId { activeSyncJobID = nil }
         }
         let pollingDeadline = Date().addingTimeInterval(21 * 60)
         bankSyncActivity = .syncing

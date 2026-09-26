@@ -118,3 +118,9 @@ The recovery smoke fixture is synthetic and memory-only, guarded out of Release.
 Final focused simulator UI: 11 tests passed, including all recovery cases,
 foreign Plan, Activity identifier uniqueness and the full transaction/reserve
 visual flow. No compiler warnings in the final app compile.
+
+The final identity regression passes: revocation releases the old polling slot,
+without allowing its completion to clear a newer job. Pairing resets the prior
+job markers. Final app integration count is **1,127 passed**. App PR:
+https://github.com/AnasAEA/finance-app/pull/3. The service changes remain staged
+in the separate service worktree under its commit-on-request rule; no deploy.
