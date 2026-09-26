@@ -30,7 +30,9 @@ enum EncryptedBackup {
         let envelope = Envelope(version: 1, iterations: iterations, salt: saltData, sealed: combined)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
-        return try encoder.encode([key: envelope])
+        let encoded = try encoder.encode([key: envelope])
+        guard encoded.count <= DocumentImporter.maximumFileBytes else { throw AppImportError.fileUnreadable }
+        return encoded
     }
 
     static func decrypt(_ data: Data, password: String?) throws -> Data {
@@ -58,7 +60,7 @@ enum EncryptedBackup {
             }
         }
         guard status == kCCSuccess else { throw AppImportError.fileUnreadable }
-        defer { output.withUnsafeMutableBytes { $0.initializeMemory(as: UInt8.self, repeating: 0) } }
+        defer { _ = output.withUnsafeMutableBytes { $0.initializeMemory(as: UInt8.self, repeating: 0) } }
         return SymmetricKey(data: output)
     }
 }

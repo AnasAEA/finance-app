@@ -19,10 +19,32 @@ ciphertext refuse before staging records. Selecting readable JSON remains an
 explicit export choice for portable tooling. The encrypted envelope itself is
 an app backup format, not plain FinanceDocument JSON.
 
-Operational backups exclude historical archive and checkpoint lineage,
-device pairing keys, endpoint settings, and transport state. They are not a
-complete device recovery image. Keep archive source files separately until a
-versioned full recovery package is available.
+New app backups include the operational ledger, app classifications, historical
+archive projections, verified-month revision chains and acknowledgment snapshots,
+and saved provider coverage/current-pending membership. Restore validates every
+section before staging, rechecks that the destination is empty, and commits all
+sections in one atomic save. History stays separate from current holdings; verified
+months retain their dataset identity, canonical bytes and revision links.
+
+The additive `financeAppBackup` section is version 2, with a version 1 full-recovery
+payload. Legacy FinanceDocument and version 1 app backups still restore with their
+original operational-only scope; their preview does not claim historical recovery.
+Portable FinanceDocument readers can still read the ledger. Older app versions
+refuse the new app section rather than silently dropping recovery data.
+
+Device keys, bank pairing, transport cursors, endpoint settings and retry queues are
+excluded. Pair the new device again after restoring. Trusted Automation restarts
+off. Unknown checkpoint projection formats are retained as opaque, unsupported
+history; this app does not interpret them or claim to verify their future semantics.
+Readable checkpoint formats undergo the repository's digest, chain and acknowledgment
+checks. A domain-separated SHA-256 digest checks the complete recovery section before
+subgraph validation; encryption also authenticates the complete package. The archive
+preserves its stored query projection and original source hash; it does not reconstruct
+or claim to reproduce the original archive import file.
+
+Export refuses plaintext packages over 32 MiB, leaving room for encryption/base64
+within the 64 MiB input limit. Export reads the produced bytes back before offering
+them. Keep original archive source files for independent provenance.
 
 App Settings offers device authentication using biometrics or device passcode.
 An inactive/background cover hides app-switcher contents even without this

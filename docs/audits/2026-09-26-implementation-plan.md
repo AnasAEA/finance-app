@@ -124,3 +124,11 @@ without allowing its completion to clear a newer job. Pairing resets the prior
 job markers. Final app integration count is **1,127 passed**. App PR:
 https://github.com/AnasAEA/finance-app/pull/3. The service changes remain staged
 in the separate service worktree under its commit-on-request rule; no deploy.
+
+## Follow-up: full encrypted recovery
+
+The next milestone is specified in [the full recovery plan](2026-09-26-full-recovery-plan.md).
+It extends the operational backup with archive projections, checkpoint lineage,
+and saved coverage in one validated, atomic restore, while retaining legacy scope
+and excluding device credentials. Its validation and release results are recorded
+with that milestone rather than changing the historical implementation counts above.

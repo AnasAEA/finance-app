@@ -42,6 +42,10 @@ enum DocumentExporter {
             throw AppExportError.documentUnencodable
         }
 
+        // Leave room for base64 and the encryption envelope within the same
+        // 64-MiB restore limit; never offer a file this app cannot reopen.
+        guard data.count <= DocumentImporter.maximumFileBytes / 2 else { throw AppExportError.backupTooLarge }
+
         // Gate 2. The same decode and schema check a restore would run. Its
         // errors are already sanitized, so they are the right sentence and are
         // carried through rather than reworded.
@@ -64,7 +68,7 @@ enum DocumentExporter {
         return FinanceBackup(
             data: data,
             fileName: fileName(on: day),
-            summary: summary(of: reread, byteCount: data.count)
+            summary: summary(of: reread, byteCount: data.count, recovery: metadata.fullRecovery)
         )
     }
 
@@ -76,7 +80,7 @@ enum DocumentExporter {
 
     /// What the produced file holds, counted from the document that was read
     /// back out of it.
-    private static func summary(of document: FinanceDocument, byteCount: Int) -> BackupSummary {
+    private static func summary(of document: FinanceDocument, byteCount: Int, recovery: FullRecoveryState?) -> BackupSummary {
         BackupSummary(
             schemaVersion: document.schemaVersion,
             byteCount: byteCount,
@@ -90,7 +94,10 @@ enum DocumentExporter {
             debtCount: document.debts.count,
             goalCount: document.planning.plannedPurchases.count,
             setAsideCount: document.planning.sinkingFunds.count,
-            bankEvidenceCount: document.externalObservations.count
+            bankEvidenceCount: document.externalObservations.count,
+            hasFullRecovery: recovery != nil,
+            historicalTransactionCount: recovery?.historicalTransactions.count ?? 0,
+            checkpointRevisionCount: recovery?.checkpointRevisions.count ?? 0
         )
     }
 }

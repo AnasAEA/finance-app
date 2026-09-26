@@ -619,9 +619,25 @@ final class StoredIncomeSource {
 /// has never established authority for that provider; a row whose identifiers
 /// are empty means the provider authoritatively reported no current pending
 /// evidence.
-struct AuthoritativePendingSnapshot: Hashable, Sendable {
+struct AuthoritativePendingSnapshot: Codable, Hashable, Sendable {
     let authoritativeAt: Date
     let observationIDs: Set<String>
+}
+
+extension AuthoritativePendingSnapshot {
+    private enum CodingKeys: String, CodingKey { case authoritativeAt, observationIDs }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        authoritativeAt = try c.decode(Date.self, forKey: .authoritativeAt)
+        let ids = try c.decode([String].self, forKey: .observationIDs)
+        guard Set(ids).count == ids.count else { throw AppImportError.invalidBackupMetadata }
+        observationIDs = Set(ids)
+    }
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(authoritativeAt, forKey: .authoritativeAt)
+        try c.encode(observationIDs.sorted(), forKey: .observationIDs)
+    }
 }
 
 @Model
@@ -664,7 +680,7 @@ final class StoredAuthoritativePendingSnapshot {
 /// never reaches the interchange schema. Absence of a value for an account
 /// means UNKNOWN — never "covered for nothing" and never a window inferred
 /// from the binding's `syncStartBoundary`.
-struct AuthoritativeLiveCoverage: Hashable, Sendable {
+struct AuthoritativeLiveCoverage: Codable, Hashable, Sendable {
     let provider: ExternalProvider
     let remoteOpaqueAccountID: String
     let localAccountID: String
@@ -2362,7 +2378,8 @@ enum StoredDocumentGraph {
         writtenOn: Day,
         presentation: [String: DomainMapper.TransactionPresentation] = [:],
         appMetadata: AppPersistenceMetadata = .empty,
-        replaceArchivedHistory: Bool = false
+        replaceArchivedHistory: Bool = false,
+        beforeSave: (ModelContext) throws -> Void = { _ in }
     ) throws {
         try validate(source)
         let partition = PendingEvidenceArchive.partition(
@@ -2392,7 +2409,9 @@ enum StoredDocumentGraph {
             )
         }
         let expectedTransactions = try document.expectedTransactions.enumerated().map {
-            try StoredTransaction($0.element, sequence: $0.offset)
+            let metadata = presentation[$0.element.id]
+            return try StoredTransaction($0.element, sequence: $0.offset,
+                categoryKey: metadata?.categoryKey, merchant: metadata?.merchant)
         }
         let incomeSources = try document.incomeSources.enumerated().map {
             try StoredIncomeSource(
@@ -2504,6 +2523,7 @@ enum StoredDocumentGraph {
             trustedRuleEvents.forEach(context.insert)
             suppressions.forEach(context.insert)
             if let archive { context.insert(archive) }
+            try beforeSave(context)
             try context.save()
         } catch {
             context.rollback()

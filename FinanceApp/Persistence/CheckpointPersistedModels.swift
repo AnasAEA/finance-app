@@ -19,8 +19,10 @@ import FinanceCore
 ///
 /// They are also **local metadata, not interchange**. No field here reaches
 /// `FinanceDocument`, `FinanceHistoryInterchange`, the external archive
-/// export schema or the bank-sync schema, and there is no checkpoint import or
-/// export. A full app or container reset removes them along with the store.
+/// export schema or the bank-sync schema. The separately versioned app recovery
+/// section now snapshots these rows losslessly into encrypted backups and restores
+/// their validated lineage in the same atomic save as the ledger. Device secrets
+/// remain excluded. A full app or container reset removes these local rows.
 ///
 /// ## Why no `#Unique` here
 ///

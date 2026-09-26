@@ -236,7 +236,7 @@ struct ExportReadyStep: View {
                     Text(backup.fileName)
                         .font(.subheadline.weight(.medium))
                         .fixedSize(horizontal: false, vertical: true)
-                    Text("\(summary.fileSizeLabel) · schema \(summary.schemaVersion)")
+                    Text("\(summary.fileSizeLabel)\(encryptionEnabled ? " before encryption" : "") · schema \(summary.schemaVersion)")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -278,6 +278,10 @@ struct ExportReadyStep: View {
                 ExportCountRow(label: "Debts", count: summary.debtCount)
                 ExportCountRow(label: "Goals", count: summary.goalCount)
                 ExportCountRow(label: "Set-aside", count: summary.setAsideCount)
+                if summary.hasFullRecovery {
+                    ExportCountRow(label: "Historical transactions", count: summary.historicalTransactionCount)
+                    ExportCountRow(label: "Verified-month revisions", count: summary.checkpointRevisionCount)
+                }
                 ExportCountRow(
                     label: "Bank evidence",
                     count: summary.bankEvidenceCount,
@@ -286,7 +290,7 @@ struct ExportReadyStep: View {
             }
 
             Section {
-                ForEach(BackupSummary.exclusions, id: \.self) { line in
+                ForEach(summary.exclusions, id: \.self) { line in
                     Text(line)
                         .font(.footnote)
                         .foregroundStyle(.secondary)

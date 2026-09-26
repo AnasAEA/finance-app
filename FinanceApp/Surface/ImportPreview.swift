@@ -94,6 +94,10 @@ struct ImportPreview: Hashable, Sendable {
     let expectedTransactionCount: Int
     let budgetCount: Int
 
+    var hasFullRecovery = false
+    var historicalTransactionCount = 0
+    var checkpointRevisionCount = 0
+
     var staleAccounts: [ImportAccountPreview] { accounts.filter { $0.freshness.isStale } }
     var hasStaleBalances: Bool { !staleAccounts.isEmpty }
 }
@@ -114,6 +118,9 @@ struct ImportBalanceCorrection: Hashable, Sendable {
 /// a confirmation assembled from the input would say "imported" about rows that
 /// were never written.
 struct ImportSummary: Hashable, Sendable {
+    var hasFullRecovery = false
+    var historicalTransactionCount = 0
+    var checkpointRevisionCount = 0
     let accountCount: Int
     let recurringCommitmentCount: Int
     let incomeSourceCount: Int

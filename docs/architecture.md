@@ -269,3 +269,14 @@ history creates no economic transaction, category, spending or income. The bank
 detail states its status and dates and offers the existing review flow where
 available. Filter catalogs combine archive, ledger and bank options; a bank
 import refreshes the history presentation without requiring a relaunch.
+
+### Full app recovery
+
+`AppBackupMetadata` version 2 carries `FullRecoveryState` version 1 alongside the
+portable ledger. `RecoveryRows` snapshots the existing archive and checkpoint
+models explicitly, without SwiftData object identity. The recovery validator uses
+canonical history checks and the checkpoint repository in an isolated in-memory
+context. `DocumentWriter.writeRecovered` inserts these subgraphs inside the ledger
+writer’s pre-save unit, with one save and shared rollback. Device credentials and
+transport cursors remain excluded; restored automation is off. No stored entity
+or migration is added. Legacy backups retain their document-only scope.

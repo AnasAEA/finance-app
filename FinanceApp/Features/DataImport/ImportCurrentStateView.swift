@@ -371,6 +371,12 @@ struct PreviewStep: View {
                 CountRow(label: "Expected future transactions", count: preview.expectedTransactionCount)
                 CountRow(label: "Recorded transactions", count: preview.observedTransactionCount)
                 CountRow(label: "Budgets", count: preview.budgetCount)
+                if preview.hasFullRecovery {
+                    CountRow(label: "Historical transactions", count: preview.historicalTransactionCount)
+                    CountRow(label: "Verified-month revisions", count: preview.checkpointRevisionCount)
+                    Text("Restores the archive and verified-month history together with your ledger.")
+                        .font(.footnote).foregroundStyle(.secondary)
+                }
             }
 
             Section {
@@ -617,7 +623,11 @@ struct ImportResultStep: View {
                 }
                 .financeCard()
 
-                ExclusionsCard()
+                if summary.hasFullRecovery {
+                    ResultLine(label: "Historical transactions", value: "\(summary.historicalTransactionCount)")
+                    ResultLine(label: "Verified-month revisions", value: "\(summary.checkpointRevisionCount)")
+                }
+                ExclusionsCard(hasFullRecovery: summary.hasFullRecovery)
 
                 Button(action: onFinish) {
                     Label("Go to Home", systemImage: "house.fill")
@@ -646,11 +656,15 @@ struct ImportResultStep: View {
 /// wording of them, so a backup that started carrying one of these could not
 /// go on being described as not carrying it on one screen out of two.
 struct ExclusionsCard: View {
+    var hasFullRecovery = false
+    private var exclusions: [String] {
+        hasFullRecovery ? BackupSummary.fullRecoveryExclusions : BackupSummary.exclusions
+    }
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Not included")
                 .font(.subheadline.weight(.medium))
-            ForEach(BackupSummary.exclusions, id: \.self) { line in
+            ForEach(exclusions, id: \.self) { line in
                 Text(line)
                     .font(.footnote)
                     .foregroundStyle(.secondary)

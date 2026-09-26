@@ -196,7 +196,8 @@ struct CheckpointClosePolicyBoundaryTests {
             // The repository's own use is rehydration on the read path, which
             // is a different initializer and is forbidden everywhere else.
             guard file.path != "Persistence/PeriodCheckpointRepository.swift" else { continue }
-            if try Self.code(file.path).contains("PeriodCheckpointRevision(") {
+            // Match the domain type, not StoredPeriodCheckpointRevision row snapshots.
+            if try Self.code(file.path).range(of: #"\bPeriodCheckpointRevision\s*\("#, options: .regularExpression) != nil {
                 constructors.append(file.path)
             }
         }

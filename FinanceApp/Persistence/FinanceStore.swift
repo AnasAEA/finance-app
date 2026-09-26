@@ -1113,6 +1113,21 @@ final class FinanceStore: FinanceProviding {
             && document.debts.isEmpty
             && document.planning.recurringObligations.isEmpty
             && document.planning.budgets.isEmpty
+            && document.planning.plannedPurchases.isEmpty
+            && document.planning.sinkingFunds.isEmpty
+            && document.planning.settlements.isEmpty
+            && document.planning.carriedEURValues.isEmpty
+            && document.planning.safetyFloor == nil
+            && document.planning.monthlyEconomicCeiling == nil
+            && document.externalAccountBindings.isEmpty
+            && document.externalObservations.isEmpty
+            && document.providerBalanceSnapshots.isEmpty
+            && document.externalEvidenceLinks.isEmpty
+            && document.observationResolutions.isEmpty
+            && document.crossProviderCandidates.isEmpty
+            && document.trustedRules.isEmpty
+            && document.trustedRuleAuditEvents.isEmpty
+            && document.trustedRuleObservationSuppressions.isEmpty
     }
 
     /// The stored graph could not be read at launch. The store serves an empty
@@ -1162,9 +1177,18 @@ final class FinanceStore: FinanceProviding {
     @discardableResult
     func prepareImport(from data: Data) throws -> ImportPreview {
         if let importBlocker { throw importBlocker }
+        cancelImport()
         let candidate = try DocumentImporter.decode(data)
         let metadata = try AppBackupMetadata.read(from: data, document: candidate)
-        let preview = try stage(candidate)
+        if let recovery = metadata.fullRecovery {
+            try recovery.validate(document: candidate)
+            if let context, try !FullRecoveryState.destinationIsEmpty(context) { throw AppImportError.storeNotEmpty }
+        }
+        var preview = try stage(candidate)
+        preview.hasFullRecovery = metadata.fullRecovery != nil
+        preview.historicalTransactionCount = metadata.fullRecovery?.historicalTransactions.count ?? 0
+        preview.checkpointRevisionCount = metadata.fullRecovery?.checkpointRevisions.count ?? 0
+        pendingImportPreview = preview
         pendingBackupMetadata = metadata
         return preview
     }
@@ -1209,18 +1233,36 @@ final class FinanceStore: FinanceProviding {
         // previewed and what is persisted.
         try DocumentImporter.semanticValidate(corrected)
 
-        let summary = try DocumentImporter.summary(of: corrected, today: try requireCivilToday())
-        let importedMetadata = AppPersistenceMetadata(
+        var summary = try DocumentImporter.summary(of: corrected, today: try requireCivilToday())
+        summary.hasFullRecovery = pendingBackupMetadata.fullRecovery != nil
+        summary.historicalTransactionCount = pendingBackupMetadata.fullRecovery?.historicalTransactions.count ?? 0
+        summary.checkpointRevisionCount = pendingBackupMetadata.fullRecovery?.checkpointRevisions.count ?? 0
+        var importedMetadata = AppPersistenceMetadata(
             incomeSourceActive: Dictionary(
                 uniqueKeysWithValues: corrected.incomeSources.map { ($0.id, pendingBackupMetadata.incomeSourceActive[$0.id] ?? true) }
             ),
             currentHoldingsModelVersion: CurrentHoldings.modelVersion
         )
 
+        if let recovery = pendingBackupMetadata.fullRecovery {
+            try recovery.validate(document: corrected)
+            if let context, try !FullRecoveryState.destinationIsEmpty(context) { throw AppImportError.storeNotEmpty }
+            importedMetadata.lastExpenseAccountID = recovery.lastExpenseAccountID
+            importedMetadata.lastIncomeAccountID = recovery.lastIncomeAccountID
+            importedMetadata.authoritativePendingSnapshots = Dictionary(uniqueKeysWithValues:
+                recovery.pendingSnapshots.map { (ExternalProvider(rawValue: $0.key), $0.value) })
+            importedMetadata.authoritativeLiveCoverage = recovery.liveCoverage
+        }
+
         let restoredPresentation = pendingBackupMetadata.transactionPresentation
         if let context {
             do {
-                try writer.writeImported(corrected, context, try requireCivilToday(), restoredPresentation, importedMetadata)
+                if let recovery = pendingBackupMetadata.fullRecovery {
+                    guard let recover = writer.writeRecovered else { throw AppImportError.persistenceFailed("Recovery writer unavailable.") }
+                    try recover(corrected, context, try requireCivilToday(), restoredPresentation, importedMetadata, recovery)
+                } else {
+                    try writer.writeImported(corrected, context, try requireCivilToday(), restoredPresentation, importedMetadata)
+                }
             } catch {
                 // Atomicity is the store's guarantee, not one writer's: whatever
                 // the writer left half-done in the context is discarded here, so
@@ -1344,9 +1386,8 @@ final class FinanceStore: FinanceProviding {
     /// document without one — so an accountless store cannot produce a
     /// restorable file whatever else it holds, and a person who has added a
     /// goal but no account must not be told there is nothing there.
-    /// `documentIsEmpty` does not count goals or set-aside at all, and
-    /// `isEmpty` additionally consults checkpoint history, which a backup does
-    /// not carry and so cannot make one worth taking.
+    /// `isEmpty` additionally consults checkpoint history; accounts still define
+    /// whether the operational ledger can be restored by this file.
     var backupBlocker: AppExportError? {
         if storeIsUnreadable { return .storeUnreadable }
         if isFixed || context == nil { return .storeIsReadOnly }
@@ -1375,10 +1416,22 @@ final class FinanceStore: FinanceProviding {
             // late rather than at launch.
             throw AppExportError.storeUnreadable
         }
-        let metadata = AppBackupMetadata(
-            transactionPresentation: transactionPresentation.filter { $0.value.categoryKey != nil || $0.value.merchant != nil },
-            incomeSourceActive: appMetadata.incomeSourceActive
-        )
+        guard let context else { throw AppExportError.storeIsReadOnly }
+        let recovery: FullRecoveryState
+        do {
+            recovery = try FullRecoveryState.capture(from: context)
+            try recovery.validate(document: stored)
+        } catch { throw AppExportError.storeUnreadable }
+        let metadata: AppBackupMetadata
+        do {
+            let presentation = Dictionary(uniqueKeysWithValues: try context.fetch(FetchDescriptor<StoredTransaction>()).map {
+                ($0.identifier, DomainMapper.TransactionPresentation(categoryKey: $0.appCategoryKey, merchant: $0.appMerchant))
+            })
+            metadata = AppBackupMetadata(version: 2,
+                transactionPresentation: presentation.filter { $0.value.categoryKey != nil || $0.value.merchant != nil },
+                incomeSourceActive: try StoredDocumentGraph.loadAppMetadata(from: context).incomeSourceActive,
+                fullRecovery: recovery)
+        } catch { throw AppExportError.storeUnreadable }
         return try DocumentExporter.backup(of: stored, on: day, metadata: metadata)
     }
 

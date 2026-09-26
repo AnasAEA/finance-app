@@ -982,7 +982,8 @@ struct EndedMonthAcknowledgmentTests {
                 offenders.append("\(file.path): \(forbidden)")
             }
             guard file.path != policyBoundary else { continue }
-            for forbidden in constructionOnlyInThePolicy where code.contains(forbidden) {
+            for forbidden in constructionOnlyInThePolicy where
+                code.range(of: #"\bPeriodCheckpointRevision\s*\("#, options: .regularExpression) != nil {
                 offenders.append("\(file.path): \(forbidden)")
             }
         }

@@ -25,6 +25,7 @@ extension FinanceStore {
 
     func prepareEncryptedImport(from data: Data, password: String) async throws -> ImportPreview {
         if let blocker = importBlocker { throw blocker }
+        cancelImport()
         let plaintext = try await Task.detached(priority: .userInitiated) {
             try EncryptedBackup.decrypt(data, password: password)
         }.value
