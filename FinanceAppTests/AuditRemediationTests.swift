@@ -1,3 +1,4 @@
+import UIKit
 import Testing
 import Foundation
 import SwiftData
@@ -7,6 +8,23 @@ import FinanceCore
 @MainActor
 @Suite("Audit remediation regressions")
 struct AuditRemediationTests {
+    @Test func sceneCoverKeepsInactiveScenesCovered() {
+        let activeWindow = UIWindow(frame: CGRect(x: 0, y: 0, width: 100, height: 100))
+        let inactiveWindow = UIWindow(frame: activeWindow.frame)
+        ScenePrivacyCover.setVisible(true, in: [activeWindow, inactiveWindow])
+        ScenePrivacyCover.setVisible(false, in: [activeWindow])
+        #expect(activeWindow.subviews.isEmpty)
+        #expect(inactiveWindow.subviews.count == 1)
+        #expect(inactiveWindow.subviews.first?.accessibilityIdentifier == "privacy.background-cover")
+        ScenePrivacyCover.setVisible(true, in: [inactiveWindow])
+        #expect(inactiveWindow.subviews.count == 1)
+
+        #expect(!ScenePrivacyCover.shouldCover(.foregroundActive))
+        #expect(ScenePrivacyCover.shouldCover(.foregroundInactive))
+        #expect(ScenePrivacyCover.shouldCover(.background))
+        #expect(ScenePrivacyCover.shouldCover(.unattached))
+    }
+
     @Test func encryptedRecoveryRoundTripsAndWrongPasswordWritesNothing() async throws {
         let h = try EntryFixtures.Harness()
         try h.store.add(EntryFixtures.draft(merchant: "SYNTHETIC PRIVATE LABEL"))

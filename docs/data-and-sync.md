@@ -98,3 +98,7 @@ still grow over time.
 - [Recorded-payment matching](design/recorded-payment-matching.md)
 - [Foreign-currency categorization](design/foreign-currency-categorization.md)
 - [Activity history and persistence contracts](architecture.md)
+
+For read-only device acceptance, the launch-only `-disableForegroundSync` argument
+suppresses automatic foreground snapshot imports and sync-job polling. It uses the
+real store, persists no preference, and has no effect on later normal launches.

@@ -36,9 +36,12 @@ struct FinancePrivacyView<Content: View>: View {
                 .background(Theme.Surface.background)
             } else { content }
         }
-        .task { if requiresUnlock { await authenticate() } }
+        .task {
+            ScenePrivacyCover.startObserving()
+            if requiresUnlock { await authenticate() }
+        }
         .onChange(of: phase) { _, value in
-            ScenePrivacyCover.setVisible(value != .active)
+            ScenePrivacyCover.refresh()
             if value == .background {
                 authenticationContext?.invalidate()
                 authenticationContext = nil
@@ -68,23 +71,55 @@ struct FinancePrivacyView<Content: View>: View {
 
 @MainActor enum ScenePrivacyCover {
     private static let tag = 26092601
-    static func setVisible(_ visible: Bool) {
+    private static var observers: [NSObjectProtocol] = []
+
+    static func shouldCover(_ state: UIScene.ActivationState) -> Bool {
+        state != .foregroundActive
+    }
+
+    static func startObserving() {
+        guard observers.isEmpty else { refresh(); return }
+        // Notifications identify the scene that changes. An active window must
+        // never remove another scene's cover, even before activationState settles.
+        for (name, visible) in [(UIScene.willDeactivateNotification, true),
+                                (UIScene.didEnterBackgroundNotification, true),
+                                (UIScene.willEnterForegroundNotification, true),
+                                (UIScene.didActivateNotification, false)] {
+            observers.append(NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { notification in
+                MainActor.assumeIsolated {
+                    guard let scene = notification.object as? UIWindowScene else { return }
+                    setVisible(visible, in: scene)
+                }
+            })
+        }
+        refresh()
+    }
+
+    static func refresh() {
         for scene in UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }) {
-            for window in scene.windows {
-                if !visible { window.viewWithTag(tag)?.removeFromSuperview(); continue }
-                guard window.viewWithTag(tag) == nil else { continue }
-                let cover = UIView(frame: window.bounds)
-                cover.tag = tag
-                cover.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-                cover.backgroundColor = .systemBackground
-                let label = UILabel(frame: cover.bounds)
-                label.text = "Finance"
-                label.textAlignment = .center
-                label.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-                cover.addSubview(label)
-                cover.accessibilityIdentifier = "privacy.background-cover"
-                window.addSubview(cover)
-            }
+            setVisible(shouldCover(scene.activationState), in: scene)
+        }
+    }
+
+    private static func setVisible(_ visible: Bool, in scene: UIWindowScene) {
+        setVisible(visible, in: scene.windows)
+    }
+
+    static func setVisible(_ visible: Bool, in windows: [UIWindow]) {
+        for window in windows {
+            if !visible { window.viewWithTag(tag)?.removeFromSuperview(); continue }
+            guard window.viewWithTag(tag) == nil else { continue }
+            let cover = UIView(frame: window.bounds)
+            cover.tag = tag
+            cover.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+            cover.backgroundColor = .systemBackground
+            let label = UILabel(frame: cover.bounds)
+            label.text = "Finance"
+            label.textAlignment = .center
+            label.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+            cover.addSubview(label)
+            cover.accessibilityIdentifier = "privacy.background-cover"
+            window.addSubview(cover)
         }
     }
 }

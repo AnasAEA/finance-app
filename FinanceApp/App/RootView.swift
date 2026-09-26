@@ -300,7 +300,9 @@ struct RootView: View {
             AddTransactionSheet()
         }
         .task(id: scenePhase) {
-            guard scenePhase == .active, LaunchOptions.current.visualValidationScreen == nil,
+            guard scenePhase == .active,
+                  !ProcessInfo.processInfo.arguments.contains("-disableForegroundSync"),
+                  LaunchOptions.current.visualValidationScreen == nil,
                   !LaunchOptions.current.usesHCIPrototype,
                   !LaunchOptions.current.usesBankInboxPreview,
                   !LaunchOptions.current.usesDailyUsePreview,
