@@ -19,14 +19,79 @@ struct DocumentWriter {
         _ presentation: [String: DomainMapper.TransactionPresentation],
         _ appMetadata: AppPersistenceMetadata
     ) throws -> Void
+    let writeImported: (
+        _ document: FinanceDocument,
+        _ context: ModelContext,
+        _ writtenOn: Day,
+        _ presentation: [String: DomainMapper.TransactionPresentation],
+        _ appMetadata: AppPersistenceMetadata
+    ) throws -> Void
 
-    static let live = DocumentWriter { document, context, writtenOn, presentation, appMetadata in
-        try StoredDocumentGraph.replace(
-            with: document,
-            in: context,
-            writtenOn: writtenOn,
-            presentation: presentation,
-            appMetadata: appMetadata
-        )
+    /// Optional narrow append for the common manual-entry path. A test writer
+    /// has only `write`, so injected write failures still exercise rollback.
+    let appendUserTransaction: ((_ document: FinanceDocument,
+                                 _ transaction: Transaction,
+                                 _ context: ModelContext,
+                                 _ writtenOn: Day,
+                                 _ presentation: DomainMapper.TransactionPresentation,
+                                 _ appMetadata: AppPersistenceMetadata) throws -> Void)?
+
+    /// Small operational update when provider evidence content is unchanged.
+    let updateBankMetadata: ((_ context: ModelContext,
+                              _ appMetadata: AppPersistenceMetadata) throws -> Void)?
+    let archivesPendingHistory: Bool
+
+    init(_ write: @escaping (FinanceDocument, ModelContext, Day,
+                             [String: DomainMapper.TransactionPresentation],
+                             AppPersistenceMetadata) throws -> Void) {
+        self.write = write
+        self.writeImported = write
+        self.appendUserTransaction = nil
+        self.updateBankMetadata = nil
+        self.archivesPendingHistory = false
     }
+
+    private init(
+        write: @escaping (FinanceDocument, ModelContext, Day,
+                          [String: DomainMapper.TransactionPresentation],
+                          AppPersistenceMetadata) throws -> Void,
+        writeImported: @escaping (FinanceDocument, ModelContext, Day,
+                                  [String: DomainMapper.TransactionPresentation],
+                                  AppPersistenceMetadata) throws -> Void,
+        appendUserTransaction: @escaping (FinanceDocument, Transaction, ModelContext, Day,
+                                          DomainMapper.TransactionPresentation,
+                                          AppPersistenceMetadata) throws -> Void,
+        updateBankMetadata: @escaping (ModelContext, AppPersistenceMetadata) throws -> Void
+    ) {
+        self.write = write
+        self.writeImported = writeImported
+        self.appendUserTransaction = appendUserTransaction
+        self.updateBankMetadata = updateBankMetadata
+        self.archivesPendingHistory = true
+    }
+
+    static let live = DocumentWriter(
+        write: { document, context, writtenOn, presentation, appMetadata in
+            try StoredDocumentGraph.replace(
+                with: document, in: context, writtenOn: writtenOn,
+                presentation: presentation, appMetadata: appMetadata
+            )
+        },
+        writeImported: { document, context, writtenOn, presentation, appMetadata in
+            try StoredDocumentGraph.replace(
+                with: document, in: context, writtenOn: writtenOn,
+                presentation: presentation, appMetadata: appMetadata,
+                replaceArchivedHistory: true
+            )
+        },
+        appendUserTransaction: { document, transaction, context, writtenOn, presentation, appMetadata in
+            try StoredDocumentGraph.appendUserTransaction(
+                transaction, in: document, context: context, writtenOn: writtenOn,
+                presentation: presentation, appMetadata: appMetadata
+            )
+        },
+        updateBankMetadata: { context, appMetadata in
+            try StoredDocumentGraph.updateBankMetadata(appMetadata, in: context)
+        }
+    )
 }

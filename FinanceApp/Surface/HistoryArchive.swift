@@ -40,6 +40,7 @@ enum HistoryImportOutcome: Hashable, Sendable {
 struct HistoryFilterOption: Identifiable, Hashable, Sendable {
     let id: String
     let name: String
+    var fractionDigits: Int? = nil
 }
 
 enum HistorySort: String, CaseIterable, Hashable, Sendable {
@@ -67,6 +68,8 @@ struct HistoryQuery: Hashable, Sendable {
     /// of the range a person types into the amount filter.
     var minimumAmountMinor: Int64?
     var maximumAmountMinor: Int64?
+    /// Scale of the sole selected currency when filtering or sorting amounts.
+    var amountFractionDigits: Int?
     var currencies: Set<String> = []
     var sourceIDs: Set<String> = []
     /// Advanced evidence filters. Kept out of the primary filter surface.

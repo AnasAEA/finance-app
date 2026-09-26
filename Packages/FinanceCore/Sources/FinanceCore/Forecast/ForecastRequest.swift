@@ -88,6 +88,8 @@ public enum ForecastError: Error, Hashable, Sendable {
     case eventCurrencyMismatch(eventID: String, expected: String, got: String)
     case noEligibleAccount(eventID: String, requirement: String)
     case duplicateEventID(String)
+    case noIncomeAccount(sourceID: String)
+    case invalidIncomeAccount(sourceID: String, accountID: String)
     case safetyFloorCurrencyMismatch(expected: String, got: String)
     /// A day the run required — the next day of the walk, or the horizon's own
     /// length — lies outside the range an `Int` day ordinal can express. The

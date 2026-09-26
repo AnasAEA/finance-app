@@ -21,3 +21,26 @@ Packages/*/.build/
 # Config/BankSync.xcconfig carries a placeholder host; this optional file
 # points a local build at a real deployment and must never be committed.
 Config/BankSync.local.xcconfig
+
+# Private evidence and local agent state must stay local in every checkout.
+.agent/
+.agents/
+.agent-local/
+.claude/
+.codex/
+.cursor/
+private_outputs/
+transcripts/
+FinanceApp/Resources/dev-*.fixture.json
+.env
+.env.*
+!.env.example
+*.store
+*.store-wal
+*.store-shm
+*.sqlite
+*.sqlite3
+*.p8
+*.p12
+*.key
+*.xcresult/

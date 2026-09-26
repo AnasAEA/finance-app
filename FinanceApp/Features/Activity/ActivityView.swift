@@ -2,31 +2,63 @@ import SwiftUI
 
 /// The canonical event and work surface. Operational transactions and the
 /// private archive share one searchable presentation without becoming one
-/// ledger; bank evidence stays a separate review queue underneath the second
-/// segment and only becomes economic activity after a decision.
+/// ledger. Synced bank movements are visible before review, with their bank
+/// status; the second segment collects the decisions still needed.
 struct ActivityView: View {
     @Environment(AppNavigation.self) private var navigation
+    @Environment(FinanceStore.self) private var store
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         @Bindable var navigation = navigation
+        let presentation = store.currentPresentation()
+        let sections = presentation.attention.activity
+        let reviewCount = sections.decisions.count + sections.paymentsToConfirm.count
+        let tabLayout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 0))
+            : AnyLayout(HStackLayout(spacing: Theme.Space.xl))
         return VStack(spacing: 0) {
-            Picker("Activity section", selection: $navigation.activitySection) {
+            tabLayout {
                 ForEach(ActivitySection.allCases) { section in
-                    Text(section.title).tag(section)
+                    Button {
+                        navigation.activitySection = section
+                    } label: {
+                        VStack(spacing: Theme.Space.sm) {
+                            HStack(spacing: 6) {
+                                Text(section.title).font(Theme.TypeStyle.action)
+                                if section == .toReview, reviewCount > 0 {
+                                    Text(reviewCount.formatted()).font(.caption.monospacedDigit())
+                                        .padding(.horizontal, 6).padding(.vertical, 2)
+                                        .background(Theme.Surface.inset, in: Capsule())
+                                }
+                                if dynamicTypeSize.isAccessibilitySize { Spacer(minLength: 8) }
+                            }
+                            .frame(minHeight: 32)
+                            Rectangle().fill(navigation.activitySection == section
+                                             ? Theme.Role.accent : Color.clear).frame(height: 2)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(navigation.activitySection == section ? Theme.Role.accent : .secondary)
+                    .accessibilityLabel(section.title)
+                    .accessibilityValue(section == .toReview && reviewCount > 0
+                                        ? "\(reviewCount) items need a decision" : "")
+                    .accessibilityAddTraits(navigation.activitySection == section ? .isSelected : [])
                 }
+                if !dynamicTypeSize.isAccessibilitySize { Spacer(minLength: 0) }
             }
-            .pickerStyle(.segmented)
             .padding(.horizontal, Theme.Metric.screenPadding)
-            .padding(.top, 6)
-            .padding(.bottom, 8)
+            .padding(.top, Theme.Space.sm)
+            .overlay(alignment: .bottom) { Rectangle().fill(Theme.Surface.separator).frame(height: 0.5) }
             .accessibilityIdentifier(RouteID.activitySection)
 
             switch navigation.activitySection {
             case .transactions:
-                HistoryBrowserView()
+                HistoryBrowserView(snapshot: presentation.snapshot)
             case .toReview:
-                NeedsReviewView()
+                NeedsReviewView.content(sections: sections, observations: presentation.snapshot.syncedObservations,
+                                        reduceMotion: reduceMotion)
             }
         }
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: navigation.activitySection)
@@ -92,8 +124,42 @@ struct NeedsReviewView: View {
     /// cross the 48h freshness boundary halfway down itself. Taking the store
     /// as a parameter is what lets a test build this exact list.
     static func content(store: FinanceStore, reduceMotion: Bool = true) -> some View {
-        let sections = store.attentionPresentation.activity
+        let presentation = store.currentPresentation()
+        return content(sections: presentation.attention.activity,
+                       observations: presentation.snapshot.syncedObservations, reduceMotion: reduceMotion)
+    }
+
+    static func content(sections: ActivityAttentionPresentation, observations: [SyncedObservationItem] = [],
+                        reduceMotion: Bool = true) -> some View {
+        let quickIDs = Set(observations.filter(\.canQuicklyCategorize).map(\.id))
+        let quick = sections.decisions.filter { quickIDs.contains($0.id) }
+        let decisions = sections.decisions.filter { !quickIDs.contains($0.id) }
         return List {
+            if !sections.decisions.isEmpty {
+                Section {
+                    NavigationLink { TrustedRulesView() } label: {
+                        Label("Rules for repeat merchants", systemImage: "checkmark.shield")
+                            .font(Theme.TypeStyle.action).foregroundStyle(Theme.Role.accent)
+                    }
+                    .listRowBackground(Theme.Surface.background)
+                } footer: {
+                    Text("Approve a merchant rule once to reduce future reviews.")
+                }
+            }
+            if !quick.isEmpty {
+                Section {
+                    ForEach(quick) { item in
+                        NavigationLink {
+                            ExpenseCategorizationView(draft: ExpenseReviewDraft(observationID: item.id, label: item.title))
+                        } label: { decisionRow(item) }
+                        .listRowBackground(Theme.Surface.background)
+                        .accessibilityIdentifier(ActivityID.decision(item.id))
+                    }
+                } header: {
+                    ActivitySectionHeading(title: "Quick categorization", count: quick.count,
+                                           detail: "Choose a category and confirm the purchase.")
+                }
+            }
             if sections.isEmpty {
                 ContentUnavailableView(
                     "Nothing needs review",
@@ -102,9 +168,9 @@ struct NeedsReviewView: View {
                 )
                 .listRowBackground(Color.clear)
             }
-            if !sections.decisions.isEmpty {
+            if !decisions.isEmpty {
                 Section {
-                    ForEach(sections.decisions) { item in
+                    ForEach(decisions) { item in
                         NavigationLink {
                             destination(item.destination)
                         } label: {
@@ -114,12 +180,13 @@ struct NeedsReviewView: View {
                         .accessibilityIdentifier(ActivityID.decision(item.id))
                     }
                 } header: {
-                    Text("Needs a Decision")
+                    ActivitySectionHeading(title: "Needs a Decision", count: decisions.count,
+                                           detail: "Decide what these bank movements mean.")
                 }
             }
 
             if !sections.paymentsToConfirm.isEmpty {
-                Section("Payments to Confirm") {
+                Section {
                     ForEach(sections.paymentsToConfirm) { item in
                         NavigationLink {
                             destination(item.destination)
@@ -129,6 +196,8 @@ struct NeedsReviewView: View {
                         .listRowBackground(Theme.Surface.background)
                         .accessibilityIdentifier(ActivityID.payment(item.id))
                     }
+                } header: {
+                    ActivitySectionHeading(title: "Payments to Confirm", count: sections.paymentsToConfirm.count)
                 }
             }
 
@@ -138,13 +207,8 @@ struct NeedsReviewView: View {
                         PendingObservationRow(item: item)
                     }
                 } header: {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Pending")
-                        Text(PendingObservationPresentation.sectionExplanation)
-                            .font(.caption2)
-                            .textCase(nil)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
+                    ActivitySectionHeading(title: "Pending", count: sections.pending.count,
+                                           detail: PendingObservationPresentation.sectionExplanation)
                     .accessibilityElement(children: .combine)
                     .accessibilityIdentifier(ActivityID.pendingSection)
                 }
@@ -171,13 +235,15 @@ struct NeedsReviewView: View {
                         .accessibilityIdentifier(ActivityID.limitation(item.id))
                     }
                 } header: {
-                    Text("Known Limitations")
+                    ActivitySectionHeading(title: "Known Limitations", count: sections.limitations.count)
                 } footer: {
                     Text("Nothing to decide here.")
                 }
             }
         }
         .listStyle(.plain)
+        .listSectionSpacing(0)
+        .environment(\.defaultMinListHeaderHeight, 12)
         .financeList()
         .contentMargins(.bottom, Theme.Metric.floatingTabBarClearance, for: .scrollContent)
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: sections.decisions.map(\.id))
@@ -195,21 +261,24 @@ struct NeedsReviewView: View {
     /// to find out which it was.
     private static func decisionRow(_ item: ActivityAttentionRow) -> some View {
         VStack(alignment: .leading, spacing: Theme.Space.sm) {
-            if let decision = item.decision {
-                Text(decision).font(Theme.TypeStyle.card)
-                    .foregroundStyle(.primary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
             ViewThatFits(in: .horizontal) {
                 HStack(alignment: .firstTextBaseline, spacing: Theme.Space.md) {
-                    Text(item.title).font(Theme.TypeStyle.supporting).fixedSize(horizontal: false, vertical: true)
+                    Text(ActivityTextPresentation.readableTitle(item.title)).font(Theme.TypeStyle.body.weight(.semibold)).fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: Theme.Space.sm)
                     MoneyText(amount: item.amount, size: 18, weight: .semibold, showsSign: true)
                 }
                 VStack(alignment: .leading, spacing: Theme.Space.xs) {
-                    Text(item.title).font(Theme.TypeStyle.supporting)
+                    Text(ActivityTextPresentation.readableTitle(item.title)).font(Theme.TypeStyle.body.weight(.semibold))
                     MoneyText(amount: item.amount, size: 18, weight: .semibold, showsSign: true)
                 }
+            }
+            Text(item.subtitle).font(Theme.TypeStyle.metadata).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            if let decision = item.decision {
+                Label(decision, systemImage: "arrow.turn.down.right")
+                    .font(Theme.TypeStyle.supporting.weight(.medium))
+                    .foregroundStyle(Theme.Role.accent)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             if let caution = item.caution {
                 Label(caution.label, systemImage: "exclamationmark.triangle")
@@ -217,8 +286,6 @@ struct NeedsReviewView: View {
                     .foregroundStyle(Theme.Role.caution)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            Text(item.subtitle).font(Theme.TypeStyle.metadata).foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.vertical, Theme.Space.sm)
         .accessibilityElement(children: .combine)

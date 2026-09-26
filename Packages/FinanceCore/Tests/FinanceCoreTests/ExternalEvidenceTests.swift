@@ -143,6 +143,80 @@ final class ExternalEvidenceTests: XCTestCase {
     }
 
     // 2
+    func testAmountAndDateAloneDoNotSuggestExistingTransactions() throws {
+        var value = document()
+        value.transactions = [actual()]
+        let row = observation("incoming", merchant: "Corner Bakery")
+        try importObservations([row], into: &value)
+        XCTAssertTrue(ExternalEvidenceReview.existingTransactionSuggestions(for: row, in: value).isEmpty)
+        XCTAssertTrue(ExternalEvidenceReview.existingTransactionSuggestions(
+            for: row, in: value, transactionLabels: ["actual": "Coffee House"]
+        ).isEmpty)
+    }
+
+    func testCorroboratedMerchantMatchExplainsItsEvidence() throws {
+        var value = document()
+        value.transactions = [actual()]
+        let row = observation("incoming", transaction: Day(year: 2026, month: 8, day: 26), merchant: "Corner Bakery")
+        let matches = ExternalEvidenceReview.existingTransactionSuggestions(
+            for: row, in: value, transactionLabels: ["actual": "  CORNER   BAKERY "]
+        )
+        XCTAssertEqual(matches.count, 1)
+        XCTAssertEqual(matches.first?.targetTransactionID, "actual")
+        XCTAssertEqual(matches.first?.title, "Possibly already recorded")
+        XCTAssertTrue(matches.first?.explanation?.contains("merchant and payment date") == true)
+        XCTAssertTrue(ExternalEvidenceReview.existingTransactionSuggestions(
+            for: observation("different-day", transaction: Day(year: 2026, month: 8, day: 27), merchant: "Corner Bakery"),
+            in: value, transactionLabels: ["actual": "Corner Bakery"]
+        ).isEmpty)
+    }
+
+    func testUndatedAndGenericMerchantRowsDoNotPromptLedgerMatches() {
+        var value = document()
+        value.transactions = [actual()]
+        for row in [observation("undated", booking: nil, merchant: "Corner Bakery"),
+                    observation("generic", merchant: "PayPal Europe")] {
+            XCTAssertTrue(ExternalEvidenceReview.existingTransactionSuggestions(
+                for: row, in: value, transactionLabels: ["actual": row.observedMerchant!]
+            ).isEmpty)
+        }
+    }
+
+    func testDistinctDurableSamePricePaymentsDoNotReuseRecordedPurchase() throws {
+        var value = document()
+        let first = observation("first-payment", merchant: "Corner Bakery")
+        let second = observation("second-payment", merchant: "Corner Bakery")
+        try importObservations([first, second], into: &value)
+        try ExternalEvidenceReview.createTransaction(actual(), evidence: [.init(observationID: first.id, role: .accountMovement)],
+                                                     resolvedAt: observedAt, in: &value)
+        XCTAssertTrue(ExternalEvidenceReview.existingTransactionSuggestions(
+            for: second, in: value, transactionLabels: ["actual": "Corner Bakery"]
+        ).isEmpty)
+    }
+
+    func testAmbiguousMerchantMatchesRemainExplicitCandidates() {
+        var value = document()
+        value.transactions = [actual("one"), actual("two")]
+        let matches = ExternalEvidenceReview.existingTransactionSuggestions(
+            for: observation("incoming", merchant: "Corner Bakery"), in: value,
+            transactionLabels: ["one": "Corner Bakery", "two": "Corner Bakery"]
+        )
+        XCTAssertEqual(Set(matches.compactMap(\.targetTransactionID)), ["one", "two"])
+        XCTAssertTrue(matches.allSatisfy { $0.confidence == .medium && !$0.automaticResolutionEligible })
+    }
+
+    func testExactRecordedEvidenceReferenceRemainsFindableWithoutDate() {
+        var value = document()
+        value.transactions = [Transaction(id: "recorded", date: boundary, kind: .expense,
+            legs: [AccountLeg(accountID: "bank", amount: Money(minorUnits: -799, currency: .eur))],
+            factivity: .observed, provenance: Provenance(source: "IMPORT", evidenceGrade: .userConfirmed, reference: "incoming"))]
+        let matches = ExternalEvidenceReview.existingTransactionSuggestions(
+            for: observation("incoming", booking: nil, merchant: nil, raw: nil), in: value
+        )
+        XCTAssertEqual(matches.first?.targetTransactionID, "recorded")
+        XCTAssertTrue(matches.first?.explanation?.contains("exact bank evidence reference") == true)
+    }
+
     func testPreCutoverObservationDoesNotEnterReviewQueue() throws {
         var value = document()
         try importObservations([
@@ -426,6 +500,23 @@ final class ExternalEvidenceTests: XCTestCase {
             try ExternalEvidenceReview.importBatch(.init(balances: [wrongProvider]), into: &value)
         )
         XCTAssertEqual(value.providerBalanceSnapshots.map(\.id), ["balance"], "a rejected batch is atomic")
+    }
+
+    func testOlderBalanceSnapshotCannotReplaceNewerAmount() throws {
+        var value = document()
+        let newer = ProviderBalanceSnapshot(
+            id: "balance", bindingID: "binding-bank", provider: .bnp,
+            balanceType: "CLBD", amount: Money(minorUnits: 37_261, currency: .eur),
+            observedAt: observedAt
+        )
+        let older = ProviderBalanceSnapshot(
+            id: "balance", bindingID: "binding-bank", provider: .bnp,
+            balanceType: "CLBD", amount: Money(minorUnits: 99, currency: .eur),
+            observedAt: observedAt.addingTimeInterval(-60)
+        )
+        try ExternalEvidenceReview.importBatch(.init(balances: [newer]), into: &value)
+        try ExternalEvidenceReview.importBatch(.init(balances: [older]), into: &value)
+        XCTAssertEqual(value.providerBalanceSnapshots.first?.amount.minorUnits, 37_261)
     }
 
     // 19

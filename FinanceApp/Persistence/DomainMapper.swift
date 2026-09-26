@@ -39,6 +39,7 @@ struct DomainMapper {
         var connections: [ProviderConnectionStatus] = []
         var remoteAccounts: [MappableRemoteAccount] = []
         var pendingSnapshots: [CurrentPendingProviderSnapshot] = []
+        var history: [BankHistoryItem] = []
     }
 
     /// The zone a civil date is read in at this boundary.
@@ -140,7 +141,8 @@ struct DomainMapper {
     func bankingSurface(
         document: FinanceDocument,
         transactionPresentation: [String: TransactionPresentation],
-        asOf: Day? = nil
+        asOf: Day? = nil,
+        currentPendingIDs: Set<String> = []
     ) -> BankingSurface {
         let accounts = Dictionary(
             document.accounts.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first }
@@ -158,6 +160,7 @@ struct DomainMapper {
             by: \.observationID
         )
         let warnings = Set(ExternalEvidenceReview.providerStatusWarnings(in: document))
+        let transactionLabels = transactionPresentation.compactMapValues(\.merchant)
 
         let bindingSurface = document.externalAccountBindings.map { binding in
             ProviderAccountBinding(
@@ -176,7 +179,8 @@ struct DomainMapper {
                   state != .outsideSyncBoundary,
                   binding.isActive || state != .unreviewed else { return nil }
             let domainSuggestions = state == .unreviewed
-                ? ExternalEvidenceReview.suggestions(for: observation.id, in: document)
+                ? ExternalEvidenceReview.suggestions(for: observation.id, in: document,
+                                                     transactionLabels: transactionLabels)
                 : []
             var surfaceSuggestions = domainSuggestions.map(observationSuggestion)
             if state == .unreviewed {
@@ -189,7 +193,7 @@ struct DomainMapper {
                     surfaceSuggestions.append(
                         ObservationSuggestion(
                             id: "linked-provider-existing-\(observation.id)-\(transactionID)",
-                            title: "Matches an existing transaction through linked provider evidence",
+                            title: "Linked provider evidence points to a recorded purchase",
                             kind: .existingTransaction,
                             targetTransactionID: transactionID,
                             targetExpectedPaymentID: nil,
@@ -239,9 +243,13 @@ struct DomainMapper {
                 observedAt: observation.observedAt,
                 suggestions: surfaceSuggestions,
                 duplicateConflict: state == .unreviewed
-                    ? duplicateConflict(for: observation, in: document)
+                    ? duplicateConflict(for: observation, in: document, transactionLabels: transactionLabels,
+                                        existingTransactionIDs: domainSuggestions.filter { $0.kind == .existingTransaction }
+                                            .compactMap(\.targetTransactionID))
                     : nil,
-                hasProviderStatusWarning: warnings.contains(observation.id)
+                hasProviderStatusWarning: warnings.contains(observation.id),
+                accountCurrencyCode: accounts[binding.localAccountID]?.currency.code,
+                accountCurrencyFractionDigits: accounts[binding.localAccountID]?.currency.minorUnitDigits
             )
         }
         .sorted {
@@ -401,11 +409,45 @@ struct DomainMapper {
         }
         .sorted { ($0.lifecycle, $0.title, $0.id) < ($1.lifecycle, $1.title, $1.id) }
 
+        let history = document.externalObservations.compactMap { observation -> BankHistoryItem? in
+            guard let binding = bindingsByID[observation.bindingID],
+                  let state = resolutions[observation.id],
+                  observation.identity == .durable || currentPendingIDs.contains(observation.id)
+            else { return nil }
+            return BankHistoryItem(
+                id: observation.id,
+                title: observation.observedMerchant ?? observation.bankTransactionCode
+                    ?? providerName(observation.provider),
+                accountID: binding.localAccountID,
+                accountName: accounts[binding.localAccountID]?.name ?? "Account",
+                providerID: observation.provider.rawValue,
+                providerName: providerName(observation.provider),
+                amount: Self.amount(observation.amount),
+                dates: ObservationDates(
+                    booking: observation.bookingDate.map(Self.civilDay),
+                    transaction: observation.transactionDate.map(Self.civilDay),
+                    value: observation.valueDate.map(Self.civilDay),
+                    derivedTransaction: observation.derivedTransactionDate.map(Self.civilDay),
+                    derivedProvenanceLabel: observation.derivedDateProvenance.map {
+                        switch $0 {
+                        case .parsedFromProviderRemittance: "Parsed from provider remittance"
+                        case let .other(token): token
+                        }
+                    },
+                    economicPeriod: observation.economicPeriodDay.map(Self.civilDay)
+                ),
+                observedAt: observation.observedAt,
+                status: observationStatus(observation.status),
+                resolution: observationResolution(state),
+                linkedTransactionID: links[observation.id]?.first?.transactionID
+            )
+        }
         return BankingSurface(
             observations: observationSurface,
             bindings: bindingSurface,
             balances: balanceSurface,
-            trustedRules: ruleSurface
+            trustedRules: ruleSurface,
+            history: history
         )
     }
 
@@ -474,16 +516,15 @@ struct DomainMapper {
     /// store write guard. It never resolves or links an observation.
     func duplicateConflict(
         for observation: ExternalObservation,
-        in document: FinanceDocument
+        in document: FinanceDocument,
+        transactionLabels: [String: String] = [:],
+        existingTransactionIDs: [String]? = nil
     ) -> ObservationDuplicateConflict? {
         guard observation.eligibleForEconomicActual else { return nil }
 
-        let directExisting = ExternalEvidenceReview.suggestions(
-            for: observation.id,
-            in: document
-        ).compactMap { suggestion in
-            suggestion.kind == .existingTransaction ? suggestion.targetTransactionID : nil
-        }
+        let directExisting = existingTransactionIDs ?? ExternalEvidenceReview.existingTransactionSuggestions(
+            for: observation, in: document, transactionLabels: transactionLabels
+        ).compactMap(\.targetTransactionID)
         let safelyLinked = safelyLinkedCrossProviderTransactionIDs(
             for: observation,
             in: document

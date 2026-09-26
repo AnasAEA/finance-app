@@ -1,10 +1,12 @@
 import SwiftUI
 
 /// Read-only browsing across the private archive and the portion of the live
-/// ledger after its explicit cutoff. The two sources meet in this projection
+/// ledger and bank movements after its explicit cutoff. The sources meet in this projection
 /// only; no archive row is ever copied into the operational document.
 struct HistoryBrowserView: View {
     @Environment(FinanceStore.self) private var store
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    let snapshot: FinanceAppSnapshot
 
     @State private var query = HistoryQuery()
     @State private var searchText = ""
@@ -15,13 +17,14 @@ struct HistoryBrowserView: View {
     @State private var metadata: HistoryArchiveMetadata?
     @State private var isFiltering = false
     @State private var failureMessage: String?
+    @State private var isPendingExpanded = false
 
     private let pageSize = 80
 
     private var hasArchive: Bool { store.history.hasImportedArchive }
 
-    private var liveRows: [LiveHistoryRow] {
-        return store.snapshot.activity.flatMap { day -> [LiveHistoryRow] in
+    private func liveRows() -> [LiveHistoryRow] {
+        return snapshot.activity.flatMap { day -> [LiveHistoryRow] in
             let valueDay = day.date
             if let cutoff = metadata?.archiveCutoff,
                !HistoryArchiveBoundary.includesLiveDate(valueDay, cutoff: cutoff) {
@@ -34,36 +37,39 @@ struct HistoryBrowserView: View {
         }
     }
 
-    private var displayedRows: [UnifiedHistoryRow] {
+    private func displayedRows() -> [UnifiedHistoryRow] {
+        let liveRows = liveRows()
+        let visibleTransactionIDs = Set(liveRows.map { $0.row.id })
+        let bankRows = snapshot.bankHistory.filter {
+            $0.isVisible(cutoff: metadata?.archiveCutoff, visibleTransactionIDs: visibleTransactionIDs)
+                && $0.matches(query, catalog: catalog)
+        }
         let combined = archiveRows.map(UnifiedHistoryRow.archive)
             + liveRows.map(UnifiedHistoryRow.live)
+            + bankRows.map(UnifiedHistoryRow.bank)
         return combined.sorted { lhs, rhs in
+            if query.sort == .newestFirst || query.sort == .oldestFirst,
+               (lhs.date == nil) != (rhs.date == nil) {
+                return lhs.date != nil
+            }
             switch query.sort {
             case .newestFirst:
-                return (lhs.date, lhs.id) > (rhs.date, rhs.id)
+                return (lhs.sortDate, lhs.id) > (rhs.sortDate, rhs.id)
             case .oldestFirst:
-                return (lhs.date, lhs.id) < (rhs.date, rhs.id)
+                return (lhs.sortDate, lhs.id) < (rhs.sortDate, rhs.id)
             case .amountHighToLow:
-                return (lhs.amountMagnitude, lhs.date, lhs.id) >
-                    (rhs.amountMagnitude, rhs.date, rhs.id)
+                return (lhs.amountMagnitude, lhs.sortDate, lhs.id) >
+                    (rhs.amountMagnitude, rhs.sortDate, rhs.id)
             case .amountLowToHigh:
-                return (lhs.amountMagnitude, lhs.date, lhs.id) <
-                    (rhs.amountMagnitude, rhs.date, rhs.id)
+                return (lhs.amountMagnitude, lhs.sortDate, lhs.id) <
+                    (rhs.amountMagnitude, rhs.sortDate, rhs.id)
             }
         }
     }
 
     /// Adjacent dates are grouped without changing the selected sort order.
-    private var dateGroups: [HistoryDateGroup] {
-        var groups: [HistoryDateGroup] = []
-        for row in displayedRows {
-            if groups.last?.date == row.date {
-                groups[groups.count - 1].rows.append(row)
-            } else {
-                groups.append(HistoryDateGroup(id: row.id, date: row.date, rows: [row]))
-            }
-        }
-        return groups
+    private func dateGroups(_ rows: [UnifiedHistoryRow]) -> [HistoryDateGroup] {
+        ActivityTimelineGrouping.adjacent(rows, date: \.date)
     }
 
     private var hasFilters: Bool {
@@ -81,7 +87,17 @@ struct HistoryBrowserView: View {
     }
 
     var body: some View {
-        List {
+        let rows = displayedRows()
+        let quickIDs = Set(snapshot.syncedObservations.filter(\.canQuicklyCategorize).map(\.id))
+        let separatesPending = query.sort == .newestFirst && !hasFilters && searchText.isEmpty
+        let pending = separatesPending ? rows.filter(\.isBankPending) : []
+        let groups = dateGroups(separatesPending ? rows.filter { !$0.isBankPending } : rows)
+        return List {
+            browserControls
+                .listRowInsets(EdgeInsets(top: 0, leading: Theme.Space.xl,
+                                         bottom: 0, trailing: Theme.Space.xl))
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
             if hasFilters {
                 activeFilters
                     .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
@@ -92,40 +108,49 @@ struct HistoryBrowserView: View {
                 SourceGapNotice(gaps: coverageGaps)
             }
 
-            if displayedRows.isEmpty {
+            if !pending.isEmpty {
+                DisclosureGroup(isExpanded: $isPendingExpanded) {
+                    ForEach(pending) { item in historyLink(item, quickIDs: quickIDs) }
+                } label: {
+                    HStack(spacing: Theme.Space.md) {
+                        ActivityMark(symbol: "clock", tint: Theme.Role.information)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("Pending at bank").font(Theme.TypeStyle.action)
+                            Text("Awaiting completion").font(Theme.TypeStyle.metadata).foregroundStyle(.secondary)
+                        }
+                        Spacer(minLength: 8)
+                        Text(pending.count.formatted()).font(Theme.TypeStyle.numeric)
+                            .foregroundStyle(Theme.Role.information)
+                    }
+                    .padding(.vertical, Theme.Space.xs)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("activity.bank-pending-summary")
+                }
+                .tint(Theme.Role.information)
+                .listRowBackground(Theme.Surface.background)
+                .listRowInsets(EdgeInsets(top: Theme.Space.sm, leading: Theme.Space.xl,
+                                         bottom: Theme.Space.sm, trailing: Theme.Space.xl))
+            }
+
+            if rows.isEmpty {
                 ContentUnavailableView(
                     searchText.isEmpty && !hasFilters ? "Nothing here" : "No matches",
                     systemImage: searchText.isEmpty && !hasFilters ? "tray" : "magnifyingglass",
                     description: Text(
                         searchText.isEmpty && !hasFilters
-                            ? "Transactions you add or import will appear here."
+                            ? "Transactions you add, import or sync will appear here."
                             : "Try a different search or clear some filters."
                     )
                 )
                 .listRowBackground(Color.clear)
             }
 
-            ForEach(dateGroups, id: \.id) { group in
+            ForEach(groups, id: \.id) { group in
                 Section {
-                    ForEach(group.rows) { item in
-                        NavigationLink {
-                            switch item {
-                            case let .archive(row):
-                                HistoricalTransactionDetailView(transactionID: row.id)
-                            case let .live(row):
-                                TransactionDetailView(row: row.row, date: row.date)
-                            }
-                        } label: {
-                            UnifiedHistoryRowView(item: item)
-                        }
-                        .listRowBackground(Theme.Surface.background)
-                        .listRowInsets(EdgeInsets(top: Theme.Space.xs, leading: Theme.Space.xl, bottom: Theme.Space.xs, trailing: Theme.Space.lg))
-                        .accessibilityIdentifier(ActivityID.transaction(item.id))
-                    }
+                    ForEach(group.rows) { item in historyLink(item, quickIDs: quickIDs) }
                 } header: {
-                    Text(group.date.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated).year()))
-                        .font(Theme.TypeStyle.metadata.weight(.semibold)).foregroundStyle(.primary).textCase(nil)
-                        .padding(.top, Theme.Space.xs)
+                    ActivitySectionHeading(title: dateHeading(group.date), compact: true)
+                        .listRowInsets(EdgeInsets(top: 0, leading: Theme.Space.xl, bottom: 0, trailing: Theme.Space.xl))
                 }
             }
 
@@ -142,50 +167,19 @@ struct HistoryBrowserView: View {
             }
         }
         .listStyle(.plain)
-        .listSectionSpacing(Theme.Space.xs)
-        .environment(\.defaultMinListHeaderHeight, 24)
+        .listSectionSpacing(0)
+        .environment(\.defaultMinListHeaderHeight, 12)
         .financeList()
         .searchable(text: $searchText, prompt: "Search transactions")
         .task { reload() }
+        .onChange(of: snapshot.bankHistory) { _, _ in reload() }
+        .onChange(of: snapshot.activity) { _, _ in reload() }
+        .onChange(of: store.history.hasImportedArchive) { _, _ in reload() }
         .task(id: searchText) {
             try? await Task.sleep(for: .milliseconds(250))
             guard !Task.isCancelled, query.searchText != searchText else { return }
             query.searchText = searchText
             reload()
-        }
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Menu {
-                    Picker("Sort", selection: Binding(
-                        get: { query.sort },
-                        set: { query.sort = $0; reload() }
-                    )) {
-                        ForEach(HistorySort.allCases, id: \.self) { sort in
-                            Text(sort.title).tag(sort)
-                        }
-                    }
-                } label: {
-                    Label("Sort", systemImage: "arrow.up.arrow.down")
-                }
-            }
-
-            ToolbarItem(placement: .topBarTrailing) {
-                // A `Label` shown title-only, not a bare `Text`: a
-                // text-labelled toolbar button is hosted inside a container
-                // that inherits its identifier, so `activity.filters` used to
-                // resolve to two elements at the same frame. The words and the
-                // state they carry are unchanged.
-                Button {
-                    isFiltering = true
-                } label: {
-                    Label(
-                        hasFilters ? "Filters on" : "Filters",
-                        systemImage: "line.3.horizontal.decrease"
-                    )
-                    .labelStyle(.titleOnly)
-                }
-                .accessibilityIdentifier(RouteID.activityFilters)
-            }
         }
         .sheet(isPresented: $isFiltering) {
             HistoryFiltersView(query: query, catalog: catalog, defaultDay: store.currentDay()) { updated in
@@ -204,6 +198,64 @@ struct HistoryBrowserView: View {
         } message: {
             Text(failureMessage ?? "The archive could not be read.")
         }
+    }
+
+    private var browserControls: some View {
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: Theme.Space.sm))
+            : AnyLayout(HStackLayout(spacing: Theme.Space.lg))
+        return layout {
+            Menu {
+                Picker("Sort", selection: Binding(get: { query.sort }, set: { query.sort = $0; reload() })) {
+                    ForEach(HistorySort.allCases.filter {
+                        (query.currencies.count == 1 && query.amountFractionDigits != nil)
+                            || ($0 != .amountHighToLow && $0 != .amountLowToHigh)
+                    }, id: \.self) { Text($0.title).tag($0) }
+                }
+            } label: {
+                Label(query.sort.title, systemImage: "arrow.down")
+                    .font(Theme.TypeStyle.metadata.weight(.medium)).foregroundStyle(Theme.Role.accent)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(minHeight: Theme.Metric.minimumTarget)
+            }
+            .accessibilityLabel("Sort transactions")
+            if !dynamicTypeSize.isAccessibilitySize { Spacer(minLength: Theme.Space.sm) }
+            Button { isFiltering = true } label: {
+                Label(hasFilters ? "Filters on" : "Filters", systemImage: "line.3.horizontal.decrease")
+                    .font(Theme.TypeStyle.action).frame(minHeight: Theme.Metric.minimumTarget)
+            }
+            .buttonStyle(.plain).foregroundStyle(Theme.Role.accent)
+            .accessibilityIdentifier(RouteID.activityFilters)
+        }
+    }
+
+    private func historyLink(_ item: UnifiedHistoryRow, quickIDs: Set<String>) -> some View {
+        NavigationLink {
+            switch item {
+            case let .archive(row): HistoricalTransactionDetailView(transactionID: row.id)
+            case let .live(row): TransactionDetailView(row: row.row, date: row.date)
+            case let .bank(row):
+                if quickIDs.contains(row.id) {
+                    ExpenseCategorizationView(draft: ExpenseReviewDraft(observationID: row.id, label: row.title))
+                } else { BankHistoryDetailView(observationID: row.id) }
+            }
+        } label: {
+            UnifiedHistoryRowView(item: item, isQuickCategorization: {
+                if case let .bank(row) = item { return quickIDs.contains(row.id) }
+                return false
+            }())
+        }
+        .listRowBackground(Theme.Surface.background)
+        .listRowInsets(EdgeInsets(top: Theme.Space.sm, leading: Theme.Space.xl,
+                                 bottom: Theme.Space.sm, trailing: Theme.Space.lg))
+        .accessibilityIdentifier(ActivityID.transaction(item.id))
+    }
+
+    private func dateHeading(_ date: CalendarDay?) -> String {
+        guard let date else { return "Date not provided" }
+        return date.year == snapshot.asOf.year
+            ? date.formatted(.dateTime.weekday(.wide).day().month(.abbreviated))
+            : date.formatted(.dateTime.day().month(.abbreviated).year())
     }
 
     private var activeFilters: some View {
@@ -251,8 +303,14 @@ struct HistoryBrowserView: View {
     }
 
     private var amountRangeLabel: String {
-        let minimum = query.minimumAmountMinor.map { Amount(minorUnits: $0, currencyCode: "EUR").formatted() }
-        let maximum = query.maximumAmountMinor.map { Amount(minorUnits: $0, currencyCode: "EUR").formatted() }
+        guard let currency = catalog.currencies.first(where: { query.currencies.contains($0.id) }),
+              let digits = currency.fractionDigits else { return "Amount range" }
+        let minimum = query.minimumAmountMinor.map {
+            Amount(minorUnits: $0, currencyCode: currency.id, fractionDigits: digits).formatted()
+        }
+        let maximum = query.maximumAmountMinor.map {
+            Amount(minorUnits: $0, currencyCode: currency.id, fractionDigits: digits).formatted()
+        }
         switch (minimum, maximum) {
         case let (.some(minimum), .some(maximum)): return "\(minimum)–\(maximum)"
         case let (.some(minimum), nil): return "At least \(minimum)"
@@ -272,7 +330,7 @@ struct HistoryBrowserView: View {
         }
         do {
             metadata = try store.history.metadata()
-            catalog = try store.history.filterCatalog()
+            catalog = try store.history.filterCatalog().merging(liveFilterCatalog)
             let page = try store.history.page(matching: query, offset: 0, limit: pageSize)
             archiveRows = page.transactions
             nextOffset = page.nextOffset
@@ -288,7 +346,6 @@ struct HistoryBrowserView: View {
     private var liveFilterCatalog: HistoryFilterCatalog {
         // One read builds one catalog: the account, category and source lists
         // must all come from the same snapshot.
-        let snapshot = store.snapshot
         let rows = snapshot.activity.flatMap(\.rows)
         func unique(_ values: [HistoryFilterOption]) -> [HistoryFilterOption] {
             Dictionary(values.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
@@ -308,14 +365,26 @@ struct HistoryBrowserView: View {
             economicSources: snapshot.incomeSources.map {
                 HistoryFilterOption(id: $0.id, name: $0.name)
             },
-            currencies: unique(rows.map {
-                HistoryFilterOption(id: $0.amount.currencyCode, name: $0.amount.currencyCode)
-            }),
+            currencies: Dictionary(grouping: rows.map(\.amount) + snapshot.bankHistory.map(\.amount), by: \.currencyCode)
+                .map { code, matching in
+                    let digits = Set(matching.map(\.fractionDigits))
+                    return HistoryFilterOption(
+                        id: code, name: code,
+                        fractionDigits: digits.count == 1 ? digits.first : nil
+                    )
+                }
+                .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending },
             sources: snapshot.accounts.map {
                 HistoryFilterOption(id: $0.id, name: $0.name)
-            },
-            statuses: [],
-            provenanceValues: []
+            } + unique(snapshot.bankHistory.map {
+                HistoryFilterOption(id: $0.providerID, name: $0.providerName)
+            }),
+            statuses: unique(snapshot.bankHistory.map {
+                HistoryFilterOption(id: $0.status.rawValue, name: $0.status.displayName)
+            }),
+            provenanceValues: snapshot.bankHistory.isEmpty ? [] : [
+                HistoryFilterOption(id: "bank_sync", name: "Bank sync")
+            ]
         )
     }
 
@@ -336,7 +405,7 @@ struct HistoryBrowserView: View {
     private func clearFilters() {
         let sort = query.sort
         query = HistoryQuery()
-        query.sort = sort
+        query.sort = sort == .amountHighToLow || sort == .amountLowToHigh ? .newestFirst : sort
         searchText = ""
         reload()
     }
@@ -348,6 +417,9 @@ struct HistoryBrowserView: View {
            row.amount.minorUnits.magnitudeForHistoryUI < minimum { return false }
         if let maximum = query.maximumAmountMinor,
            row.amount.minorUnits.magnitudeForHistoryUI > maximum { return false }
+        if (query.minimumAmountMinor != nil || query.maximumAmountMinor != nil
+            || query.sort == .amountHighToLow || query.sort == .amountLowToHigh),
+           row.amount.fractionDigits != query.amountFractionDigits { return false }
         if !query.currencies.isEmpty, !query.currencies.contains(row.amount.currencyCode) { return false }
         if !query.economicTypes.isEmpty,
            !query.economicTypes.contains(where: {
@@ -402,25 +474,37 @@ private struct LiveHistoryRow: Identifiable, Hashable {
 private enum UnifiedHistoryRow: Identifiable, Hashable {
     case archive(HistoryTransactionSummary)
     case live(LiveHistoryRow)
+    case bank(BankHistoryItem)
+
+    var isBankPending: Bool {
+        if case let .bank(row) = self { return row.status == .pending }
+        return false
+    }
 
     var id: String {
         switch self {
         case let .archive(row): "archive:\(row.id)"
         case let .live(row): row.id
+        case let .bank(row): "bank:\(row.id)"
         }
     }
 
-    var date: CalendarDay {
+    var date: CalendarDay? {
         switch self {
         case let .archive(row): row.date
         case let .live(row): row.date
+        case let .bank(row): row.date
         }
     }
+
+    // Unknown bank dates sort last without claiming a date on the screen.
+    var sortDate: CalendarDay { date ?? CalendarDay(year: 1, month: 1, day: 1) }
 
     var amountMagnitude: Int64 {
         switch self {
         case let .archive(row): row.amount.minorUnits.magnitudeForHistoryUI
         case let .live(row): row.row.amount.minorUnits.magnitudeForHistoryUI
+        case let .bank(row): row.amount.minorUnits.magnitudeForHistoryUI
         }
     }
 }
@@ -429,14 +513,11 @@ private extension Int64 {
     var magnitudeForHistoryUI: Int64 { self == .min ? .max : Swift.abs(self) }
 }
 
-private struct HistoryDateGroup: Identifiable {
-    let id: String
-    let date: CalendarDay
-    var rows: [UnifiedHistoryRow]
-}
+private typealias HistoryDateGroup = ActivityTimelineGroup<UnifiedHistoryRow>
 
 private struct UnifiedHistoryRowView: View {
     let item: UnifiedHistoryRow
+    var isQuickCategorization = false
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
@@ -444,22 +525,29 @@ private struct UnifiedHistoryRowView: View {
             ? AnyLayout(VStackLayout(alignment: .leading, spacing: Theme.Space.sm))
             : AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: Theme.Space.md))
         layout {
-            VStack(alignment: .leading, spacing: Theme.Space.xs) {
-                Text(title).font(Theme.TypeStyle.body.weight(.medium))
-                    .fixedSize(horizontal: false, vertical: true)
-                Text(subtitle).font(Theme.TypeStyle.metadata).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+            HStack(alignment: .top, spacing: Theme.Space.md) {
+                ActivityMark(symbol: symbol, text: markText,
+                             tint: item.isBankPending ? Theme.Role.information : Theme.Role.accent)
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(title).font(Theme.TypeStyle.supporting.weight(.semibold))
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(subtitle).font(Theme.TypeStyle.metadata).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
             if !dynamicTypeSize.isAccessibilitySize { Spacer(minLength: Theme.Space.sm) }
             VStack(alignment: dynamicTypeSize.isAccessibilitySize ? .leading : .trailing, spacing: Theme.Space.xs) {
-                MoneyText(amount: amount, size: 18, weight: .semibold, showsSign: true)
+                MoneyText(amount: amount, size: 17, weight: .semibold, showsSign: !amount.isZero)
+                    .fixedSize(horizontal: true, vertical: false)
+                stateLabel
                 if let personal = personalAmount {
                     Text("\(personal.formatted()) yours")
                         .font(Theme.TypeStyle.metadata).foregroundStyle(.secondary)
                 }
             }
         }
-        .padding(.vertical, Theme.Space.xs)
+        .padding(.vertical, Theme.Space.sm)
         .accessibilityElement(children: .combine)
     }
 
@@ -467,6 +555,7 @@ private struct UnifiedHistoryRowView: View {
         switch item {
         case let .archive(row): row.personalAmount
         case let .live(row): row.row.ownedPortion
+        case .bank: nil
         }
     }
 
@@ -485,13 +574,49 @@ private struct UnifiedHistoryRowView: View {
                 && merchant == merchant.uppercased()
             return looksLikeStatementDescriptor ? row.displayDescription : merchant
         case let .live(row): return row.row.title
+        case let .bank(row): return ActivityTextPresentation.readableTitle(row.title)
         }
     }
 
     private var subtitle: String {
         switch item {
         case let .archive(row): "\(row.categoryName) · \(row.accountName)"
-        case let .live(row): row.row.subtitle
+        case let .live(row):
+            [row.row.categoryLabel ?? row.row.transactionTypeLabel,
+             row.row.primaryAccountLabel].compactMap { $0 }.joined(separator: " · ")
+        case let .bank(row): row.accountName
+        }
+    }
+
+    private var markText: String? {
+        guard case let .bank(row) = item, row.status != .pending else { return nil }
+        switch row.providerID {
+        case "bnp": return "BNP"
+        case "paypal": return "P"
+        case "revolut": return "R"
+        default: return String(row.providerName.prefix(1)).uppercased()
+        }
+    }
+
+    @ViewBuilder
+    private var stateLabel: some View {
+        switch item {
+        case .archive:
+            ActivityStateLabel(title: "Archived")
+        case let .live(row):
+            ActivityStateLabel(title: row.row.trailingNote ?? "Recorded",
+                               symbol: row.row.isPending ? "clock" : nil,
+                               tint: row.row.isPending ? Theme.Role.information : .secondary)
+        case let .bank(row):
+            if row.status == .pending {
+                ActivityStateLabel(title: "Pending", symbol: "clock", tint: Theme.Role.information)
+            } else if row.resolution == .unreviewed {
+                ActivityStateLabel(title: isQuickCategorization ? "Categorize" : "Needs review",
+                                   symbol: isQuickCategorization ? "tag" : "circle.dotted",
+                                   tint: isQuickCategorization ? Theme.Role.accent : Theme.Role.caution)
+            } else {
+                ActivityStateLabel(title: row.status.displayName)
+            }
         }
     }
 
@@ -499,13 +624,15 @@ private struct UnifiedHistoryRowView: View {
         switch item {
         case let .archive(row): row.amount
         case let .live(row): row.row.amount
+        case let .bank(row): row.amount
         }
     }
 
-    private var date: CalendarDay {
+    private var date: CalendarDay? {
         switch item {
         case let .archive(row): row.date
         case let .live(row): row.date
+        case let .bank(row): row.date
         }
     }
 
@@ -519,6 +646,8 @@ private struct UnifiedHistoryRowView: View {
             return "cart"
         case let .live(row):
             return row.row.symbolName
+        case .bank:
+            return "building.columns"
         }
     }
 }
@@ -687,6 +816,7 @@ private struct HistoryFiltersView: View {
     @State private var customEnd: CalendarDay?
     @State private var minimumAmount: String
     @State private var maximumAmount: String
+    @State private var validationMessage: String?
 
     init(
         query: HistoryQuery,
@@ -703,76 +833,80 @@ private struct HistoryFiltersView: View {
         _dateAnchor = State(initialValue: start)
         _customStart = State(initialValue: start)
         _customEnd = State(initialValue: end)
-        _minimumAmount = State(initialValue: Self.majorText(query.minimumAmountMinor))
-        _maximumAmount = State(initialValue: Self.majorText(query.maximumAmountMinor))
+        let digits = catalog.currencies.first(where: { query.currencies.contains($0.id) })?.fractionDigits
+        _minimumAmount = State(initialValue: Self.majorText(query.minimumAmountMinor, digits: digits))
+        _maximumAmount = State(initialValue: Self.majorText(query.maximumAmountMinor, digits: digits))
     }
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section("Date") {
-                    Picker("Range", selection: $dateMode) {
+            FinancePage {
+                FinanceSection("When") {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 130), spacing: 8)], spacing: 8) {
                         ForEach(HistoryDateMode.allCases) { mode in
-                            Text(mode.title).tag(mode)
+                            Button { dateMode = mode } label: {
+                                Text(mode == .all ? "Any time" : mode.title)
+                                    .font(Theme.TypeStyle.action).frame(maxWidth: .infinity, minHeight: 44)
+                                    .padding(.horizontal, 8)
+                                    .foregroundStyle(dateMode == mode ? Theme.Role.accent : .primary)
+                                    .background(dateMode == mode ? Theme.Surface.inset : Theme.Surface.card,
+                                                in: RoundedRectangle(cornerRadius: Theme.Metric.controlRadius))
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityAddTraits(dateMode == mode ? .isSelected : [])
                         }
                     }
                     switch dateMode {
-                    case .all:
-                        EmptyView()
-                    case .month:
-                        CivilDatePicker("Month containing", selection: $dateAnchor)
-                    case .year:
-                        CivilDatePicker("Year containing", selection: $dateAnchor)
+                    case .all: EmptyView()
+                    case .month: CivilDatePicker("Month containing", selection: $dateAnchor)
+                    case .year: CivilDatePicker("Year containing", selection: $dateAnchor)
                     case .custom:
                         CivilDatePicker("From", selection: $customStart)
                         CivilDatePicker("Through", selection: $customEnd)
                     }
                 }
-
                 FilterSelectionSection(title: "Account", options: catalog.accounts, selection: $draft.accountIDs)
                 FilterSelectionSection(title: "Category", options: catalog.categories, selection: $draft.categoryIDs)
-                FilterSelectionSection(title: "Economic type", options: catalog.economicTypes, selection: $draft.economicTypes)
-                FilterSelectionSection(
-                    title: "Economic source",
-                    options: catalog.economicSources,
-                    selection: $draft.economicSourceIDs,
-                    footer: "Where the money came from economically, whoever handed it over."
-                )
-
-                Section("Amount") {
-                    TextField("Minimum", text: $minimumAmount)
-                        .keyboardType(.decimalPad)
-                    TextField("Maximum", text: $maximumAmount)
-                        .keyboardType(.decimalPad)
+                DisclosureGroup("More filters") {
+                    VStack(alignment: .leading, spacing: Theme.Space.xl) {
+                        FilterSelectionSection(title: "Currency", options: catalog.currencies, selection: $draft.currencies)
+                        FinanceSection("Amount") {
+                            TextField("Minimum", text: $minimumAmount).keyboardType(.decimalPad)
+                            Divider()
+                            TextField("Maximum", text: $maximumAmount).keyboardType(.decimalPad)
+                            Text("Choose one currency to compare amounts.")
+                                .font(Theme.TypeStyle.metadata).foregroundStyle(.secondary)
+                        }
+                        FilterSelectionSection(title: "Type", options: catalog.economicTypes, selection: $draft.economicTypes)
+                        FilterSelectionSection(title: "Income source", options: catalog.economicSources,
+                                               selection: $draft.economicSourceIDs)
+                        FilterSelectionSection(title: "Provider", options: catalog.sources, selection: $draft.sourceIDs)
+                        FilterSelectionSection(title: "Evidence status", options: catalog.statuses, selection: $draft.statuses)
+                        FilterSelectionSection(title: "Evidence provenance", options: catalog.provenanceValues,
+                                               selection: $draft.provenanceValues,
+                                               footer: "Evidence quality is separate from spending categories.")
+                    }.padding(.top, Theme.Space.lg)
                 }
-
-                FilterSelectionSection(title: "Currency", options: catalog.currencies, selection: $draft.currencies)
-                FilterSelectionSection(title: "Source", options: catalog.sources, selection: $draft.sourceIDs)
-
-                Section {
-                    DisclosureGroup("Advanced") {
-                        FilterSelectionRows(options: catalog.statuses, selection: $draft.statuses)
-                        FilterSelectionRows(options: catalog.provenanceValues, selection: $draft.provenanceValues)
-                    }
-                } footer: {
-                    Text("Status and provenance describe evidence quality, not ordinary spending categories.")
-                }
-
-                if hasSelections {
-                    Section {
-                        Button("Clear all", role: .destructive) { clear() }
-                    }
+                .font(Theme.TypeStyle.action).tint(Theme.Role.accent)
+                if let validationMessage {
+                    Label(validationMessage, systemImage: "exclamationmark.circle")
+                        .font(Theme.TypeStyle.supporting).foregroundStyle(Theme.Role.negative)
                 }
             }
             .navigationTitle("Transaction filters")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .topBarTrailing) {
+                    if hasSelections { Button("Reset") { clear() } }
                 }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Apply") { apply() }
-                }
+            }
+            .safeAreaInset(edge: .bottom) {
+                Button("Show transactions") { apply() }
+                    .buttonStyle(.borderedProminent).tint(Theme.Role.accent)
+                    .frame(maxWidth: .infinity).padding(Theme.Space.lg)
+                    .background(Theme.Surface.background)
+                    .accessibilityIdentifier("activity.filters.apply")
             }
         }
     }
@@ -793,9 +927,38 @@ private struct HistoryFiltersView: View {
 
     private func apply() {
         guard dateMode == .all || selectedDateRange != nil else { return }
+        let hasAmount = !minimumAmount.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || !maximumAmount.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let amountSort = draft.sort == .amountHighToLow || draft.sort == .amountLowToHigh
+        if hasAmount || amountSort {
+            guard draft.currencies.count == 1,
+                  let currency = catalog.currencies.first(where: { draft.currencies.contains($0.id) }),
+                  let digits = currency.fractionDigits else {
+                validationMessage = "Choose one currency before filtering or sorting by amount."
+                return
+            }
+            do {
+                draft.minimumAmountMinor = try Self.minorUnits(minimumAmount, currency: currency.id, digits: digits)
+                draft.maximumAmountMinor = try Self.minorUnits(maximumAmount, currency: currency.id, digits: digits)
+                draft.amountFractionDigits = digits
+            } catch {
+                validationMessage = "Enter an exact amount within this currency’s supported range."
+                return
+            }
+            if let minimum = draft.minimumAmountMinor, let maximum = draft.maximumAmountMinor,
+               minimum > maximum {
+                validationMessage = "Minimum amount must not exceed maximum amount."
+                return
+            }
+        } else {
+            draft.minimumAmountMinor = nil
+            draft.maximumAmountMinor = nil
+            draft.amountFractionDigits = draft.currencies.count == 1
+                ? catalog.currencies.first(where: { draft.currencies.contains($0.id) })?.fractionDigits
+                : nil
+        }
         draft.dateRange = selectedDateRange
-        draft.minimumAmountMinor = Self.minorUnits(minimumAmount)
-        draft.maximumAmountMinor = Self.minorUnits(maximumAmount)
+        validationMessage = nil
         onApply(draft)
         dismiss()
     }
@@ -828,29 +991,21 @@ private struct HistoryFiltersView: View {
     private func clear() {
         let sort = draft.sort
         draft = HistoryQuery()
-        draft.sort = sort
+        draft.sort = sort == .amountHighToLow || sort == .amountLowToHigh ? .newestFirst : sort
         dateMode = .all
         minimumAmount = ""
         maximumAmount = ""
+        validationMessage = nil
     }
 
-    private static func majorText(_ minor: Int64?) -> String {
-        guard let minor else { return "" }
-        return NSDecimalNumber(value: Double(minor) / 100).stringValue
+    private static func majorText(_ minor: Int64?, digits: Int?) -> String {
+        guard let minor, let digits else { return "" }
+        return Amount(minorUnits: minor, currencyCode: "", fractionDigits: digits).editingText
     }
 
-    private static func minorUnits(_ value: String) -> Int64? {
-        let normalized = value.replacingOccurrences(of: ",", with: ".")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !normalized.isEmpty,
-              let decimal = Decimal(string: normalized, locale: Locale(identifier: "en_US_POSIX")) else {
-            return nil
-        }
-        var scaled = decimal * 100
-        var rounded = Decimal()
-        NSDecimalRound(&rounded, &scaled, 0, .plain)
-        guard rounded == scaled else { return nil }
-        return Int64(truncating: NSDecimalNumber(decimal: rounded))
+    private static func minorUnits(_ value: String, currency: String, digits: Int) throws -> Int64? {
+        guard !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        return try Amount.parse(value, currencyCode: currency, fractionDigits: digits).minorUnits
     }
 }
 
@@ -865,25 +1020,38 @@ private struct FilterSelectionSection: View {
     let options: [HistoryFilterOption]
     @Binding var selection: Set<String>
     var footer: String?
+    @State private var search = ""
 
     var body: some View {
-        Section {
-            DisclosureGroup {
-                FilterSelectionRows(options: options, selection: $selection)
-            } label: {
-                HStack {
-                    Text(title)
-                    Spacer()
-                    if !selection.isEmpty {
-                        Text(selection.count.formatted())
-                            .foregroundStyle(.secondary)
-                    }
+        FinanceSection(title) {
+            NavigationLink {
+                List {
+                    FilterSelectionRows(options: options.filter {
+                        search.isEmpty || $0.name.displayHistoryToken.localizedCaseInsensitiveContains(search)
+                    }, selection: $selection)
+                        .listRowBackground(Theme.Surface.background)
                 }
+                .listStyle(.plain).financeList()
+                .navigationTitle(title)
+                .navigationBarTitleDisplayMode(.inline)
+                .searchable(text: $search, prompt: "Find \(title.lowercased())")
+                .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Clear") { selection.removeAll() } } }
+            } label: {
+                HStack(spacing: Theme.Space.md) {
+                    Text(selection.isEmpty ? (title == "Category" ? "All categories" : title == "Account" ? "All accounts" : "Any \(title.lowercased())")
+                         : options.filter { selection.contains($0.id) }.map { $0.name.displayHistoryToken }.joined(separator: ", "))
+                        .foregroundStyle(selection.isEmpty ? .secondary : Theme.Role.accent)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 8)
+                    Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                }
+                .frame(minHeight: Theme.Metric.minimumTarget)
+                .padding(Theme.Space.md)
+                .background(Theme.Surface.card, in: RoundedRectangle(cornerRadius: Theme.Metric.controlRadius))
             }
-        } footer: {
-            if let footer {
-                Text(footer)
-            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("activity.filter.\(title.lowercased().replacingOccurrences(of: " ", with: "-"))")
+            if let footer { Text(footer).font(Theme.TypeStyle.metadata).foregroundStyle(.secondary) }
         }
     }
 }
@@ -908,11 +1076,14 @@ private struct FilterSelectionRows: View {
                         Text(option.name.displayHistoryToken)
                             .foregroundStyle(.primary)
                         Spacer()
-                        if selection.contains(option.id) {
-                            Image(systemName: "checkmark").foregroundStyle(Theme.Role.accent)
-                        }
+                        Image(systemName: selection.contains(option.id) ? "checkmark.circle.fill" : "circle")
+                            .foregroundStyle(selection.contains(option.id) ? Theme.Role.accent : .secondary)
                     }
+                    .frame(minHeight: Theme.Metric.minimumTarget)
+                    .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(selection.contains(option.id) ? .isSelected : [])
             }
         }
     }

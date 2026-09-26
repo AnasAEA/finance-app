@@ -56,6 +56,10 @@ struct BankSyncSnapshot: Sendable {
     /// Cursor for the next page, when the backend had more observations than
     /// one response could carry.
     var nextSince: String?
+    var highWater: String? = nil
+    /// The complete candidate statement on this wire page. Resolve it after
+    /// the booked page walk, when references on other pages are known.
+    var wireCandidates: [MobileSnapshot.Candidate]? = nil
 }
 
 /// Phase 2.4D transport seam.
@@ -66,6 +70,9 @@ struct BankSyncSnapshot: Sendable {
 protocol BankSyncProviding: Sendable {
     /// Asks the backend to talk to the banks now, with a user present.
     func runRemoteSync() async throws
+    func runRemoteSyncWithOutcomes() async throws -> [MobileSyncRun]?
+    func startRemoteSync() async throws -> MobileSyncJob?
+    func remoteSyncStatus(jobId: String) async throws -> MobileSyncJob
 
     /// Reads normalized evidence. `bindings` decides which remote accounts are
     /// mapped; evidence for anything else is discarded rather than imported,
@@ -74,6 +81,17 @@ protocol BankSyncProviding: Sendable {
         bindings: [ExternalAccountBinding],
         since: String?
     ) async throws -> BankSyncSnapshot
+}
+
+extension BankSyncProviding {
+    func startRemoteSync() async throws -> MobileSyncJob? { nil }
+    func remoteSyncStatus(jobId: String) async throws -> MobileSyncJob {
+        throw BankSyncClientError.malformedResponse
+    }
+    func runRemoteSyncWithOutcomes() async throws -> [MobileSyncRun]? {
+        try await runRemoteSync()
+        return nil
+    }
 }
 
 /// Safe production default when no endpoint is configured.
@@ -106,7 +124,19 @@ struct LiveBankSyncProvider: BankSyncProviding {
     let client: BankSyncClient
 
     func runRemoteSync() async throws {
-        _ = try await client.runSync()
+        _ = try await client.startSync()
+    }
+
+    func runRemoteSyncWithOutcomes() async throws -> [MobileSyncRun]? {
+        try await client.startSync().runs
+    }
+
+    func startRemoteSync() async throws -> MobileSyncJob? {
+        try await client.startSync()
+    }
+
+    func remoteSyncStatus(jobId: String) async throws -> MobileSyncJob {
+        try await client.syncStatus(jobId: jobId)
     }
 
     func fetchSnapshot(
@@ -122,11 +152,9 @@ struct LiveBankSyncProvider: BankSyncProviding {
 
 /// Translates the wire contract into domain values.
 ///
-/// Every conversion here is total and conservative. A row the app cannot fully
-/// understand — an unparseable amount, an unknown currency, an account nobody
-/// mapped — is dropped rather than guessed at, because a wrong observation in
-/// the Inbox is worse than a missing one: the person would be reviewing a fact
-/// that is not true.
+/// Every conversion here is conservative. Evidence for an unmapped account is
+/// ignored; malformed evidence for an active mapping fails the whole pull so
+/// the device never commits a partial provider statement or guesses money.
 enum MobileSnapshotMapper {
     static func map(
         _ snapshot: MobileSnapshot,
@@ -165,9 +193,11 @@ enum MobileSnapshotMapper {
         var keptObservationIDs: Set<String> = []
 
         for row in snapshot.observations {
-            guard let binding = bindingByRemote[row.accountId],
+            guard let binding = bindingByRemote[row.accountId] else { continue }
+            guard accountProviderByRemote[row.accountId] == binding.provider,
+                  ExternalProvider(rawValue: row.provider) == binding.provider,
                   let amount = signedMoney(row.amount, row.currency, row.creditDebitIndicator)
-            else { continue }
+            else { throw BankSyncClientError.malformedResponse }
             let derivedDate = try optionalDay(row.derivedTransactionDate)
             // Provenance and derived date exist together or not at all; a date
             // without its audit trail is refused by FinanceCore anyway.
@@ -264,10 +294,11 @@ enum MobileSnapshotMapper {
         }
 
         for row in snapshot.balances {
-            guard let binding = bindingByRemote[row.accountId],
+            guard let binding = bindingByRemote[row.accountId] else { continue }
+            guard accountProviderByRemote[row.accountId] == binding.provider,
                   let currency = row.currency.map({ Currency(code: $0) }),
                   let amount = Money(exactDecimal: row.amount, currency: currency)
-            else { continue }
+            else { throw BankSyncClientError.malformedResponse }
             batch.balances.append(
                 ProviderBalanceSnapshot(
                     // One durable row per (account, balance type): re-syncing
@@ -284,37 +315,7 @@ enum MobileSnapshotMapper {
             )
         }
 
-        for row in snapshot.candidates {
-            // A candidate that points at evidence this device did not keep
-            // would fail whole-document validation, and it has nothing to
-            // suggest anyway.
-            guard keptObservationIDs.contains(row.bankObservationId) else { continue }
-            let state = CrossProviderCandidateState(providerToken: row.state)
-            let wallet = row.walletObservationId.flatMap {
-                keptObservationIDs.contains($0) ? $0 : nil
-            }
-            // `unique` means "one wallet row explains this". Without that row
-            // present it is not unique here, whatever the backend concluded
-            // across accounts this device has not mapped.
-            let resolvedState: CrossProviderCandidateState =
-                (state == .unique && wallet == nil) ? .unresolved : state
-            guard let amount = Money(
-                exactDecimal: row.amount, currency: Currency(code: row.currency ?? "EUR")
-            ) else { continue }
-            batch.candidates.append(
-                CrossProviderCandidate(
-                    id: "candidate-\(row.bankObservationId)",
-                    bankObservationID: row.bankObservationId,
-                    walletObservationID: resolvedState == .unique ? wallet : nil,
-                    state: resolvedState,
-                    candidateCount: row.candidateCount,
-                    amount: amount,
-                    dayOffset: row.dayOffset,
-                    rule: row.rule,
-                    computedAt: try requiredTimestamp(row.computedAt)
-                )
-            )
-        }
+        batch.candidates = try mapCandidates(snapshot.candidates, knownObservationIDs: keptObservationIDs)
 
         return BankSyncSnapshot(
             connections: try snapshot.connections.map { row in
@@ -342,8 +343,49 @@ enum MobileSnapshotMapper {
             },
             batch: batch,
             pendingAuthority: pendingAuthority,
-            nextSince: snapshot.nextSince
+            nextSince: snapshot.nextSince,
+            highWater: snapshot.highWater,
+            wireCandidates: snapshot.candidates
         )
+    }
+
+    static func mapCandidates(
+        _ rows: [MobileSnapshot.Candidate],
+        knownObservationIDs: Set<String>
+    ) throws -> [CrossProviderCandidate] {
+        var result: [CrossProviderCandidate] = []
+        for row in rows {
+            // A candidate that points at evidence this device did not keep
+            // would fail whole-document validation, and it has nothing to
+            // suggest anyway.
+            guard knownObservationIDs.contains(row.bankObservationId) else { continue }
+            let state = CrossProviderCandidateState(providerToken: row.state)
+            let wallet = row.walletObservationId.flatMap {
+                knownObservationIDs.contains($0) ? $0 : nil
+            }
+            // `unique` means "one wallet row explains this". Without that row
+            // present it is not unique here, whatever the backend concluded
+            // across accounts this device has not mapped.
+            let resolvedState: CrossProviderCandidateState =
+                (state == .unique && wallet == nil) ? .unresolved : state
+            guard let code = row.currency,
+                  let amount = Money(exactDecimal: row.amount, currency: Currency(code: code))
+            else { throw BankSyncClientError.malformedResponse }
+            result.append(
+                CrossProviderCandidate(
+                    id: "candidate-\(row.bankObservationId)",
+                    bankObservationID: row.bankObservationId,
+                    walletObservationID: resolvedState == .unique ? wallet : nil,
+                    state: resolvedState,
+                    candidateCount: row.candidateCount,
+                    amount: amount,
+                    dayOffset: row.dayOffset,
+                    rule: row.rule,
+                    computedAt: try requiredTimestamp(row.computedAt)
+                )
+            )
+        }
+        return result
     }
 
     /// Applies direction to magnitude.

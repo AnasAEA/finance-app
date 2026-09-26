@@ -1,3 +1,5 @@
+// xcode: set sdk=iOS
+
 import SwiftUI
 import SwiftData
 
@@ -25,8 +27,8 @@ struct FinanceApp: App {
             let screen = LaunchOptions.current.visualValidationScreen
             let activity: BankSyncActivity = switch screen {
             case .bankSyncSyncing: .syncing
-            case .bankSyncSucceeded: .succeeded(at: Date(timeIntervalSince1970: 1_788_000_000))
-            case .bankSyncFailed: .failed(BankSyncClientError.offline.message)
+            case .bankSyncSucceeded: .succeeded(at: Date(timeIntervalSince1970: 1_804_334_400))
+            case .bankSyncFailed: .failed("PayPal is rate limited. Try again later.")
             default: .idle
             }
             let pairing: BankPairingState = switch screen {

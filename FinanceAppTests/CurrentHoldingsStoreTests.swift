@@ -41,7 +41,7 @@ struct CurrentHoldingsStoreTests {
         #expect(harness.store.snapshot.accountCash.minorUnits == 44_747)
     }
 
-    @Test("An exact existing transaction is preferred over creating another actual")
+    @Test("An existing transaction with the exact bank reference is preferred over another actual")
     func exactExistingTransactionIsPreferred() throws {
         var document = ledgerDocument(withProvider: true)
         document.transactions = [
@@ -54,7 +54,8 @@ struct CurrentHoldingsStoreTests {
                     amount: Money(minorUnits: -399, currency: .eur)
                 )],
                 factivity: .observed,
-                lifecycle: .cleared
+                lifecycle: .cleared,
+                provenance: Provenance(source: "TEST-IMPORT", evidenceGrade: .userConfirmed, reference: "obs-399")
             )
         ]
         let harness = try harness(document: document)
@@ -76,6 +77,22 @@ struct CurrentHoldingsStoreTests {
         #expect(exported.observationResolutions.first {
             $0.observationID == "obs-399"
         }?.state == .linkedToTransaction)
+    }
+
+    @Test("An amount-only collision does not force a duplicate override, but remains manually findable")
+    func amountOnlyCollisionIsNotDuplicateEvidence() throws {
+        var document = ledgerDocument(withProvider: true)
+        document.transactions = [Transaction(id: "unrelated-same-price", date: Day(year: 2026, month: 8, day: 30),
+            kind: .expense, legs: [AccountLeg(accountID: "bank-main", amount: Money(minorUnits: -399, currency: .eur))],
+            factivity: .observed, lifecycle: .cleared)]
+        let harness = try harness(document: document)
+        let item = try #require(harness.store.snapshot.syncedObservations.first { $0.id == "obs-399" })
+        #expect(!item.suggestions.contains { $0.kind == .existingTransaction })
+        #expect(item.duplicateConflict == nil)
+        #expect(harness.store.recordedPaymentCandidates(for: item.id).map(\.id) == ["unrelated-same-price"])
+        #expect(harness.store.recordedPaymentCandidates(for: item.id, search: "No such merchant").isEmpty)
+        try harness.store.createExpense(from: item.id, userLabel: "A different purchase")
+        #expect(try harness.store.exportDocument().transactions.count == 2)
     }
 
     @Test("An exact two-transaction aggregate is guarded and never offered as a false match")
@@ -364,6 +381,69 @@ struct CurrentHoldingsStoreTests {
         )
         let metadata = try StoredDocumentGraph.loadAppMetadata(from: harness.container.mainContext)
         #expect(metadata.currentHoldingsModelVersion == CurrentHoldings.modelVersion)
+    }
+
+    @Test("Foreign-currency expense requires an exact user-confirmed account charge and retains original evidence")
+    func foreignCurrencyExpense() throws {
+        var document = ledgerDocument(withProvider: true)
+        document.externalObservations = [ExternalObservation(
+            id: "foreign-purchase", bindingID: "binding-paypal", provider: .paypal,
+            status: .booked, creditDebitIndicator: .debit,
+            amount: Money(minorUnits: -1000, currency: Currency(code: "USD")),
+            bookingDate: today, structuredMerchantName: "Patreon", eligibleForEconomicActual: true,
+            observedAt: timestamp)]
+        document.observationResolutions = [.init(observationID: "foreign-purchase", state: .unreviewed)]
+        let h = try harness(document: document)
+        let before = try h.store.exportDocument()
+        let row = try #require(h.store.snapshot.syncedObservations.first)
+        #expect(row.requiresChargedAmount)
+        #expect(row.accountCurrencyCode == "EUR")
+        #expect(throws: BankReviewError.self) {
+            try h.store.createExpense(from: row.id, userLabel: "Patreon", categoryKey: "subscriptions")
+        }
+        #expect(try h.store.exportDocument() == before)
+        let id = try h.store.createExpense(from: row.id, userLabel: "Patreon", categoryKey: "subscriptions",
+                                          chargedAmount: Amount(minorUnits: 925, currencyCode: "EUR"))
+        let saved = try h.store.exportDocument()
+        let transaction = try #require(saved.transactions.first { $0.id == id })
+        #expect(transaction.legs == [AccountLeg(accountID: "paypal-eur", amount: Money(minorUnits: -925, currency: .eur))])
+        #expect(saved.externalObservations == before.externalObservations)
+        #expect(saved.balances == before.balances)
+        #expect(saved.externalEvidenceLinks.first?.role == .supportingEvidence)
+        #expect(saved.observationResolutions.first?.state == .linkedToTransaction)
+        #expect(transaction.note?.contains("explicitly confirmed") == true)
+        #expect(try h.container.mainContext.fetch(FetchDescriptor<StoredTransaction>()).first { $0.identifier == id }?.appCategoryKey == "subscriptions")
+        #expect(saved.trustedRules.isEmpty)
+        #expect(throws: BankReviewError.self) {
+            try h.store.createExpense(from: row.id, userLabel: "Patreon", categoryKey: "subscriptions",
+                                      chargedAmount: Amount(minorUnits: 925, currencyCode: "EUR"))
+        }
+        #expect(try h.store.exportDocument() == saved)
+    }
+
+    @Test("Foreign charge validation rejects wrong currency, precision, zero and negative amounts atomically")
+    func invalidForeignCurrencyCharges() throws {
+        var document = ledgerDocument(withProvider: true)
+        document.externalObservations[0] = ExternalObservation(
+            id: "obs-399", bindingID: "binding-bnp", provider: .bnp,
+            status: .booked, creditDebitIndicator: .debit,
+            amount: Money(minorUnits: -1000, currency: Currency(code: "USD")),
+            bookingDate: today, eligibleForEconomicActual: true, observedAt: timestamp)
+        let h = try harness(document: document)
+        let before = try h.store.exportDocument()
+        for amount in [Amount(minorUnits: 900, currencyCode: "USD"),
+                       Amount(minorUnits: 900, currencyCode: "EUR", fractionDigits: 3),
+                       Amount(minorUnits: 0, currencyCode: "EUR"),
+                       Amount(minorUnits: -900, currencyCode: "EUR")] {
+            #expect(throws: BankReviewError.self) {
+                try h.store.createExpense(from: "obs-399", userLabel: "Patreon", chargedAmount: amount)
+            }
+            #expect(try h.store.exportDocument() == before)
+        }
+        #expect(throws: BankReviewError.self) {
+            try h.store.createExpense(from: "obs-799", userLabel: "Other", chargedAmount: Amount(minorUnits: 799, currencyCode: "EUR"))
+        }
+        #expect(try h.store.exportDocument() == before)
     }
 
     // MARK: - Harness

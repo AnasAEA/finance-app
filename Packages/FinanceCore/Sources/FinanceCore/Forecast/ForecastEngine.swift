@@ -50,7 +50,7 @@ public enum ForecastEngine {
             let effectiveCertainty = source.effectiveCertainty(in: request.incomeSources)
             if policy.includes(effectiveCertainty) {
                 includedIncome.append(source.id)
-                let accountID = landingAccount(for: source, in: request)
+                let accountID = try landingAccount(for: source, in: request)
                 for day in occurrences {
                     creditEvents.append(
                         ForecastEvent(
@@ -393,16 +393,28 @@ public enum ForecastEngine {
         return failure
     }
 
-    static func landingAccount(for source: IncomeSource, in request: ForecastRequest) -> String {
+    static func landingAccount(for source: IncomeSource, in request: ForecastRequest) throws -> String {
         if let specified = source.arrivesOnAccount {
+            guard request.accounts.contains(where: {
+                $0.id == specified && $0.isActive && $0.currency == source.amount.currency
+            }) else {
+                throw ForecastError.invalidIncomeAccount(sourceID: source.id, accountID: specified)
+            }
             return specified
         }
-        // Default: the euro account with the lowest draw order, then id.
-        let poolCurrency = request.spendablePoolRequirement.currency
-        return request.accounts
-            .filter { $0.isActive && $0.currency == poolCurrency && $0.kind != .cash }
+        // Prefer an account that can receive this source's own currency.
+        let eligible = request.accounts.filter {
+            $0.isActive && $0.currency == source.amount.currency
+        }
+        let preferred = eligible
+            .filter({ $0.kind != .cash })
             .sorted { ($0.drawOrder, $0.id) < ($1.drawOrder, $1.id) }
-            .first?.id ?? request.accounts.sorted { $0.id < $1.id }.first!.id
+            .first
+        let fallback = eligible.sorted { ($0.drawOrder, $0.id) < ($1.drawOrder, $1.id) }.first
+        guard let chosen = preferred ?? fallback else {
+            throw ForecastError.noIncomeAccount(sourceID: source.id)
+        }
+        return chosen.id
     }
 
     static func spendablePool(balances: [String: Money], request: ForecastRequest) -> Money {

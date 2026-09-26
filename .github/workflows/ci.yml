@@ -6,17 +6,38 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      run_ui:
+        description: Run the full simulator UI suite
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  repository-safety:
+    name: Repository safety
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: python3 Scripts/repository-safety.py
+
   core:
     name: FinanceCore
     runs-on: macos-latest
+    timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Toolchain
         run: xcodebuild -version && swift --version
       - name: Test FinanceCore
@@ -26,32 +47,56 @@ jobs:
   app:
     name: App and integration
     runs-on: macos-latest
+    timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Toolchain
         run: xcodebuild -version
       - name: Pick an available iPhone simulator
         id: sim
         run: |
-          name=$(xcrun simctl list devices available --json \
-            | python3 -c 'import json,sys;d=json.load(sys.stdin)["devices"];print(next(x["name"] for r in sorted(d) for x in d[r] if x["name"].startswith("iPhone")))')
-          echo "Using $name"
-          echo "name=$name" >> "$GITHUB_OUTPUT"
+          simulator_id=$(xcrun simctl list devices available --json \
+            | python3 -c 'import json,sys;d=json.load(sys.stdin)["devices"];print(next(x["udid"] for r in sorted(d,reverse=True) for x in d[r] if x["name"].startswith("iPhone")))')
+          echo "id=$simulator_id" >> "$GITHUB_OUTPUT"
       - name: Build and test
-        # The XCUITest target is excluded here and runs in the local gate
+        # The full XCUITest target runs locally or by manual dispatch
         # instead: it drives the simulator UI, which is slow and flaky on
         # hosted runners. Everything below it — the app, integration and
         # persistence suites — runs in full.
         run: |
           xcodebuild -project FinanceApp.xcodeproj -scheme FinanceApp \
-            -destination "platform=iOS Simulator,name=${{ steps.sim.outputs.name }}" \
-            -skip-testing:FinanceAppUITests \
+            -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.id }}" \
+            -only-testing:FinanceAppTests \
+            -parallel-testing-enabled NO -collect-test-diagnostics never \
             test
 
   release-gate:
     name: Release bundle check
     runs-on: macos-latest
+    timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Prove no sample fixture reaches a Release bundle
         run: Scripts/verify-release-bundle.sh
+
+  ui:
+    name: Full simulator UI (manual)
+    if: github.event_name == 'workflow_dispatch' && inputs.run_ui
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Run synthetic UI acceptance
+        run: |
+          simulator_id=$(xcrun simctl list devices available --json \
+            | python3 -c 'import json,sys;d=json.load(sys.stdin)["devices"];print(next(x["udid"] for r in sorted(d,reverse=True) for x in d[r] if x["name"].startswith("iPhone")))')
+          xcodebuild -project FinanceApp.xcodeproj -scheme FinanceApp \
+            -destination "platform=iOS Simulator,id=$simulator_id" \
+            -only-testing:FinanceAppUITests \
+            -parallel-testing-enabled NO -collect-test-diagnostics never test

@@ -64,6 +64,13 @@ struct AmountEntryTests {
         #expect(failure("   ") == .empty)
     }
 
+    @Test("An amount outside signed minor-unit range is refused")
+    func outOfRange() {
+        #expect(throws: Amount.ParseFailure.outOfRange) {
+            try Amount.parse("999999999999999999999", currencyCode: "EUR", fractionDigits: 2)
+        }
+    }
+
     @Test("Entry options carry each account's exponent")
     func entryOptionsCarryExponent() throws {
         let harness = try EntryFixtures.Harness()

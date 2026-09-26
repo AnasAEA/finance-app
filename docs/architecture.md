@@ -213,6 +213,26 @@ day. Debts exist independently of schedules: the acknowledged 960.00 EUR arrears
 
 ## Persistence lifecycle
 
+Manual transaction entry uses a narrow append to the normalized SwiftData
+graph. It validates the resulting document, then saves the new transaction,
+its legs, entry preferences, and document revision together. A failed save
+rolls the context back. Import, bank evidence, and other structural edits use
+the full validate-then-replace writer; checkpoint and archive rows remain
+outside its purge. The operational store refuses an `Int64.min` money value
+before preview, write, or load because its signed magnitude cannot be
+calculated. The interchange format can still round-trip that wire value.
+
+Bank snapshot reads retain the binding set with which their page walk began.
+An older completed read cannot replace a newer completed read. Pending and
+live-coverage authority also advance by provider timestamp, and balance
+snapshots advance by observation timestamp. A complete empty remote directory
+clears read-through remote rows; an incomplete or failed walk changes none.
+
+History amount ranges and amount sorting require one selected currency and
+its recorded exponent. The editor refuses malformed, over-precise, or
+out-of-range bounds before applying a query. Archive rows with an ambiguous
+exponent for the same currency code cannot offer amount comparison.
+
 The Phase-1 schema was disposable pre-alpha data, so Phase 1.7 uses a new
 `FinanceCore-1.1` SwiftData store rather than an elaborate compatibility
 migration. This exception ends as soon as genuine user-entered data exists;
@@ -223,3 +243,20 @@ The 1.5 trusted-rule change is additive: three normalized entities are added and
 1.1–1.4 documents decode with empty rule, audit, and suppression arrays. A disk
 migration test opens a pre-1.5 SwiftData store with the current model and proves
 its financial rows survive while the new tables begin empty.
+
+## Activity history and synced bank movements
+
+Activity combines three read-only projections: the reconstructed archive up to
+its explicit cutoff, recorded ledger transactions after that cutoff, and synced
+bank movements after the cutoff. Durable bank observations remain browseable
+even when outside the review boundary or on an inactive binding. Provisional
+rows appear only when present in current authoritative pending membership.
+Missing bank dates are shown as unknown and are never replaced by receipt time.
+
+A bank row is suppressed only when its persisted evidence link points to a
+ledger transaction that this view already displays. Amount, merchant, date and
+cross-provider candidate resemblance do not establish identity. Showing bank
+history creates no economic transaction, category, spending or income. The bank
+detail states its status and dates and offers the existing review flow where
+available. Filter catalogs combine archive, ledger and bank options; a bank
+import refreshes the history presentation without requiring a relaunch.

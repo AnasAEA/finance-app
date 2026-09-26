@@ -20,6 +20,21 @@ final class ForecastEngineTests: XCTestCase {
         )
     }
 
+    func testIncomeWithoutMatchingAccountThrowsInsteadOfTrapping() {
+        let day = Day(isoString: "2026-09-03")!
+        let source = IncomeSource(
+            id: "support", name: "Support", amount: euro("10.00"),
+            certainty: .guaranteed, schedule: .oneShot(on: day)
+        )
+        let request = ForecastRequest(
+            startDate: day, endDate: day, accounts: [], startingBalances: [:],
+            incomeSources: [source], scenario: .guaranteed
+        )
+        XCTAssertThrowsError(try ForecastEngine.run(request)) { error in
+            XCTAssertEqual(error as? ForecastError, .noIncomeAccount(sourceID: "support"))
+        }
+    }
+
     // MARK: - Proof 13: minimum bridge
 
     func testMinimumBridgeIsExactAndVerifiable() {
