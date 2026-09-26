@@ -57,8 +57,11 @@ and explicit per-observation reversal suppression. The automatic operation
 reuses the manual evidence-assignment preflight and is idempotent across repeated
 evaluation and reload. DomainMapper exposes inspectable supporting confirmations,
 pure current-Inbox preview counts, safety reasons, and Smart Inbox priority.
-Bank evidence import remains evidence-only; the first slice does not call the
-automatic application operation against the live store.
+Bank import persists provider evidence independently of economic interpretation.
+After a successful import, eligible evidence can be handled by explicitly approved
+rules only when the persisted automation master switch is enabled. The mutation
+boundary rechecks that switch and duplicate blockers. Turning the switch on alone
+does not evaluate historical Inbox work.
 
 Import follows `FinanceDocument → domain validation → normalized persistence`.
 Export follows `normalized persistence → FinanceDocument`. Production first
@@ -189,18 +192,18 @@ one current balance per account.
 
 ## Budget progress
 
-`BudgetLine.tracksSpending` is `false` throughout Phase 1.8: nothing attributes
-activity to a budget yet. The screens read the flag and show the limit instead
-of a remaining figure and a 0% bar. Wiring attribution is a Phase 2 task; when
-it lands, the flag becomes `true` and the existing copy paths turn back on.
+`MonthlyBudgetEngine.report` computes targets, spent amounts, commitments,
+remaining capacity, and pace for the selected month. DomainMapper maps that
+report into BudgetLine values; transaction presentation supplies category keys.
+Budget progress follows recorded economic activity, not unreviewed bank evidence.
+The euro budget headline does not convert or sum other currencies.
 
 ## Financial truth boundaries
 
-Account truth and personal economic truth are independent. The September 16
-chain may show custody of 1,000.00 through physical and bank rail events, while
-ownership and the dependent disposal make its personal net resource exactly
-400.00. The other 600.00 is never personal income, spending, safe capacity, or
-budget headroom.
+Account truth and personal economic truth are independent. Custody of money
+through bank and cash movements does not establish personal ownership. Only
+the user's owned share contributes to personal resources and economic effects;
+other people's money does not become personal income or budget headroom.
 
 Safe-to-spend exposes two values: a non-negative headline and signed raw
 headroom. Likewise, settlement failure describes only an actually unsettled
@@ -209,7 +212,8 @@ runway balances.
 
 Certainty controls scenarios. A guaranteed dated inflow participates in
 guaranteed/base/upside projections but is not current cash before its receipt
-day. Debts exist independently of schedules: the acknowledged 960.00 EUR arrears has no forecast payments until an explicit agreement is recorded.
+day. Debts exist independently of schedules: an acknowledged debt has no
+forecast payments until an explicit payment agreement is recorded.
 
 ## Persistence lifecycle
 
@@ -233,11 +237,10 @@ its recorded exponent. The editor refuses malformed, over-precise, or
 out-of-range bounds before applying a query. Archive rows with an ambiguous
 exponent for the same currency code cannot offer amount comparison.
 
-The Phase-1 schema was disposable pre-alpha data, so Phase 1.7 uses a new
-`FinanceCore-1.1` SwiftData store rather than an elaborate compatibility
-migration. This exception ends as soon as genuine user-entered data exists;
-future incompatible schemas must use versioned migrations with preservation and
-round-trip tests.
+Historically, Phase 1.7 replaced disposable pre-alpha sample data with a new
+`FinanceCore-1.1` SwiftData store. That exception is closed: genuine user data
+now exists. Incompatible schemas require versioned migrations with preservation
+and round-trip tests; resetting or deleting the store is not a migration.
 
 The 1.5 trusted-rule change is additive: three normalized entities are added and
 1.1–1.4 documents decode with empty rule, audit, and suppression arrays. A disk

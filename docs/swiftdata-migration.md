@@ -1,12 +1,14 @@
 # SwiftData schema: FinanceCore 1.1 integration
 
-**Status: implemented as a clean pre-alpha schema replacement.**
+**Historical record: the Phase 1.7 pre-alpha schema replacement.**
 
 The Phase-1 store contained only sample/fixture data and predates real user
 entry. It is intentionally not migrated. The app opens a new
 `FinanceCore-1.1` store and starts empty; the old disposable rows are left
-unused. This decision is safe only while no real production user data exists.
-After real entry begins, incompatible changes require a versioned migration.
+unused. This was a one-time exception for disposable sample data. Real user
+data now exists, so this procedure must not be repeated. Incompatible changes
+require versioned migration, preservation checks, and round-trip tests. The
+entity list below describes that historical slice, not a complete current schema.
 
 ## Normalized entity graph
 
