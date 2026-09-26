@@ -8,6 +8,7 @@ struct AppBackupMetadata: Codable, Hashable, Sendable {
     var version = 1
     var transactionPresentation: [String: DomainMapper.TransactionPresentation] = [:]
     var incomeSourceActive: [String: Bool] = [:]
+    var fullRecovery: FullRecoveryState?
 
     static func read(from data: Data, document: FinanceDocument) throws -> Self {
         guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -15,7 +16,7 @@ struct AppBackupMetadata: Codable, Hashable, Sendable {
         guard JSONSerialization.isValidJSONObject(value),
               let bytes = try? JSONSerialization.data(withJSONObject: value),
               let metadata = try? JSONDecoder().decode(Self.self, from: bytes),
-              metadata.version == 1 else { throw AppImportError.invalidBackupMetadata }
+              (metadata.version == 1 && metadata.fullRecovery == nil || metadata.version == 2 && metadata.fullRecovery?.version == 1) else { throw AppImportError.invalidBackupMetadata }
         let transactions = Set((document.transactions + document.expectedTransactions).map(\.id))
         let sources = Set(document.incomeSources.map(\.id))
         guard Set(metadata.transactionPresentation.keys).isSubset(of: transactions),

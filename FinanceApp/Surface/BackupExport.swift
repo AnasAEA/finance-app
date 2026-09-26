@@ -33,6 +33,7 @@ enum AppExportError: Error, Hashable, Sendable {
 
     /// The document could not be encoded at all.
     case documentUnencodable
+    case backupTooLarge
 
     /// The bytes were written and then could not be read back by this app's
     /// own import path. They are not offered as a backup.
@@ -54,6 +55,8 @@ enum AppExportError: Error, Hashable, Sendable {
             "A backup needs at least one account, and there are none yet."
         case .currentDayUnavailable:
             "Today’s date could not be read, so the backup could not be dated."
+        case .backupTooLarge:
+            "This backup is too large for this version to restore safely. Nothing was changed."
         case .documentUnencodable:
             "Your data could not be written to a file."
         case let .verificationFailed(reason):
@@ -107,12 +110,24 @@ struct BackupSummary: Hashable, Sendable {
     /// the decisions already made about it.
     let bankEvidenceCount: Int
 
+    var hasFullRecovery = false
+    var historicalTransactionCount = 0
+    var checkpointRevisionCount = 0
+    var exclusions: [String] {
+        hasFullRecovery ? Self.fullRecoveryExclusions : Self.exclusions
+    }
+
     /// Categories, merchant labels and income-source activation are included.
     /// What a backup deliberately does not carry.
     ///
     /// The historical archive, the local checkpoint history and the device's
     /// bank pairing live outside `FinanceDocument` on purpose, and a backup
     /// that implied otherwise would be the most expensive kind of wrong.
+    static let fullRecoveryExclusions = [
+        "Bank pairing and device keys. Pair this device again after recovery.",
+        "Trusted Automation restarts switched off."
+    ]
+
     static let exclusions = [
         "The historical archive, which is imported separately.",
         "Verified-month history, which belongs to this device.",

@@ -27,6 +27,10 @@ struct DocumentWriter {
         _ appMetadata: AppPersistenceMetadata
     ) throws -> Void
 
+    let writeRecovered: ((FinanceDocument, ModelContext, Day,
+                          [String: DomainMapper.TransactionPresentation],
+                          AppPersistenceMetadata, FullRecoveryState) throws -> Void)?
+
     /// Optional narrow append for the common manual-entry path. A test writer
     /// has only `write`, so injected write failures still exercise rollback.
     let appendUserTransaction: ((_ document: FinanceDocument,
@@ -43,9 +47,17 @@ struct DocumentWriter {
 
     init(_ write: @escaping (FinanceDocument, ModelContext, Day,
                              [String: DomainMapper.TransactionPresentation],
-                             AppPersistenceMetadata) throws -> Void) {
+                             AppPersistenceMetadata) throws -> Void,
+         recover: ((FinanceDocument, ModelContext, Day, [String: DomainMapper.TransactionPresentation],
+                    AppPersistenceMetadata, FullRecoveryState) throws -> Void)? = nil) {
         self.write = write
         self.writeImported = write
+        self.writeRecovered = recover ?? { document, context, day, presentation, metadata, recovery in
+            guard recovery.archives.isEmpty, recovery.historicalTransactions.isEmpty, recovery.historyGaps.isEmpty,
+                  recovery.checkpointDatasets.isEmpty, recovery.checkpointRevisions.isEmpty,
+                  recovery.checkpointAcknowledgments.isEmpty else { throw AppImportError.invalidBackupMetadata }
+            try write(document, context, day, presentation, metadata)
+        }
         self.appendUserTransaction = nil
         self.updateBankMetadata = nil
         self.archivesPendingHistory = false
@@ -61,10 +73,14 @@ struct DocumentWriter {
         appendUserTransaction: @escaping (FinanceDocument, Transaction, ModelContext, Day,
                                           DomainMapper.TransactionPresentation,
                                           AppPersistenceMetadata) throws -> Void,
-        updateBankMetadata: @escaping (ModelContext, AppPersistenceMetadata) throws -> Void
+        updateBankMetadata: @escaping (ModelContext, AppPersistenceMetadata) throws -> Void,
+        writeRecovered: @escaping (FinanceDocument, ModelContext, Day,
+                                    [String: DomainMapper.TransactionPresentation],
+                                    AppPersistenceMetadata, FullRecoveryState) throws -> Void
     ) {
         self.write = write
         self.writeImported = writeImported
+        self.writeRecovered = writeRecovered
         self.appendUserTransaction = appendUserTransaction
         self.updateBankMetadata = updateBankMetadata
         self.archivesPendingHistory = true
@@ -92,6 +108,13 @@ struct DocumentWriter {
         },
         updateBankMetadata: { context, appMetadata in
             try StoredDocumentGraph.updateBankMetadata(appMetadata, in: context)
+        },
+        writeRecovered: { document, context, writtenOn, presentation, appMetadata, recovery in
+            try recovery.validate(document: document)
+            guard try FullRecoveryState.destinationIsEmpty(context) else { throw AppImportError.storeNotEmpty }
+            try StoredDocumentGraph.replace(with: document, in: context, writtenOn: writtenOn,
+                presentation: presentation, appMetadata: appMetadata, replaceArchivedHistory: true,
+                beforeSave: { recovery.insert(in: $0) })
         }
     )
 }
