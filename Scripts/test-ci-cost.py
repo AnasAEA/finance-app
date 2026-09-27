@@ -38,6 +38,16 @@ class CostTests(unittest.TestCase):
         job.update(steps=[], status="completed", conclusion="failure", runner_id=0)
         self.assertEqual(cost.estimate(job)[2], 0)
 
+    def test_skipped_job_with_null_runner_was_not_executed(self):
+        job = self.job() | {"steps": [], "status": "completed", "conclusion": "skipped", "runner_id": None, "runner_name": None}
+        self.assertEqual(cost.estimate(job), ("not executed", 0, 0.0))
+
+    def test_missing_or_allocated_runner_without_steps_is_not_a_false_zero(self):
+        for runner in [{}, {"runner_id": 42, "runner_name": "hosted"}]:
+            job = self.job() | {"steps": [], "status": "completed", "conclusion": "cancelled"} | runner
+            with self.assertRaises(ValueError):
+                cost.estimate(job)
+
     def test_queued_hosted_job_without_steps_is_not_a_false_zero(self):
         job = self.job() | {"steps": [], "status": "queued", "conclusion": None}
         with self.assertRaises(ValueError):

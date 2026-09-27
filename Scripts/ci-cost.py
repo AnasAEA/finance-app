@@ -19,7 +19,9 @@ def estimate(job):
         return "self-hosted", 0, 0.0
     # Rejected/skipped jobs with no steps did not execute on a runner.
     if not job.get("steps"):
-        if job.get("status") != "completed" or job.get("conclusion") not in {"failure", "skipped", "cancelled"} or job.get("runner_id") != 0:
+        unassigned = "runner_id" in job and job["runner_id"] in {0, None} and not job.get("runner_name")
+        finished = job.get("status") == "completed" and job.get("conclusion") in {"failure", "skipped", "cancelled"}
+        if not (unassigned and finished):
             raise ValueError("Runner execution is not yet known; refuse a zero estimate.")
         return "not executed", 0, 0.0
     label = next((label for label in labels if label in RATES), None)
