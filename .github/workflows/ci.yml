@@ -24,43 +24,98 @@ jobs:
     name: Repository safety
     runs-on: ubuntu-24.04
     timeout-minutes: 5
+    outputs:
+      core: ${{ steps.scope.outputs.core }}
+      app: ${{ steps.scope.outputs.app }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
       - run: python3 Scripts/repository-safety.py
+      - name: Test CI scope decisions
+        run: python3 Scripts/test-ci-scope.py
+      - name: Determine required build work
+        id: scope
+        # A PR cannot change its own eligibility: use the accepted base commit.
+        run: |
+          # Trusted scope bootstrap
+          import json, os, re, subprocess, sys
+          from pathlib import Path
+          try:
+              event = json.loads(Path(os.environ["GITHUB_EVENT_PATH"]).read_text())
+              kind = os.environ["GITHUB_EVENT_NAME"]
+              base = event["pull_request"]["base"]["sha"] if kind == "pull_request" else event["before"] if kind == "push" else None
+              if not isinstance(base, str) or not re.fullmatch(r"[0-9a-f]{40}", base) or base == "0" * 40:
+                  raise ValueError("No trusted base")
+              source = subprocess.run(["git", "show", f"{base}:Scripts/ci-scope.py"], check=True, capture_output=True, timeout=20).stdout
+          except (KeyError, TypeError, ValueError, OSError, subprocess.SubprocessError):
+              print("CI scope: full gates (trusted classifier unavailable or manual run)")
+              with Path(os.environ["GITHUB_OUTPUT"]).open("a") as output:
+                  output.write("core=true\napp=true\n")
+          else:
+              subprocess.run([sys.executable, "-c", source.decode("utf-8")], check=True)
+          # End trusted scope bootstrap
+        shell: python
 
   core:
     name: FinanceCore
-    runs-on: macos-latest
+    needs: repository-safety
+    if: ${{ always() && !cancelled() }}
+    # Safety failures get an explicit failure on Linux, without starting a build.
+    runs-on: ${{ (needs.repository-safety.result != 'success' || needs.repository-safety.outputs.core == 'false') && 'ubuntu-24.04' || 'macos-latest' }}
     timeout-minutes: 25
     steps:
+      - name: Require repository safety
+        if: needs.repository-safety.result != 'success'
+        run: exit 1
+      - name: Report unchanged inputs
+        if: needs.repository-safety.result == 'success' && needs.repository-safety.outputs.core == 'false'
+        run: |
+          echo 'FinanceCore: build inputs unchanged; repository safety passed.' >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: needs.repository-safety.result == 'success' && needs.repository-safety.outputs.core != 'false'
         with:
           persist-credentials: false
       - name: Toolchain
+        if: needs.repository-safety.result == 'success' && needs.repository-safety.outputs.core != 'false'
         run: xcodebuild -version && swift --version
       - name: Test FinanceCore
+        if: needs.repository-safety.result == 'success' && needs.repository-safety.outputs.core != 'false'
         working-directory: Packages/FinanceCore
         run: swift test
 
   app:
     name: App and integration
-    runs-on: macos-latest
+    needs: repository-safety
+    if: ${{ always() && !cancelled() }}
+    # Safety failures get an explicit failure on Linux, without starting a build.
+    runs-on: ${{ (needs.repository-safety.result != 'success' || needs.repository-safety.outputs.app == 'false') && 'ubuntu-24.04' || 'macos-latest' }}
     timeout-minutes: 25
     steps:
+      - name: Require repository safety
+        if: needs.repository-safety.result != 'success'
+        run: exit 1
+      - name: Report unchanged inputs
+        if: needs.repository-safety.result == 'success' && needs.repository-safety.outputs.app == 'false'
+        run: |
+          echo 'App and integration: build inputs unchanged; repository safety passed.' >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: needs.repository-safety.result == 'success' && needs.repository-safety.outputs.app != 'false'
         with:
           persist-credentials: false
       - name: Toolchain
+        if: needs.repository-safety.result == 'success' && needs.repository-safety.outputs.app != 'false'
         run: xcodebuild -version
       - name: Pick an available iPhone simulator
+        if: needs.repository-safety.result == 'success' && needs.repository-safety.outputs.app != 'false'
         id: sim
         run: |
           simulator_id=$(xcrun simctl list devices available --json \
             | python3 -c 'import json,sys;d=json.load(sys.stdin)["devices"];print(next(x["udid"] for r in sorted(d,reverse=True) for x in d[r] if x["name"].startswith("iPhone")))')
           echo "id=$simulator_id" >> "$GITHUB_OUTPUT"
       - name: Build and test
+        if: needs.repository-safety.result == 'success' && needs.repository-safety.outputs.app != 'false'
         # The full XCUITest target runs locally or by manual dispatch
         # instead: it drives the simulator UI, which is slow and flaky on
         # hosted runners. Everything below it — the app, integration and
@@ -74,17 +129,30 @@ jobs:
 
   release-gate:
     name: Release bundle check
-    runs-on: macos-latest
+    needs: repository-safety
+    if: ${{ always() && !cancelled() }}
+    # Safety failures get an explicit failure on Linux, without starting a build.
+    runs-on: ${{ (needs.repository-safety.result != 'success' || needs.repository-safety.outputs.app == 'false') && 'ubuntu-24.04' || 'macos-latest' }}
     timeout-minutes: 25
     steps:
+      - name: Require repository safety
+        if: needs.repository-safety.result != 'success'
+        run: exit 1
+      - name: Report unchanged inputs
+        if: needs.repository-safety.result == 'success' && needs.repository-safety.outputs.app == 'false'
+        run: |
+          echo 'Release bundle check: build inputs unchanged; repository safety passed.' >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: needs.repository-safety.result == 'success' && needs.repository-safety.outputs.app != 'false'
         with:
           persist-credentials: false
       - name: Prove no sample fixture reaches a Release bundle
+        if: needs.repository-safety.result == 'success' && needs.repository-safety.outputs.app != 'false'
         run: Scripts/verify-release-bundle.sh
 
   ui:
     name: Full simulator UI (manual)
+    needs: repository-safety
     if: github.event_name == 'workflow_dispatch' && inputs.run_ui
     runs-on: macos-latest
     timeout-minutes: 45
