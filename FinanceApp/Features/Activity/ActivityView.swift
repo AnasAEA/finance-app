@@ -712,7 +712,7 @@ struct TransactionDetailView: View {
         } message: {
             // Names the row being removed, so a confirmation that arrived
             // after a mis-tap is recognisably about the wrong thing.
-            Text("\(row.title) · \(row.amount.formatted()) · \(date.formatted(date: .abbreviated, time: .omitted))")
+            Text("\(row.title) · \(row.amount.formatted()) · \(liveDate.formatted(date: .abbreviated, time: .omitted))")
         }
         .alert(
             "Not removed",
