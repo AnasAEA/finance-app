@@ -50,3 +50,21 @@ unknown inputs, rename/delete safety and manual/error fallback coverage. Lint th
 workflow with actionlint. Changes to the classifier or workflow themselves take
 the full macOS route, so the optimization must pass the original product gates
 before merging.
+
+## Monitor the savings
+
+For a documentation-only PR, confirm that all four required jobs use
+`ubuntu-24.04`. The three product jobs should report unchanged inputs and omit
+their build steps. For app-only changes, Core should use Linux while app and
+Release checks use macOS. Check the main push too, since it uses a separate diff.
+
+Use each job's start/end time, round its duration up to a whole minute, and
+multiply by the current rate for that runner. Include every attempt and cancelled
+run when reviewing actual consumption. This measures gross CI usage; the Billing
+Usage page shows the included discounts and final billed amount. Optional Copilot
+reviews and manual UI runs are separate from the four-job estimates above.
+
+Keep required checks enabled when tuning costs. If product inputs are unchanged,
+look for an explicit eligibility report rather than treating a missing or skipped
+test log as evidence that tests passed. Recheck the scope rules whenever a new
+package, resource or build tool is added.
