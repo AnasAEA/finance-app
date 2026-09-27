@@ -5,7 +5,7 @@ import FinanceCore
 
 /// Synthetic, memory-only launch state for recovery and foreign Plan UI tests.
 @MainActor enum AuditRecoveryPreview {
-    static func make(includeSecondAccount: Bool = false, includeBankEvidence: Bool = false) throws -> (ModelContainer, FinanceStore) {
+    static func make(includeSecondAccount: Bool = false, includeBankEvidence: Bool = false, includeForeignBankEvidence: Bool = false) throws -> (ModelContainer, FinanceStore) {
         let container = try ModelContainer(for: Schema(FinanceSchema.models),
             configurations: ModelConfiguration(isStoredInMemoryOnly: true))
         let day = Day(year: 2026, month: 9, day: 26)
@@ -30,19 +30,26 @@ import FinanceCore
             document.balances = [.init(accountID: account.id, balance: Money(minorUnits: 10000, currency: .eur), asOf: anchorDay),
                 .init(accountID: other.id, balance: Money(minorUnits: 20000, currency: .eur), asOf: anchorDay)]
         }
-        if includeBankEvidence {
+        if includeBankEvidence || includeForeignBankEvidence {
+            let currency = includeForeignBankEvidence ? Currency.kwd : .eur
+            document.accounts = [.init(id: account.id, name: account.name, currency: currency,
+                kind: .bank, supportedRails: [.cardDebit], drawOrder: 0)]
+            document.transactions = [.init(id: "audit-ui-expense", date: day, kind: .expense,
+                legs: [.init(accountID: account.id, amount: Money(minorUnits: -100, currency: currency))],
+                factivity: .observed, lifecycle: .cleared,
+                provenance: .init(source: "SYNTHETIC-AUDIT", evidenceGrade: .userConfirmed))]
             let anchorDay = Day(year: 2026, month: 9, day: 25)
-            document.balances = [.init(accountID: account.id, balance: Money(minorUnits: 10000, currency: .eur), asOf: anchorDay)]
+            document.balances = [.init(accountID: account.id, balance: Money(minorUnits: 10000, currency: currency), asOf: anchorDay)]
             document.externalAccountBindings = [.init(id: "audit-ui-binding", provider: .bnp,
                 remoteOpaqueAccountID: "synthetic-remote", localAccountID: account.id,
                 syncStartBoundary: anchorDay, createdAt: Date(timeIntervalSince1970: 1_790_424_000))]
             document.providerBalanceSnapshots = ["CLBD", "XPCD"].map { type in
                 .init(id: "audit-ui-balance-\(type)", bindingID: "audit-ui-binding", provider: .bnp,
-                    balanceType: type, amount: Money(minorUnits: type == "CLBD" ? 9000 : 8700, currency: .eur),
+                    balanceType: type, amount: Money(minorUnits: type == "CLBD" ? 9000 : 8700, currency: currency),
                     referenceDate: day, observedAt: Date(timeIntervalSince1970: 1_790_424_000))
             }
             document.externalObservations = [.init(id: "audit-ui-booked", bindingID: "audit-ui-binding", provider: .bnp,
-                status: .booked, creditDebitIndicator: .debit, amount: Money(minorUnits: -1000, currency: .eur),
+                status: .booked, creditDebitIndicator: .debit, amount: Money(minorUnits: -1000, currency: currency),
                 bookingDate: day, structuredMerchantName: "SYNTHETIC bank debit", eligibleForEconomicActual: true,
                 observedAt: Date(timeIntervalSince1970: 1_790_424_000))]
             document.observationResolutions = [.init(observationID: "audit-ui-booked", state: .unreviewed)]

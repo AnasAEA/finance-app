@@ -4,9 +4,9 @@ import XCTest
 final class BalanceReconciliationUITests: XCTestCase {
     private let app = XCUIApplication()
 
-    private func openAccount() {
+    private func openAccount(foreign: Bool = false) {
         continueAfterFailure = false
-        app.launchArguments = ["-useBalanceReviewPreview", "-startRoute", "accounts", "-AppleLanguages", "(en-US)", "-AppleLocale", "en_US"]
+        app.launchArguments = [foreign ? "-useForeignBalanceReviewPreview" : "-useBalanceReviewPreview", "-startRoute", "accounts", "-AppleLanguages", "(en-US)", "-AppleLocale", "en_US"]
         app.launch()
         XCTAssertTrue(app.navigationBars["Accounts"].waitForExistence(timeout: 10))
         app.buttons.matching(NSPredicate(format: "label CONTAINS 'Synthetic account'")).firstMatch.tap()
@@ -37,6 +37,20 @@ final class BalanceReconciliationUITests: XCTestCase {
         item.tap()
         XCTAssertTrue(app.staticTexts["SYNTHETIC bank debit"].waitForExistence(timeout: 5))
     }
+    func testForeignRecordedMovementOpensWithThreeDigitNativeAmount() {
+        openAccount(foreign: true)
+        openGuide("Closing booked balance")
+        let record = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Expense'")).firstMatch
+        for _ in 0..<8 where !record.exists || !record.isHittable { app.swipeUp() }
+        XCTAssertTrue(record.exists)
+        record.tap()
+        XCTAssertTrue(app.navigationBars["Transaction"].waitForExistence(timeout: 5))
+        let amount = app.staticTexts["transaction.amount"]
+        XCTAssertTrue(amount.exists)
+        XCTAssertTrue(amount.label.contains("0.100"))
+        XCTAssertTrue(amount.label.contains("KWD"))
+    }
+
     func testExpectedBalanceIsNotPresentedAsBookedOrVerified() {
         openAccount()
         openGuide("Expected balance")
