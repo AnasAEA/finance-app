@@ -205,6 +205,19 @@ private struct AccountDetailContent: View {
                     }
                 }
 
+                let evidence = snapshot.providerBalanceStatuses.filter { $0.reconciliation?.accountID == accountID }
+                if !evidence.isEmpty {
+                    Section("Review bank balances") {
+                        ForEach(evidence) { balance in
+                            NavigationLink {
+                                ProviderBalanceDetailView(balanceID: balance.id)
+                            } label: {
+                                Text("\(balance.reconciliation?.balanceMeaning ?? balance.balanceType) · \(balance.referenceDate?.description ?? "Undated")")
+                            }
+                        }
+                    }
+                }
+
                 Section("Recent activity") {
                     if recent.isEmpty {
                         Text("No activity on this account yet.")

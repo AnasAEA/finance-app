@@ -257,39 +257,13 @@ struct DomainMapper {
             return $0.observedAt > $1.observedAt
         }
 
-        // Internal query anchor only. CurrentHoldings.derivedLedgerBalance
-        // returns nil without a real balance/asOf, so this 1970 day never
-        // becomes a fabricated financial observation.
-        let holdingsDay = asOf
-            ?? document.balances.map(\.asOf).max()
-            ?? Day(year: 1970, month: 1, day: 1)
-        let ledgerBalances = Dictionary(
-            uniqueKeysWithValues: document.accounts.compactMap { account -> (String, Money)? in
-                CurrentHoldings.derivedLedgerBalance(
-                    accountID: account.id, asOf: holdingsDay, in: document
-                ).map { (account.id, $0) }
-            }
-        )
         let balanceSurface = document.providerBalanceSnapshots.compactMap { provider -> ProviderBalanceStatus? in
             guard let binding = bindingsByID[provider.bindingID],
-                  let ledger = ledgerBalances[binding.localAccountID],
                   let account = accounts[binding.localAccountID] else { return nil }
-            let difference: Amount? = ledger.currency == provider.amount.currency
-                ? Self.amount(provider.amount - ledger)
-                : nil
-            return ProviderBalanceStatus(
-                id: provider.id,
-                providerName: providerName(provider.provider),
-                accountName: account.name,
-                balanceType: provider.balanceType,
-                ledgerBalance: Self.amount(ledger),
-                providerBalance: Self.amount(provider.amount),
-                difference: difference,
-                referenceDate: provider.referenceDate.map(Self.civilDay),
-                observedAt: provider.observedAt
-            )
+            return Self.balanceReconciliation(provider, binding: binding, account: account,
+                providerLabel: providerName(provider.provider), document: document, asOf: asOf, currentPendingIDs: currentPendingIDs)
         }
-        .sorted { ($0.accountName, $0.balanceType) < ($1.accountName, $1.balanceType) }
+        .sorted { ($0.accountName, $0.balanceType, $0.id) < ($1.accountName, $1.balanceType, $1.id) }
 
         let incomeSources = Dictionary(
             uniqueKeysWithValues: document.incomeSources.map { ($0.id, $0.name) }
