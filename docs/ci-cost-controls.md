@@ -13,7 +13,8 @@ Linux check before allocating a runner.
 | Manual dispatch, invalid event/history, empty diff | Full macOS suite | Full macOS checks |
 
 An unchanged report is not a claim that tests ran. Each job summary records the
-decision explicitly. A safety failure blocks dependent jobs. No workflow-level
+decision explicitly. A safety failure makes the dependent required jobs fail
+explicitly on Linux, without starting macOS builds. No workflow-level
 path filter leaves a required check pending. No permissions or branch protections
 are relaxed, and manual UI acceptance retains its full suite.
 
@@ -21,6 +22,10 @@ The classifier uses the PR base and checked-out merge SHA, or the before/after
 SHAs for a push. Renames are expanded into old/new paths, so moving a source file
 into documentation still requires product checks. Missing history, malformed
 events and unfamiliar paths choose the complete gates.
+
+The routing code is read from the accepted base commit, not the PR checkout.
+A candidate cannot change its own classifier to suppress tests. If the base has
+no classifier yet, all gates run; manual dispatch always runs all gates as well.
 
 ## Cost expectations
 
