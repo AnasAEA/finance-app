@@ -60,7 +60,8 @@ struct FullRecoveryState: Codable, Hashable, Sendable {
             let observations = Dictionary(document.externalObservations.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
             guard observations.count == document.externalObservations.count else { throw AppImportError.invalidBackupMetadata }
             for (provider, snapshot) in pendingSnapshots {
-                guard !provider.isEmpty, snapshot.authoritativeAt.timeIntervalSinceReferenceDate.isFinite,
+                guard !provider.isEmpty, provider == ExternalProvider(rawValue: provider).rawValue,
+                      snapshot.authoritativeAt.timeIntervalSinceReferenceDate.isFinite,
                       snapshot.observationIDs.allSatisfy({ observations[$0]?.provider.rawValue == provider && observations[$0]?.status == .pending }) else {
                     throw AppImportError.invalidBackupMetadata
                 }
@@ -75,8 +76,7 @@ struct FullRecoveryState: Codable, Hashable, Sendable {
             try validateHistory()
             guard checkpointDatasets.allSatisfy({ $0.establishedAt.timeIntervalSinceReferenceDate.isFinite }),
                   checkpointRevisions.allSatisfy({
-                      $0.closedAt.timeIntervalSinceReferenceDate.isFinite && !$0.canonicalProjection.isEmpty &&
-                      $0.projectionDigest.count == 32
+                      $0.closedAt.timeIntervalSinceReferenceDate.isFinite
                   }) else { throw AppImportError.invalidBackupMetadata }
             // Reuse the repository's chain, canonical digest, acknowledgment and
             // safe-claims checks in an isolated context. No destination is touched.
