@@ -70,6 +70,12 @@ class ScopeTests(unittest.TestCase):
              patch.object(module.subprocess, "run", side_effect=subprocess.CalledProcessError(128, "git")):
             self.assertEqual(module.event_scope(), (True, True))
 
+    def test_malformed_event_shape_runs_all_gates(self):
+        for payload in [[], {"pull_request": None}, {"pull_request": {"base": None}}]:
+            with self.event("pull_request", payload), patch.object(module.subprocess, "run") as run:
+                self.assertEqual(module.event_scope(), (True, True))
+                run.assert_not_called()
+
     def test_unknown_filename_encoding_runs_all_gates(self):
         with self.event("push", {"before": "a" * 40}), \
              patch.object(module.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, b"\xff\0")):

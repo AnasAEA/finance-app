@@ -40,7 +40,7 @@ def event_scope() -> tuple[bool, bool]:
             check=True, capture_output=True, timeout=20,
         ).stdout
         return scope([name.decode("utf-8", errors="strict") for name in diff.split(b"\0") if name])
-    except (KeyError, ValueError, OSError, subprocess.SubprocessError):
+    except (KeyError, TypeError, ValueError, OSError, subprocess.SubprocessError):
         return True, True
 
 
