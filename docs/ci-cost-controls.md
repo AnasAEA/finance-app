@@ -52,7 +52,7 @@ Scripts/local-ci start
 verifies the pinned official runner archive's SHA-256, requires the private repo
 and owner/admin login, and registers with a short-lived token without printing
 it. Registration files are private and live outside the repository under
-`~/Library/Application Support/FinanceAppCI/runner`. No credentials belong in git.
+`~/.local/share/finance-app-ci/runner`. No credentials belong in git.
 The official runner handles its own updates; inspect its service diagnostics if
 GitHub reports it offline.
 

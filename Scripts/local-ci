@@ -15,7 +15,7 @@ REPOSITORY = "AnasAEA/finance-app"
 VERSION = "2.337.0"
 ASSET = f"actions-runner-osx-arm64-{VERSION}.tar.gz"
 DIGEST = "5a2cd92908a93d7276a194e1de6008099f3e7946f3f8e14aa7a1a7b4a31fdec2"
-ROOT = Path.home() / "Library/Application Support/FinanceAppCI/runner"
+ROOT = Path.home() / ".local/share/finance-app-ci/runner"
 
 
 def github(path, method="GET"):
