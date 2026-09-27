@@ -10,8 +10,8 @@ struct FinanceApp: App {
 
     init() {
         #if DEBUG
-        if ProcessInfo.processInfo.arguments.contains("-useAuditRecoveryPreview"),
-           let preview = try? AuditRecoveryPreview.make() {
+        if ProcessInfo.processInfo.arguments.contains("-useAuditRecoveryPreview") || ProcessInfo.processInfo.arguments.contains("-useFinancialCorrectionPreview"),
+           let preview = try? AuditRecoveryPreview.make(includeSecondAccount: ProcessInfo.processInfo.arguments.contains("-useFinancialCorrectionPreview")) {
             container = preview.0
             _store = State(initialValue: preview.1)
             return

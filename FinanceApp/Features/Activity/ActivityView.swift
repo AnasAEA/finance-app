@@ -507,6 +507,8 @@ struct TransactionDetailView: View {
     /// Why the last removal attempt was refused. Set only by a refusal — a
     /// successful removal leaves this alone and closes the screen instead.
     @State private var removalFailure: AppRemovalError?
+    @State private var financialDraft: TransactionFinancialDraft?
+    @State private var financialFailure: AppFinancialCorrectionError?
     @State private var correctionDraft: TransactionCorrectionDraft?
 
     /// One live read per composition: whether this row is reconciled, what
@@ -533,6 +535,7 @@ struct TransactionDetailView: View {
         _ removalBlocker: AppRemovalError?,
         _ evidence: [TransactionEvidenceSummary]
     ) -> some View {
+        let liveDate = snapshot.activity.first { $0.rows.contains { $0.id == self.row.id } }?.date ?? date
         let row = snapshot.activity.flatMap(\.rows).first { $0.id == self.row.id } ?? self.row
         return FinancePage {
             FinanceSection {
@@ -540,7 +543,8 @@ struct TransactionDetailView: View {
                     Text(row.title).font(Theme.TypeStyle.editorial)
                         .fixedSize(horizontal: false, vertical: true)
                     MoneyText(amount: row.amount, size: 44, weight: .medium, showsSign: true)
-                    Text(date.formatted(date: .long, time: .omitted))
+                        .accessibilityIdentifier("transaction.amount")
+                    Text(liveDate.formatted(date: .long, time: .omitted))
                         .font(Theme.TypeStyle.supporting).foregroundStyle(.secondary)
                 }
                 .padding(.vertical, 6)
@@ -632,6 +636,38 @@ struct TransactionDetailView: View {
                 }
             }
 
+            if (try? store.correctionDraft(forTransaction: row.id)) != nil {
+                FinanceSection {
+                    if let blocker = store.financialCorrectionBlocker(forTransaction: row.id) {
+                        Text(blocker.message).font(.footnote).foregroundStyle(.secondary)
+                    } else {
+                        Button("Correct amount, date or account") {
+                            do { financialDraft = try store.financialCorrectionDraft(forTransaction: row.id) }
+                            catch let error as AppFinancialCorrectionError { financialFailure = error }
+                            catch { financialFailure = .saveFailed }
+                        }
+                        .accessibilityIdentifier("transaction.correctFinancials")
+                    }
+                }
+            }
+
+            let financialHistory = store.financialCorrectionHistory(forTransaction: row.id)
+            if !financialHistory.isEmpty {
+                FinanceSection("Financial correction history") {
+                    ForEach(financialHistory.reversed()) { correction in
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(correction.recordedAt.formatted(date: .abbreviated, time: .shortened))
+                                .font(.caption).foregroundStyle(.secondary)
+                            Text(correction.reason)
+                            Text("Before: \(correction.before.amount.formatted()) · \(correction.before.day.description) · \(correction.beforeAccountName)")
+                            Text("After: \(correction.after.amount.formatted()) · \(correction.after.day.description) · \(correction.afterAccountName)")
+                        }
+                        .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .accessibilityIdentifier("transaction.financialHistory")
+            }
+
             let history = store.correctionHistory(forTransaction: row.id)
             if !history.isEmpty {
                 FinanceSection("Correction history") {
@@ -657,6 +693,12 @@ struct TransactionDetailView: View {
         }
         .navigationTitle("Transaction")
         .navigationBarTitleDisplayMode(.inline)
+        .sheet(item: $financialDraft) { draft in
+            TransactionFinancialCorrectionSheet(draft: draft)
+        }
+        .alert("Not corrected", isPresented: Binding(get: { financialFailure != nil }, set: { if !$0 { financialFailure = nil } })) {
+            Button("OK", role: .cancel) { financialFailure = nil }
+        } message: { Text(financialFailure?.message ?? "") }
         .sheet(item: $correctionDraft) { draft in
             TransactionCorrectionSheet(draft: draft)
         }
@@ -670,7 +712,7 @@ struct TransactionDetailView: View {
         } message: {
             // Names the row being removed, so a confirmation that arrived
             // after a mis-tap is recognisably about the wrong thing.
-            Text("\(row.title) · \(row.amount.formatted()) · \(date.formatted(date: .abbreviated, time: .omitted))")
+            Text("\(row.title) · \(row.amount.formatted()) · \(liveDate.formatted(date: .abbreviated, time: .omitted))")
         }
         .alert(
             "Not removed",

@@ -102,7 +102,7 @@ enum AppRemovalError: Error, Hashable, Sendable {
         case .sourceEvidence:
             "You can correct its merchant or spending category here. Changes to the imported financial facts must be made where those records are produced."
         case .hasCorrectionHistory:
-            "You can correct its merchant or category again. Removing the transaction would discard the record of those decisions."
+            "You can make another supported correction. Removing the transaction would discard the record of those decisions."
         case .storeUnreadable:
             "The data on this device may still be intact. Do not reinstall the app before it can be read again."
         default:

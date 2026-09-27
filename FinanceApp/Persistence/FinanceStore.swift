@@ -203,6 +203,7 @@ final class FinanceStore: FinanceProviding {
 
     private var document: FinanceDocument
     private var transactionPresentation: [String: DomainMapper.TransactionPresentation] = [:]
+    private var transactionFinancialCorrections: [TransactionFinancialCorrection] = []
     private var transactionCorrections: [TransactionMetadataCorrection] = []
 
     /// Transaction id → budget category key: the store's one authoritative
@@ -1189,7 +1190,7 @@ final class FinanceStore: FinanceProviding {
         preview.hasFullRecovery = metadata.fullRecovery != nil
         preview.historicalTransactionCount = metadata.fullRecovery?.historicalTransactions.count ?? 0
         preview.checkpointRevisionCount = metadata.fullRecovery?.checkpointRevisions.count ?? 0
-        preview.transactionCorrectionCount = metadata.fullRecovery?.transactionCorrections?.count ?? 0
+        preview.transactionCorrectionCount = (metadata.fullRecovery?.transactionCorrections?.count ?? 0) + (metadata.fullRecovery?.transactionFinancialCorrections?.count ?? 0)
         pendingImportPreview = preview
         pendingBackupMetadata = metadata
         return preview
@@ -1239,7 +1240,7 @@ final class FinanceStore: FinanceProviding {
         summary.hasFullRecovery = pendingBackupMetadata.fullRecovery != nil
         summary.historicalTransactionCount = pendingBackupMetadata.fullRecovery?.historicalTransactions.count ?? 0
         summary.checkpointRevisionCount = pendingBackupMetadata.fullRecovery?.checkpointRevisions.count ?? 0
-        summary.transactionCorrectionCount = pendingBackupMetadata.fullRecovery?.transactionCorrections?.count ?? 0
+        summary.transactionCorrectionCount = (pendingBackupMetadata.fullRecovery?.transactionCorrections?.count ?? 0) + (pendingBackupMetadata.fullRecovery?.transactionFinancialCorrections?.count ?? 0)
         var importedMetadata = AppPersistenceMetadata(
             incomeSourceActive: Dictionary(
                 uniqueKeysWithValues: corrected.incomeSources.map { ($0.id, pendingBackupMetadata.incomeSourceActive[$0.id] ?? true) }
@@ -1282,6 +1283,7 @@ final class FinanceStore: FinanceProviding {
         document = corrected
         transactionPresentation = restoredPresentation
         transactionCorrections = pendingBackupMetadata.fullRecovery?.transactionCorrections ?? []
+        transactionFinancialCorrections = pendingBackupMetadata.fullRecovery?.transactionFinancialCorrections ?? []
         appMetadata = importedMetadata
         trustedAutomationEnabled = importedMetadata.trustedAutomationEnabled
         pendingImport = nil
@@ -1431,7 +1433,7 @@ final class FinanceStore: FinanceProviding {
             let presentation = Dictionary(uniqueKeysWithValues: try context.fetch(FetchDescriptor<StoredTransaction>()).map {
                 ($0.identifier, DomainMapper.TransactionPresentation(categoryKey: $0.appCategoryKey, merchant: $0.appMerchant))
             })
-            metadata = AppBackupMetadata(version: recovery.transactionCorrections == nil ? 2 : 3,
+            metadata = AppBackupMetadata(version: recovery.transactionFinancialCorrections != nil ? 4 : (recovery.transactionCorrections == nil ? 2 : 3),
                 transactionPresentation: presentation.filter { $0.value.categoryKey != nil || $0.value.merchant != nil },
                 incomeSourceActive: try StoredDocumentGraph.loadAppMetadata(from: context).incomeSourceActive,
                 fullRecovery: recovery)
@@ -1462,11 +1464,13 @@ final class FinanceStore: FinanceProviding {
                         )
                     }
                 )
+                transactionFinancialCorrections = try StoredTransactionFinancialCorrection.load(from: context)
+                try StoredTransactionFinancialCorrection.validate(transactionFinancialCorrections, document: stored)
                 transactionCorrections = try StoredTransactionCorrection.load(from: context)
                 try StoredTransactionCorrection.validate(transactionCorrections, document: stored,
                     presentation: transactionPresentation)
                 scenario = DomainMapper.scenario(stored.planning.defaultScenario ?? .base)
-            } else if try !StoredTransactionCorrection.load(from: context).isEmpty {
+            } else if try !StoredTransactionCorrection.load(from: context).isEmpty || !StoredTransactionFinancialCorrection.load(from: context).isEmpty {
                 throw AppImportError.invalidBackupMetadata
             }
         } catch {
@@ -1478,6 +1482,7 @@ final class FinanceStore: FinanceProviding {
             document = Self.emptyDocument()
             transactionPresentation = [:]
             transactionCorrections = []
+            transactionFinancialCorrections = []
             appMetadata = .empty
             trustedAutomationEnabled = false
         }
@@ -1636,6 +1641,136 @@ final class FinanceStore: FinanceProviding {
         recalculate()
     }
 
+
+    // MARK: - Previewed financial corrections
+
+    nonisolated static func financialCorrectionBlocker(_ id: String, in document: FinanceDocument) -> AppFinancialCorrectionError? {
+        guard let transaction = document.transactions.first(where: { $0.id == id }) else { return .notFound }
+        guard transaction.provenance.evidenceGrade == .userConfirmed else { return .sourceEvidence }
+        if document.externalEvidenceLinks.contains(where: { $0.transactionID == id }) { return .bankEvidence }
+        if document.planning.settlements.contains(where: { $0.actualTransactionID == id }) { return .paymentMatch }
+        if document.transactions.contains(where: { $0.id != id && $0.linkedTransactionID == id }) ||
+            document.expectedTransactions.contains(where: { $0.linkedTransactionID == id }) {
+            return .linkedRecord
+        }
+        if document.planning.plannedPurchases.contains(where: { $0.purchasedTransactionID == id }) { return .goalPurchase }
+        return TransactionFinancialCorrection.supports(transaction) ? nil : .unsupported
+    }
+
+    func financialCorrectionBlocker(forTransaction id: String) -> AppFinancialCorrectionError? {
+        if isFixed || context == nil { return .readOnly }
+        if storeIsUnreadable { return .unreadable }
+        return Self.financialCorrectionBlocker(id, in: document)
+    }
+
+    func financialCorrectionHistory(forTransaction id: String) -> [TransactionFinancialHistory] {
+        transactionFinancialCorrections.filter { $0.before.id == id }.sorted { $0.revision < $1.revision }.map(\.summary)
+    }
+
+    func financialCorrectionDraft(forTransaction id: String) throws -> TransactionFinancialDraft {
+        if let blocker = financialCorrectionBlocker(forTransaction: id) { throw blocker }
+        guard let context, !context.hasChanges else { throw AppFinancialCorrectionError.saveFailed }
+        guard try StoredDocumentGraph.load(from: context) == document else {
+            load()
+            throw AppFinancialCorrectionError.staleDraft
+        }
+        guard let meta = try context.fetch(FetchDescriptor<StoredDocumentMeta>()).first,
+              let transaction = document.transactions.first(where: { $0.id == id }) else {
+            throw AppFinancialCorrectionError.unreadable
+        }
+        let values = TransactionFinancialCorrection.values(transaction)
+        let accounts = snapshot.entryOptions.accounts.filter {
+            $0.currencyCode == values.amount.currencyCode && $0.fractionDigits == values.amount.fractionDigits
+        }
+        return .init(transactionID: id, documentRevision: meta.documentRevision, original: values,
+                     kindLabel: transaction.kind == .expense ? "Expense" : "Income",
+                     accounts: accounts, corrected: values)
+    }
+
+    private func proposedFinancialCorrection(_ draft: TransactionFinancialDraft) throws -> (Transaction, Transaction, FinanceDocument) {
+        if let blocker = financialCorrectionBlocker(forTransaction: draft.transactionID) { throw blocker }
+        guard let context, !context.hasChanges else { throw AppFinancialCorrectionError.saveFailed }
+        guard let meta = try context.fetch(FetchDescriptor<StoredDocumentMeta>()).first,
+              meta.documentRevision == draft.documentRevision,
+              try StoredDocumentGraph.load(from: context) == document else {
+            load()
+            throw AppFinancialCorrectionError.staleDraft
+        }
+        guard let original = document.transactions.first(where: { $0.id == draft.transactionID }),
+              TransactionFinancialCorrection.values(original) == draft.original else { throw AppFinancialCorrectionError.staleDraft }
+        let reason = draft.reason.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !reason.isEmpty, reason.count <= 500 else { throw AppFinancialCorrectionError.reasonRequired }
+        let values = draft.corrected
+        guard values != draft.original else { throw AppFinancialCorrectionError.noChanges }
+        guard let day = DomainMapper.day(values.day), let today = civilToday(), day <= today else {
+            throw AppFinancialCorrectionError.invalidDate
+        }
+        _ = try PersistenceCoding.ordinal(day)
+        guard values.amount.minorUnits > 0 else { throw AppFinancialCorrectionError.invalidAmount }
+        guard let account = document.accounts.first(where: { $0.id == values.accountID }), account.isActive else {
+            throw AppFinancialCorrectionError.invalidAccount
+        }
+        guard account.currency == original.legs[0].amount.currency,
+              values.amount.currencyCode == account.currency.code,
+              values.amount.fractionDigits == account.currency.minorUnitDigits else {
+            throw AppFinancialCorrectionError.currencyMismatch
+        }
+        let signed = original.kind == .expense ? -values.amount.minorUnits : values.amount.minorUnits
+        let corrected = TransactionFinancialCorrection.replacing(original, day: day,
+            leg: .init(accountID: account.id, amount: Money(minorUnits: signed, currency: account.currency)))
+        var candidate = document
+        let index = candidate.transactions.firstIndex(where: { $0.id == original.id })!
+        candidate.transactions[index] = corrected
+        guard TransactionFinancialCorrection.hasSafeNumericRange(candidate) else { throw AppFinancialCorrectionError.invalidAmount }
+        try StoredDocumentGraph.validate(candidate)
+        return (original, corrected, candidate)
+    }
+
+    func previewFinancialCorrection(_ draft: TransactionFinancialDraft) throws -> TransactionFinancialPreview {
+        let previous = beginOperation()
+        defer { operationDate = previous }
+        let (original, corrected, candidate) = try proposedFinancialCorrection(draft)
+        guard let today = civilToday() else { throw AppFinancialCorrectionError.invalidDate }
+        let ids = Set([original.legs[0].accountID, corrected.legs[0].accountID])
+        let impacts = document.accounts.filter { ids.contains($0.id) }.map { account in
+            FinancialAccountImpact(id: account.id, name: account.name,
+                before: CurrentHoldings.derivedLedgerBalance(accountID: account.id, asOf: today, in: document).map(DomainMapper.amount),
+                after: CurrentHoldings.derivedLedgerBalance(accountID: account.id, asOf: today, in: candidate).map(DomainMapper.amount))
+        }
+        return .init(draft: draft, asOf: DomainMapper.civilDay(today), accountImpacts: impacts,
+                     affectedMonths: Set([original.date.monthKey.description, corrected.date.monthKey.description]).sorted())
+    }
+
+    func confirmFinancialCorrection(_ preview: TransactionFinancialPreview) throws {
+        let previous = beginOperation()
+        defer { operationDate = previous }
+        guard try previewFinancialCorrection(preview.draft) == preview else { throw AppFinancialCorrectionError.staleDraft }
+        let (before, after, candidate) = try proposedFinancialCorrection(preview.draft)
+        guard let context, let write = writer.correctTransactionFinancials, let today = civilToday(),
+              let recordedAt = operationDate?.instant, recordedAt.timeIntervalSinceReferenceDate.isFinite else {
+            throw AppFinancialCorrectionError.saveFailed
+        }
+        let audit = TransactionFinancialCorrection(id: UUID().uuidString.lowercased(),
+            revision: transactionFinancialCorrections.filter { $0.before.id == before.id }.count + 1,
+            recordedAt: recordedAt, reason: preview.draft.reason.trimmingCharacters(in: .whitespacesAndNewlines),
+            before: before, after: after,
+            beforeAccountName: document.accounts.first(where: { $0.id == before.legs[0].accountID })?.name ?? "Previous account",
+            afterAccountName: document.accounts.first(where: { $0.id == after.legs[0].accountID })!.name)
+        do {
+            try write(audit, context, today, preview.draft.documentRevision)
+        } catch {
+            context.rollback()
+            if let error = error as? AppFinancialCorrectionError {
+                if error == .staleDraft { load() }
+                throw error
+            }
+            throw AppFinancialCorrectionError.saveFailed
+        }
+        document = candidate
+        transactionFinancialCorrections.append(audit)
+        recalculate()
+    }
+
     // MARK: - Removing a transaction
 
     /// The external evidence recorded as the reason this transaction exists.
@@ -1729,7 +1864,7 @@ final class FinanceStore: FinanceProviding {
         guard let transaction = document.transactions.first(where: { $0.id == id }) else {
             return .notFound
         }
-        if !correctionHistory(forTransaction: id).isEmpty { return .hasCorrectionHistory }
+        if !correctionHistory(forTransaction: id).isEmpty || !financialCorrectionHistory(forTransaction: id).isEmpty { return .hasCorrectionHistory }
 
         // Not something this app recorded. `userConfirmed` is the grade the
         // domain already uses for "a person explicitly stated this" — it is

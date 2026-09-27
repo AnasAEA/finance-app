@@ -149,9 +149,18 @@ envelope v3; corrected transactions cannot be deleted and orphan that history.
 Budgets and checkpoint comparisons recompute from the corrected category without
 rewriting accepted checkpoint revisions.
 
-Amount, date, account and economic-kind correction remain unsupported. Removal
-is deliberately not paired with re-entry: delete-then-add would mint a new
-identifier and drop every relationship the old one carried. See
+Amount, date and account corrections on plain user-confirmed expenses and
+income use a review preview and explicit confirmation. A dated reason and
+complete before/after snapshots preserve the previous assertion about the same
+event; the transaction and leg identities remain stable. Currency, source, kind,
+ownership and provenance are preserved. Bank-linked, matched and other dependent
+records are refused rather than silently unlinked. Financial audit rows survive
+ordinary writes and require app recovery envelope v4; v1/v2/v3 remain readable.
+Opening and provider balances and accepted checkpoint revisions are never
+rewritten. Economic-kind/ownership and relationship-bearing corrections still
+need further explicit review handling. Removal is deliberately not paired with
+re-entry: delete-then-add would mint a new identifier and drop every relationship
+the old one carried. See
 [the correction design](design/transaction-correction.md).
 
 ## Currency at the entry boundary

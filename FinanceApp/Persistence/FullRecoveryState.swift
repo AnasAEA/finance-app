@@ -20,6 +20,7 @@ struct FullRecoveryState: Codable, Hashable, Sendable {
     var lastIncomeAccountID: String?
     /// Absent in legacy v1 recovery bytes, preserving their integrity digest.
     var transactionCorrections: [TransactionMetadataCorrection]?
+    var transactionFinancialCorrections: [TransactionFinancialCorrection]?
 
     @MainActor static func capture(from context: ModelContext) throws -> Self {
         let metadata = try StoredDocumentGraph.loadAppMetadata(from: context)
@@ -39,6 +40,8 @@ struct FullRecoveryState: Codable, Hashable, Sendable {
         )
         let corrections = try StoredTransactionCorrection.load(from: context)
         state.transactionCorrections = corrections.isEmpty ? nil : corrections
+        let financialCorrections = try StoredTransactionFinancialCorrection.load(from: context)
+        state.transactionFinancialCorrections = financialCorrections.isEmpty ? nil : financialCorrections
         state.contentSHA256 = try state.integrityDigest()
         return state
     }
@@ -57,6 +60,7 @@ struct FullRecoveryState: Codable, Hashable, Sendable {
     @MainActor func validate(document: FinanceDocument) throws {
         do {
             guard version == 1, contentSHA256 == (try integrityDigest()) else { throw AppImportError.invalidBackupMetadata }
+            try StoredTransactionFinancialCorrection.validate(transactionFinancialCorrections ?? [], document: document)
             try StoredTransactionCorrection.validate(transactionCorrections ?? [], document: document)
             let accountIDs = Set(document.accounts.map(\.id))
             guard [lastExpenseAccountID, lastIncomeAccountID].compactMap({ $0 }).allSatisfy(accountIDs.contains) else {
@@ -182,12 +186,16 @@ struct FullRecoveryState: Codable, Hashable, Sendable {
                 }, sourceGaps: gaps, records: records))
     }
 
-    @MainActor func insert(in context: ModelContext) {
+    @MainActor func insert(in context: ModelContext) throws {
         archives.map { $0.model() }.forEach(context.insert)
         historicalTransactions.map { $0.model() }.forEach(context.insert)
         historyGaps.map { $0.model() }.forEach(context.insert)
         insertCheckpoints(in: context)
         (transactionCorrections ?? []).map(StoredTransactionCorrection.init).forEach(context.insert)
+        // Validation has already proved encoding-compatible domain snapshots.
+        for correction in transactionFinancialCorrections ?? [] {
+            context.insert(try StoredTransactionFinancialCorrection(correction))
+        }
     }
 
     @MainActor private func insertCheckpoints(in context: ModelContext) {
@@ -204,6 +212,7 @@ struct FullRecoveryState: Codable, Hashable, Sendable {
         context.fetchCount(FetchDescriptor<StoredPeriodCheckpointRevision>()) == 0 &&
         context.fetchCount(FetchDescriptor<StoredPeriodCheckpointAcknowledgment>()) == 0 &&
         context.fetchCount(FetchDescriptor<StoredPendingEvidenceArchive>()) == 0 &&
-        context.fetchCount(FetchDescriptor<StoredTransactionCorrection>()) == 0
+        context.fetchCount(FetchDescriptor<StoredTransactionCorrection>()) == 0 &&
+        context.fetchCount(FetchDescriptor<StoredTransactionFinancialCorrection>()) == 0
     }
 }

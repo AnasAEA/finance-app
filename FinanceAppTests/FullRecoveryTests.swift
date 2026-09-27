@@ -104,7 +104,7 @@ struct FullRecoveryTests {
         let writer = DocumentWriter({ _,_,_,_,_ in throw Failure.injected }, recover: { document, context, day, presentation, metadata, recovery in
             try StoredDocumentGraph.replace(with: document, in: context, writtenOn: day, presentation: presentation, appMetadata: metadata,
                 beforeSave: { context in
-                    recovery.insert(in: context)
+                    try recovery.insert(in: context)
                     #expect(try context.fetchCount(FetchDescriptor<StoredHistoricalTransaction>()) == 4)
                     #expect(try context.fetchCount(FetchDescriptor<StoredPeriodCheckpointRevision>()) == 2)
                     throw Failure.injected

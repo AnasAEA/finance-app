@@ -2382,6 +2382,7 @@ enum StoredDocumentGraph {
         beforeSave: (ModelContext) throws -> Void = { _ in }
     ) throws {
         try validate(source)
+        try StoredTransactionFinancialCorrection.validate(StoredTransactionFinancialCorrection.load(from: context), document: source)
         try StoredTransactionCorrection.validate(StoredTransactionCorrection.load(from: context),
             document: source, presentation: presentation)
         let partition = PendingEvidenceArchive.partition(
@@ -2733,6 +2734,183 @@ final class StoredTransactionCorrection {
     }
 }
 
+
+/// Supersedes an assertion about one economic event, never creates a second event.
+struct TransactionFinancialCorrection: Codable, Hashable, Sendable {
+    var formatVersion = 1
+    let id: String
+    let revision: Int
+    let recordedAt: Date
+    let reason: String
+    let before: Transaction
+    let after: Transaction
+    let beforeAccountName: String
+    let afterAccountName: String
+
+    static func supports(_ transaction: Transaction) -> Bool {
+        guard transaction.factivity == .observed, transaction.lifecycle == .cleared || transaction.lifecycle == .pending,
+              transaction.provenance.evidenceGrade == .userConfirmed,
+              transaction.kind == .expense || transaction.kind == .income,
+              transaction.legs.count == 1, transaction.ownership == nil,
+              transaction.linkedTransactionID == nil, transaction.installmentPlanID == nil,
+              transaction.bookedDate == nil else { return false }
+        let amount = transaction.legs[0].amount.minorUnits
+        return transaction.kind == .expense ? amount < 0 && amount != Int64.min : amount > 0
+    }
+
+    /// Conservative headroom for Int64 projections: no rounding or clipping.
+    /// Reserve one occurrence per day for recurring inputs across at least the
+    /// app's 120-day forecast. Count currencies separately, including evidence
+    /// that can participate in displayed balance differences.
+    static func hasSafeNumericRange(_ document: FinanceDocument) -> Bool {
+        var totals: [Currency: Decimal] = [:]
+        func include(_ amounts: [Money], occurrences: Int = 1) {
+            for amount in amounts {
+                totals[amount.currency, default: 0] += abs(Decimal(amount.minorUnits)) * Decimal(occurrences)
+            }
+        }
+        include((document.transactions + document.expectedTransactions).flatMap(\.legs).map(\.amount))
+        include(document.balances.map(\.balance) + document.providerBalanceSnapshots.map(\.amount))
+        include(document.externalObservations.map(\.amount))
+        include(document.incomeSources.map(\.amount) + document.planning.recurringObligations.map(\.amount), occurrences: 120)
+        include(document.planning.budgets.flatMap { [$0.monthlyAmount] + Array($0.monthlyOverrides.values) }, occurrences: 120)
+        include([document.planning.safetyFloor, document.planning.monthlyEconomicCeiling].compactMap { $0 }, occurrences: 120)
+        include(Array(document.planning.carriedEURValues.values))
+        include(document.installments.flatMap { [$0.originalPurchaseAmount] + $0.installments.map(\.amount) })
+        include(document.debts.flatMap { [$0.originalAmount] + $0.paymentSchedule.map(\.amount) })
+        include(document.planning.plannedPurchases.flatMap { [$0.targetAmount, $0.reservedAmount] })
+        include(document.planning.sinkingFunds.flatMap { [$0.targetAmount, $0.reservedAmount] })
+        include(document.planning.sinkingFunds.compactMap(\.contributionAmount), occurrences: 120)
+        return totals.values.allSatisfy { $0 <= Decimal(Int64.max) }
+    }
+
+    static func replacing(_ original: Transaction, day: Day, leg: AccountLeg) -> Transaction {
+        Transaction(id: original.id, date: day, kind: original.kind, legs: [leg],
+            ownership: original.ownership, linkedTransactionID: original.linkedTransactionID,
+            incomeSourceID: original.incomeSourceID, installmentPlanID: original.installmentPlanID,
+            factivity: original.factivity, lifecycle: original.lifecycle, bookedDate: original.bookedDate,
+            datePrecision: original.datePrecision, certainty: original.certainty,
+            note: original.note, provenance: original.provenance)
+    }
+
+    var summary: TransactionFinancialHistory {
+        .init(id: id, recordedAt: recordedAt, reason: reason,
+              before: Self.values(before), after: Self.values(after),
+              beforeAccountName: beforeAccountName, afterAccountName: afterAccountName)
+    }
+
+    static func values(_ transaction: Transaction) -> TransactionFinancialValues {
+        .init(day: DomainMapper.civilDay(transaction.date),
+              amount: DomainMapper.amount(transaction.legs[0].amount.magnitude),
+              accountID: transaction.legs[0].accountID)
+    }
+}
+
+@Model
+final class StoredTransactionFinancialCorrection {
+    #Index<StoredTransactionFinancialCorrection>([\.transactionIdentifier, \.revision])
+    var identifier = ""
+    var transactionIdentifier = ""
+    var revision = 0
+    var payload = Data()
+
+    init(_ correction: TransactionFinancialCorrection) throws {
+        identifier = correction.id
+        transactionIdentifier = correction.before.id
+        revision = correction.revision
+        payload = try JSONEncoder().encode(correction)
+    }
+
+    var asCorrection: TransactionFinancialCorrection {
+        get throws {
+            let value = try JSONDecoder().decode(TransactionFinancialCorrection.self, from: payload)
+            guard identifier == value.id, transactionIdentifier == value.before.id,
+                  revision == value.revision else { throw AppImportError.invalidBackupMetadata }
+            return value
+        }
+    }
+
+    static func load(from context: ModelContext) throws -> [TransactionFinancialCorrection] {
+        try context.fetch(FetchDescriptor<StoredTransactionFinancialCorrection>()).map { try $0.asCorrection }
+            .sorted { ($0.before.id, $0.revision) < ($1.before.id, $1.revision) }
+    }
+
+    static func validate(_ corrections: [TransactionFinancialCorrection], document: FinanceDocument) throws {
+        guard Set(corrections.map(\.id)).count == corrections.count,
+              corrections.isEmpty || TransactionFinancialCorrection.hasSafeNumericRange(document) else { throw AppImportError.invalidBackupMetadata }
+        let transactions = Dictionary(document.transactions.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        for (id, chain) in Dictionary(grouping: corrections, by: { $0.before.id }) {
+            let ordered = chain.sorted { $0.revision < $1.revision }
+            for (index, correction) in ordered.enumerated() {
+                guard correction.formatVersion == 1, UUID(uuidString: correction.id) != nil, correction.revision == index + 1,
+                      correction.recordedAt.timeIntervalSinceReferenceDate.isFinite,
+                      TransactionFinancialCorrection.supports(correction.before),
+                      TransactionFinancialCorrection.supports(correction.after),
+                      correction.before != correction.after,
+                      correction.after.legs[0].amount.currency == correction.before.legs[0].amount.currency,
+                      correction.after == TransactionFinancialCorrection.replacing(correction.before,
+                          day: correction.after.date, leg: correction.after.legs[0]),
+                      index == 0 || correction.before == ordered[index - 1].after,
+                      !correction.reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                      correction.reason.count <= 500,
+                      !correction.beforeAccountName.isEmpty, !correction.afterAccountName.isEmpty else {
+                    throw AppImportError.invalidBackupMetadata
+                }
+                _ = try PersistenceCoding.ordinal(correction.before.date)
+                _ = try PersistenceCoding.ordinal(correction.after.date)
+            }
+            guard transactions[id] == ordered.last?.after else { throw AppImportError.invalidBackupMetadata }
+        }
+    }
+
+    static func append(_ correction: TransactionFinancialCorrection, in context: ModelContext,
+                       writtenOn: Day, expectedRevision: String) throws {
+        guard !context.hasChanges else { throw AppFinancialCorrectionError.saveFailed }
+        guard let document = try StoredDocumentGraph.load(from: context) else {
+            throw AppFinancialCorrectionError.unreadable
+        }
+        guard let meta = try context.fetch(FetchDescriptor<StoredDocumentMeta>()).first,
+              meta.documentRevision == expectedRevision else { throw AppFinancialCorrectionError.staleDraft }
+        // Recheck durable relationships and eligibility, not the editor's cached state.
+        if let blocker = FinanceStore.financialCorrectionBlocker(correction.before.id, in: document) { throw blocker }
+        let id = correction.before.id
+        let rows = try context.fetch(FetchDescriptor<StoredTransaction>(predicate: #Predicate { $0.identifier == id }))
+        guard rows.count == 1, let row = rows.first, try row.asDomain == correction.before,
+              row.legs.count == 1 else { throw AppFinancialCorrectionError.staleDraft }
+        let history = try load(from: context)
+        guard correction.revision == history.filter({ $0.before.id == id }).count + 1 else {
+            throw AppFinancialCorrectionError.staleDraft
+        }
+        var proposed = document
+        guard let index = proposed.transactions.firstIndex(where: { $0.id == id }) else { throw AppFinancialCorrectionError.notFound }
+        proposed.transactions[index] = correction.after
+        guard TransactionFinancialCorrection.supports(correction.after),
+              correction.after.date <= writtenOn else { throw AppFinancialCorrectionError.invalidDate }
+        guard let account = document.accounts.first(where: { $0.id == correction.after.legs[0].accountID }),
+              account.isActive else { throw AppFinancialCorrectionError.invalidAccount }
+        guard account.currency == correction.after.legs[0].amount.currency else { throw AppFinancialCorrectionError.currencyMismatch }
+        guard TransactionFinancialCorrection.hasSafeNumericRange(proposed) else { throw AppFinancialCorrectionError.invalidAmount }
+        try StoredDocumentGraph.validate(proposed)
+        try validate(history + [correction], document: proposed)
+        let storedAudit = try StoredTransactionFinancialCorrection(correction)
+        let day = try PersistenceCoding.ordinal(correction.after.date)
+        let writtenDay = try PersistenceCoding.ordinal(writtenOn)
+        do {
+            row.valueDay = day
+            row.legs[0].valueDay = day
+            row.legs[0].accountIdentifier = correction.after.legs[0].accountID
+            row.legs[0].amountMinor = correction.after.legs[0].amount.minorUnits
+            context.insert(storedAudit)
+            meta.documentRevision = UUID().uuidString
+            meta.writtenOnDay = writtenDay
+            try context.save()
+        } catch {
+            context.rollback()
+            throw error
+        }
+    }
+}
+
 enum FinanceSchema {
     static let models: [any PersistentModel.Type] = [
         StoredDocumentMeta.self,
@@ -2740,6 +2918,7 @@ enum FinanceSchema {
         StoredAccountBalance.self,
         StoredTransaction.self,
         StoredTransactionCorrection.self,
+        StoredTransactionFinancialCorrection.self,
         StoredAccountLeg.self,
         StoredOwnershipSplit.self,
         StoredIncomeSource.self,

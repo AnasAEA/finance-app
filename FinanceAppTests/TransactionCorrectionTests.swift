@@ -262,7 +262,7 @@ struct TransactionCorrectionTests {
         let writer = DocumentWriter({ _, _, _, _, _ in throw Failure.synthetic }, recover: { document, context, day, presentation, metadata, recovery in
             try StoredDocumentGraph.replace(with: document, in: context, writtenOn: day,
                 presentation: presentation, appMetadata: metadata, beforeSave: {
-                    recovery.insert(in: $0)
+                    try recovery.insert(in: $0)
                     throw Failure.synthetic
                 })
         })
@@ -374,7 +374,7 @@ struct TransactionCorrectionTests {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
         let url = directory.appendingPathComponent("synthetic.store")
-        let baseline = Schema(FinanceSchema.models.filter { ObjectIdentifier($0) != ObjectIdentifier(StoredTransactionCorrection.self) })
+        let baseline = Schema(FinanceSchema.models.filter { ObjectIdentifier($0) != ObjectIdentifier(StoredTransactionCorrection.self) && ObjectIdentifier($0) != ObjectIdentifier(StoredTransactionFinancialCorrection.self) })
         func seed() throws -> FinanceDocument {
             let container = try ModelContainer(for: baseline, configurations: ModelConfiguration(schema: baseline, url: url))
             var legacy = EntryFixtures.document()
