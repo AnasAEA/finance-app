@@ -71,6 +71,12 @@ struct TransactionCorrectionTests {
         #expect(throws: AppCorrectionError.staleDraft) { try other.correctTransactionMetadata(stale) }
         #expect(try StoredTransactionCorrection.load(from: h.container.mainContext).count == 1)
         #expect(try h.store.correctionDraft(forTransaction: accepted.transactionID).original.merchant == "SYNTHETIC ACCEPTED")
+        #expect(other.correctionHistory(forTransaction: accepted.transactionID).count == 1)
+        var reopened = try draft(other)
+        #expect(reopened.original.merchant == "SYNTHETIC ACCEPTED" && reopened.revision == 1)
+        reopened.corrected.merchant = "SYNTHETIC RETRY"
+        try other.correctTransactionMetadata(reopened)
+        #expect(other.correctionHistory(forTransaction: accepted.transactionID).map(\.revision) == [1, 2])
     }
 
     @Test func linkedBankEvidenceAndExpectedPaymentStayIntact() throws {
@@ -101,6 +107,25 @@ struct TransactionCorrectionTests {
         #expect(h.store.linkedEvidence(forTransaction: edit.transactionID) == evidence)
         #expect(evidence.first?.title == "SYNTHETIC BANK TEXT")
         #expect(h.store.snapshot.reconciliations[edit.transactionID] == reconciliation)
+    }
+
+    @Test func blankStructuredMerchantUsesOriginalRawEvidence() throws {
+        var document = EntryFixtures.document()
+        document.externalAccountBindings = [.init(id: "synthetic-binding", provider: .bnp,
+            remoteOpaqueAccountID: "synthetic-remote", localAccountID: EntryFixtures.bank.id,
+            syncStartBoundary: EntryFixtures.today.monthKey.firstDay, createdAt: fixtureInstant(EntryFixtures.today))]
+        document.externalObservations = [.init(id: "synthetic-observation", bindingID: "synthetic-binding", provider: .bnp,
+            identity: .durable, status: .booked, creditDebitIndicator: .debit,
+            amount: Money(minorUnits: -1234, currency: .eur), bookingDate: EntryFixtures.today,
+            rawMerchantText: "SYNTHETIC RAW BANK TEXT", structuredMerchantName: "  ",
+            eligibleForEconomicActual: true, observedAt: fixtureInstant(EntryFixtures.today))]
+        document.observationResolutions = [.init(observationID: "synthetic-observation", state: .unreviewed)]
+        let h = try EntryFixtures.Harness(document)
+        try h.store.add(EntryFixtures.draft(merchant: "SYNTHETIC USER LABEL"))
+        let edit = try draft(h.store)
+        try h.store.matchObservation("synthetic-observation", toTransaction: edit.transactionID)
+        #expect(h.store.linkedEvidence(forTransaction: edit.transactionID).first?.title == "SYNTHETIC RAW BANK TEXT")
+        #expect(try h.store.exportDocument().externalObservations == document.externalObservations)
     }
 
     @Test func categoryChangesReallocateBudgetWithoutChangingTotalSpend() throws {

@@ -1623,7 +1623,12 @@ final class FinanceStore: FinanceProviding {
             try write(correction, context, day)
         } catch {
             context.rollback()
-            if let error = error as? AppCorrectionError { throw error }
+            if let error = error as? AppCorrectionError {
+                // Another context may have accepted a correction. Reopening the
+                // refused editor must show its current metadata and history.
+                if error == .staleDraft { load() }
+                throw error
+            }
             throw AppCorrectionError.persistenceFailed
         }
         transactionPresentation[draft.transactionID] = .init(categoryKey: corrected.categoryKey, merchant: corrected.merchant)
@@ -1668,7 +1673,9 @@ final class FinanceStore: FinanceProviding {
                 guard let observation = observations[link.observationID] else { return nil }
                 return TransactionEvidenceSummary(
                     id: observation.id,
-                    title: observation.observedMerchant ?? observation.bankTransactionCode ?? observation.providerName,
+                    title: [observation.observedMerchant, observation.rawMerchantText,
+                            observation.remittance, observation.bankTransactionCode]
+                        .compactMap(TransactionMetadata.normalizedMerchant).first ?? observation.providerName,
                     providerLabel: "\(observation.providerName) · \(observation.providerAccountName)",
                     amount: observation.amount,
                     day: observation.dates.economicPeriod,
