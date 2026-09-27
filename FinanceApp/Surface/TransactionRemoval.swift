@@ -53,6 +53,7 @@ enum AppRemovalError: Error, Hashable, Sendable {
 
     /// A goal records this transaction as the purchase it was saving for.
     case recordedAsGoalPurchase
+    case hasCorrectionHistory
 
     /// Eligibility held and the write still failed. Nothing was changed.
     case persistenceFailed(String)
@@ -80,6 +81,8 @@ enum AppRemovalError: Error, Hashable, Sendable {
             "Another transaction is recorded against this one."
         case .recordedAsGoalPurchase:
             "A goal records this transaction as its purchase."
+        case .hasCorrectionHistory:
+            "This transaction has a correction history that must be preserved."
         case let .persistenceFailed(reason):
             "It could not be removed, so nothing was changed: \(reason)"
         }
@@ -97,7 +100,9 @@ enum AppRemovalError: Error, Hashable, Sendable {
         case .recordedAsGoalPurchase:
             "Clear the purchase on that goal first."
         case .sourceEvidence:
-            "Correct it where the records are produced, then import again."
+            "You can correct its merchant or spending category here. Changes to the imported financial facts must be made where those records are produced."
+        case .hasCorrectionHistory:
+            "You can correct its merchant or category again. Removing the transaction would discard the record of those decisions."
         case .storeUnreadable:
             "The data on this device may still be intact. Do not reinstall the app before it can be read again."
         default:

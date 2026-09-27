@@ -2212,6 +2212,15 @@ struct DomainMapper {
         .init(key: "other", name: "Other", symbol: "ellipsis.circle")
     ]
 
+    static var spendingCategoryKeys: Set<String> {
+        Set(categories.filter { !$0.isIncome && !$0.isTransfer }.map(\.key))
+    }
+
+    static func supportsCategoryCorrection(_ transaction: Transaction) -> Bool {
+        transaction.kind == .expense || transaction.kind == .refund ||
+        (transaction.kind == .passThrough && transaction.legs.contains(where: \.isOutflow))
+    }
+
     private func categoryDefinition(_ key: String?) -> CategoryDefinition {
         Self.categories.first { $0.key == key } ?? Self.categories.last!
     }

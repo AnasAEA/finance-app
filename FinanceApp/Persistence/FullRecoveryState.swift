@@ -18,6 +18,8 @@ struct FullRecoveryState: Codable, Hashable, Sendable {
     var liveCoverage: [String: AuthoritativeLiveCoverage] = [:]
     var lastExpenseAccountID: String?
     var lastIncomeAccountID: String?
+    /// Absent in legacy v1 recovery bytes, preserving their integrity digest.
+    var transactionCorrections: [TransactionMetadataCorrection]?
 
     @MainActor static func capture(from context: ModelContext) throws -> Self {
         let metadata = try StoredDocumentGraph.loadAppMetadata(from: context)
@@ -35,6 +37,8 @@ struct FullRecoveryState: Codable, Hashable, Sendable {
             lastExpenseAccountID: metadata.lastExpenseAccountID,
             lastIncomeAccountID: metadata.lastIncomeAccountID
         )
+        let corrections = try StoredTransactionCorrection.load(from: context)
+        state.transactionCorrections = corrections.isEmpty ? nil : corrections
         state.contentSHA256 = try state.integrityDigest()
         return state
     }
@@ -53,6 +57,7 @@ struct FullRecoveryState: Codable, Hashable, Sendable {
     @MainActor func validate(document: FinanceDocument) throws {
         do {
             guard version == 1, contentSHA256 == (try integrityDigest()) else { throw AppImportError.invalidBackupMetadata }
+            try StoredTransactionCorrection.validate(transactionCorrections ?? [], document: document)
             let accountIDs = Set(document.accounts.map(\.id))
             guard [lastExpenseAccountID, lastIncomeAccountID].compactMap({ $0 }).allSatisfy(accountIDs.contains) else {
                 throw AppImportError.invalidBackupMetadata
@@ -182,6 +187,7 @@ struct FullRecoveryState: Codable, Hashable, Sendable {
         historicalTransactions.map { $0.model() }.forEach(context.insert)
         historyGaps.map { $0.model() }.forEach(context.insert)
         insertCheckpoints(in: context)
+        (transactionCorrections ?? []).map(StoredTransactionCorrection.init).forEach(context.insert)
     }
 
     @MainActor private func insertCheckpoints(in context: ModelContext) {
@@ -197,6 +203,7 @@ struct FullRecoveryState: Codable, Hashable, Sendable {
         context.fetchCount(FetchDescriptor<StoredPeriodCheckpointDataset>()) == 0 &&
         context.fetchCount(FetchDescriptor<StoredPeriodCheckpointRevision>()) == 0 &&
         context.fetchCount(FetchDescriptor<StoredPeriodCheckpointAcknowledgment>()) == 0 &&
-        context.fetchCount(FetchDescriptor<StoredPendingEvidenceArchive>()) == 0
+        context.fetchCount(FetchDescriptor<StoredPendingEvidenceArchive>()) == 0 &&
+        context.fetchCount(FetchDescriptor<StoredTransactionCorrection>()) == 0
     }
 }
