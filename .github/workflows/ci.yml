@@ -69,7 +69,7 @@ jobs:
           else:
               subprocess.run([sys.executable, "-c", source.decode("utf-8")], check=True)
           # End trusted scope bootstrap
-        shell: python
+        shell: python3 {0}
 
   core:
     name: FinanceCore
