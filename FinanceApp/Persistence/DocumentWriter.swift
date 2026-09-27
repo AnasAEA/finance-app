@@ -44,6 +44,7 @@ struct DocumentWriter {
     let updateBankMetadata: ((_ context: ModelContext,
                               _ appMetadata: AppPersistenceMetadata) throws -> Void)?
     let archivesPendingHistory: Bool
+    let correctTransactionFinancials: ((TransactionFinancialCorrection, ModelContext, Day, String) throws -> Void)?
     let correctTransactionMetadata: ((TransactionMetadataCorrection, ModelContext, Day) throws -> Void)?
 
     init(_ write: @escaping (FinanceDocument, ModelContext, Day,
@@ -51,20 +52,23 @@ struct DocumentWriter {
                              AppPersistenceMetadata) throws -> Void,
          recover: ((FinanceDocument, ModelContext, Day, [String: DomainMapper.TransactionPresentation],
                     AppPersistenceMetadata, FullRecoveryState) throws -> Void)? = nil,
-         correctMetadata: ((TransactionMetadataCorrection, ModelContext, Day) throws -> Void)? = nil) {
+         correctMetadata: ((TransactionMetadataCorrection, ModelContext, Day) throws -> Void)? = nil,
+         correctFinancials: ((TransactionFinancialCorrection, ModelContext, Day, String) throws -> Void)? = nil) {
         self.write = write
         self.writeImported = write
         self.writeRecovered = recover ?? { document, context, day, presentation, metadata, recovery in
             guard recovery.archives.isEmpty, recovery.historicalTransactions.isEmpty, recovery.historyGaps.isEmpty,
                   recovery.checkpointDatasets.isEmpty, recovery.checkpointRevisions.isEmpty,
                   recovery.checkpointAcknowledgments.isEmpty,
-                  recovery.transactionCorrections?.isEmpty ?? true else { throw AppImportError.invalidBackupMetadata }
+                  (recovery.transactionCorrections?.isEmpty ?? true),
+                  (recovery.transactionFinancialCorrections?.isEmpty ?? true) else { throw AppImportError.invalidBackupMetadata }
             try write(document, context, day, presentation, metadata)
         }
         self.appendUserTransaction = nil
         self.updateBankMetadata = nil
         self.archivesPendingHistory = false
         self.correctTransactionMetadata = correctMetadata
+        self.correctTransactionFinancials = correctFinancials
     }
 
     private init(
@@ -81,7 +85,8 @@ struct DocumentWriter {
         writeRecovered: @escaping (FinanceDocument, ModelContext, Day,
                                     [String: DomainMapper.TransactionPresentation],
                                     AppPersistenceMetadata, FullRecoveryState) throws -> Void,
-        correctTransactionMetadata: @escaping (TransactionMetadataCorrection, ModelContext, Day) throws -> Void
+        correctTransactionMetadata: @escaping (TransactionMetadataCorrection, ModelContext, Day) throws -> Void,
+        correctTransactionFinancials: @escaping (TransactionFinancialCorrection, ModelContext, Day, String) throws -> Void
     ) {
         self.write = write
         self.writeImported = writeImported
@@ -90,6 +95,7 @@ struct DocumentWriter {
         self.updateBankMetadata = updateBankMetadata
         self.archivesPendingHistory = true
         self.correctTransactionMetadata = correctTransactionMetadata
+        self.correctTransactionFinancials = correctTransactionFinancials
     }
 
     static let live = DocumentWriter(
@@ -122,10 +128,13 @@ struct DocumentWriter {
             guard try FullRecoveryState.destinationIsEmpty(context) else { throw AppImportError.storeNotEmpty }
             try StoredDocumentGraph.replace(with: document, in: context, writtenOn: writtenOn,
                 presentation: presentation, appMetadata: appMetadata, replaceArchivedHistory: true,
-                beforeSave: { recovery.insert(in: $0) })
+                beforeSave: { try recovery.insert(in: $0) })
         },
         correctTransactionMetadata: { correction, context, day in
             try StoredTransactionCorrection.append(correction, in: context, writtenOn: day)
+        },
+        correctTransactionFinancials: { correction, context, day, revision in
+            try StoredTransactionFinancialCorrection.append(correction, in: context, writtenOn: day, expectedRevision: revision)
         }
     )
 }

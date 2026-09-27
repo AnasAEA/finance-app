@@ -17,14 +17,16 @@ struct AppBackupMetadata: Codable, Hashable, Sendable {
               let bytes = try? JSONSerialization.data(withJSONObject: value),
               let metadata = try? JSONDecoder().decode(Self.self, from: bytes),
               (metadata.version == 1 && metadata.fullRecovery == nil ||
-               metadata.version == 2 && metadata.fullRecovery?.version == 1 && metadata.fullRecovery?.transactionCorrections == nil ||
-               metadata.version == 3 && metadata.fullRecovery?.version == 1 && metadata.fullRecovery?.transactionCorrections?.isEmpty == false) else { throw AppImportError.invalidBackupMetadata }
+               metadata.version == 2 && metadata.fullRecovery?.version == 1 && metadata.fullRecovery?.transactionCorrections == nil && metadata.fullRecovery?.transactionFinancialCorrections == nil ||
+               metadata.version == 3 && metadata.fullRecovery?.version == 1 && metadata.fullRecovery?.transactionCorrections?.isEmpty == false && metadata.fullRecovery?.transactionFinancialCorrections == nil ||
+               metadata.version == 4 && metadata.fullRecovery?.version == 1 && metadata.fullRecovery?.transactionFinancialCorrections?.isEmpty == false) else { throw AppImportError.invalidBackupMetadata }
         let transactions = Set((document.transactions + document.expectedTransactions).map(\.id))
         let sources = Set(document.incomeSources.map(\.id))
         guard Set(metadata.transactionPresentation.keys).isSubset(of: transactions),
               Set(metadata.incomeSourceActive.keys).isSubset(of: sources) else {
             throw AppImportError.invalidBackupMetadata
         }
+        try StoredTransactionFinancialCorrection.validate(metadata.fullRecovery?.transactionFinancialCorrections ?? [], document: document)
         try StoredTransactionCorrection.validate(metadata.fullRecovery?.transactionCorrections ?? [],
             document: document, presentation: metadata.transactionPresentation)
         return metadata
