@@ -1,0 +1,86 @@
+#!/usr/bin/env python3
+"""Manage the repository-scoped Mac runner without printing registration tokens."""
+import argparse
+import hashlib
+import json
+from pathlib import Path
+import platform
+import subprocess
+import sys
+import tarfile
+import tempfile
+import urllib.request
+
+REPOSITORY = "AnasAEA/finance-app"
+VERSION = "2.337.0"
+ASSET = f"actions-runner-osx-arm64-{VERSION}.tar.gz"
+DIGEST = "5a2cd92908a93d7276a194e1de6008099f3e7946f3f8e14aa7a1a7b4a31fdec2"
+ROOT = Path.home() / "Library/Application Support/FinanceAppCI/runner"
+
+
+def github(path, method="GET"):
+    result = subprocess.run(["gh", "api", "--method", method, path],
+                            capture_output=True, text=True, check=True)
+    return json.loads(result.stdout)
+
+
+def install():
+    if platform.system() != "Darwin" or platform.machine() != "arm64":
+        raise ValueError("This runner is configured for Apple Silicon macOS.")
+    repository = github(f"repos/{REPOSITORY}")
+    if not repository["private"] or not repository["permissions"].get("admin"):
+        raise ValueError("Runner installation requires this private repository and admin access.")
+    if github("user")["login"] != "AnasAEA":
+        raise ValueError("Runner installation requires the repository owner.")
+    if (ROOT / ".runner").exists():
+        raise ValueError("Runner is already registered; use status or start.")
+    ROOT.mkdir(parents=True, exist_ok=True, mode=0o700)
+    ROOT.chmod(0o700)
+    url = f"https://github.com/actions/runner/releases/download/v{VERSION}/{ASSET}"
+    with tempfile.TemporaryDirectory(prefix="finance-runner-") as temporary:
+        archive = Path(temporary) / ASSET
+        urllib.request.urlretrieve(url, archive)
+        if hashlib.sha256(archive.read_bytes()).hexdigest() != DIGEST:
+            raise ValueError("Official runner download failed its pinned SHA-256 check.")
+        # The checksum authenticates the exact official archive before extraction.
+        with tarfile.open(archive) as bundle:
+            bundle.extractall(ROOT, filter="data")
+    token = github(f"repos/{REPOSITORY}/actions/runners/registration-token", "POST")["token"]
+    command = ["./config.sh", "--unattended", "--url", f"https://github.com/{REPOSITORY}",
+               "--token", token, "--name", "finance-anasait-mac", "--labels", "finance-private",
+               "--work", "_work"]
+    result = subprocess.run(command, cwd=ROOT, capture_output=True, text=True)
+    if result.returncode:
+        # Diagnostics stay local and private; never emit registration credentials.
+        raise RuntimeError("Runner registration failed; inspect the private runner diagnostics.")
+    for name in [".credentials", ".credentials_rsaparams", ".runner", ".env", ".path"]:
+        path = ROOT / name
+        if path.exists():
+            path.chmod(0o600)
+    subprocess.run(["./svc.sh", "install"], cwd=ROOT, check=True)
+    subprocess.run(["./svc.sh", "start"], cwd=ROOT, check=True)
+    print("Registered repository-scoped Mac runner and started its user service.")
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("action", choices=["install", "status", "start", "stop"])
+    args = parser.parse_args()
+    if args.action == "install":
+        install()
+    elif args.action == "status":
+        result = github(f"repos/{REPOSITORY}/actions/runners")
+        runners = [r for r in result["runners"] if r["name"] == "finance-anasait-mac"]
+        print(json.dumps([{k: r[k] for k in ["name", "status", "busy"]} for r in runners], indent=2))
+    else:
+        if not (ROOT / ".runner").exists():
+            raise ValueError("Runner is not installed.")
+        subprocess.run(["./svc.sh", args.action], cwd=ROOT, check=True)
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except (ValueError, RuntimeError, OSError, subprocess.CalledProcessError) as error:
+        print(f"FAIL: {error}", file=sys.stderr)
+        sys.exit(1)
