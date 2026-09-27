@@ -374,6 +374,7 @@ struct PreviewStep: View {
                 if preview.hasFullRecovery {
                     CountRow(label: "Historical transactions", count: preview.historicalTransactionCount)
                     CountRow(label: "Verified-month revisions", count: preview.checkpointRevisionCount)
+                    CountRow(label: "Transaction corrections", count: preview.transactionCorrectionCount)
                     Text("Restores the archive and verified-month history together with your ledger.")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
@@ -626,6 +627,7 @@ struct ImportResultStep: View {
                 if summary.hasFullRecovery {
                     ResultLine(label: "Historical transactions", value: "\(summary.historicalTransactionCount)")
                     ResultLine(label: "Verified-month revisions", value: "\(summary.checkpointRevisionCount)")
+                    ResultLine(label: "Transaction corrections", value: "\(summary.transactionCorrectionCount)")
                 }
                 ExclusionsCard(hasFullRecovery: summary.hasFullRecovery)
 

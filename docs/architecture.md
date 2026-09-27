@@ -140,9 +140,19 @@ trusted rule, and the grade both of this app's entry paths produce. Imported
 and reconstructed records are evidence the app cannot recreate, so it does not
 offer to erase them.
 
-There is no correction primitive. Nothing updates a stored transaction in
-place, and removal is deliberately not paired with re-entry: delete-then-add
-would mint a new identifier and drop every relationship the old one carried.
+Transaction details offer identity-preserving correction of app-owned merchant
+labels and spending categories. A narrow atomic save updates those metadata
+fields and appends a dated before/after record in `StoredTransactionCorrection`.
+The economic transaction, provenance, evidence links and settlements stay intact.
+Audit rows survive ordinary document replacement and are included in app recovery
+envelope v3; corrected transactions cannot be deleted and orphan that history.
+Budgets and checkpoint comparisons recompute from the corrected category without
+rewriting accepted checkpoint revisions.
+
+Amount, date, account and economic-kind correction remain unsupported. Removal
+is deliberately not paired with re-entry: delete-then-add would mint a new
+identifier and drop every relationship the old one carried. See
+[the correction design](design/transaction-correction.md).
 
 ## Currency at the entry boundary
 

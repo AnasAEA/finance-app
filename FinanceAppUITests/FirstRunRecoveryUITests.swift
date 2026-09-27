@@ -131,7 +131,14 @@ final class FirstRunRecoveryUITests: XCTestCase {
         for _ in 0..<8 where !save.exists { app.swipeUp() }
         XCTAssertTrue(save.exists)
         XCTAssertFalse(save.isEnabled)
-        for _ in 0..<8 where !encrypt.isHittable { app.swipeDown() }
+        // A partially clipped row can be hittable behind the navigation bar.
+        // Scroll until the switch row is below the navigation bar.
+        for _ in 0..<8 {
+            let navigationBottom = app.navigationBars["Your backup"].frame.maxY
+            if encrypt.isHittable && encrypt.frame.minY > navigationBottom { break }
+            app.swipeDown()
+        }
+        XCTAssertGreaterThan(encrypt.frame.minY, app.navigationBars["Your backup"].frame.maxY)
         encrypt.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap()
         let disabledEncryption = NSPredicate(format: "value == '0'")
         expectation(for: disabledEncryption, evaluatedWith: encrypt)

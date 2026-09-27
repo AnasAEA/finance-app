@@ -97,7 +97,8 @@ enum DocumentExporter {
             bankEvidenceCount: document.externalObservations.count,
             hasFullRecovery: recovery != nil,
             historicalTransactionCount: recovery?.historicalTransactions.count ?? 0,
-            checkpointRevisionCount: recovery?.checkpointRevisions.count ?? 0
+            checkpointRevisionCount: recovery?.checkpointRevisions.count ?? 0,
+            transactionCorrectionCount: recovery?.transactionCorrections?.count ?? 0
         )
     }
 }

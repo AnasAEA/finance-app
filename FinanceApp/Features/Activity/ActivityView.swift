@@ -507,6 +507,7 @@ struct TransactionDetailView: View {
     /// Why the last removal attempt was refused. Set only by a refusal — a
     /// successful removal leaves this alone and closes the screen instead.
     @State private var removalFailure: AppRemovalError?
+    @State private var correctionDraft: TransactionCorrectionDraft?
 
     /// One live read per composition: whether this row is reconciled, what
     /// could match it, and whether it can be removed are all answers about the
@@ -532,7 +533,8 @@ struct TransactionDetailView: View {
         _ removalBlocker: AppRemovalError?,
         _ evidence: [TransactionEvidenceSummary]
     ) -> some View {
-        FinancePage {
+        let row = snapshot.activity.flatMap(\.rows).first { $0.id == self.row.id } ?? self.row
+        return FinancePage {
             FinanceSection {
                 VStack(alignment: .leading, spacing: 5) {
                     Text(row.title).font(Theme.TypeStyle.editorial)
@@ -548,6 +550,8 @@ struct TransactionDetailView: View {
                 LabeledContent("Type", value: row.transactionTypeLabel)
                 if let category = row.categoryLabel {
                     LabeledContent("Category", value: category)
+                        .accessibilityElement(children: .combine)
+                        .accessibilityIdentifier("transaction.category")
                 }
                 if let counterparty = row.counterparty {
                     LabeledContent(row.flow == .income ? "From / payer" : "Merchant", value: counterparty)
@@ -615,11 +619,47 @@ struct TransactionDetailView: View {
                 FinanceSection("Notes") { Text(note) }
             }
 
+            if let draft = try? store.correctionDraft(forTransaction: row.id) {
+                FinanceSection {
+                    Button {
+                        correctionDraft = draft
+                    } label: {
+                        Label("Correct merchant or category", systemImage: "pencil")
+                    }
+                    .accessibilityIdentifier("transaction.correctMetadata")
+                } footer: {
+                    Text("Changes your labels and category. Bank evidence, amount, date and payment matches stay intact. A category change updates budgets and month verification.")
+                }
+            }
+
+            let history = store.correctionHistory(forTransaction: row.id)
+            if !history.isEmpty {
+                FinanceSection("Correction history") {
+                    ForEach(history.reversed()) { correction in
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(correction.recordedAt.formatted(date: .abbreviated, time: .shortened))
+                                .font(.caption).foregroundStyle(.secondary)
+                            if correction.before.merchant != correction.after.merchant {
+                                Text("Merchant: \(correction.before.merchant ?? "No custom name") → \(correction.after.merchant ?? "No custom name")")
+                            }
+                            if correction.before.categoryKey != correction.after.categoryKey {
+                                Text("Category: \(categoryName(correction.before.categoryKey, in: snapshot)) → \(categoryName(correction.after.categoryKey, in: snapshot))")
+                            }
+                        }
+                        .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .accessibilityIdentifier("transaction.correctionHistory")
+            }
+
             Divider()
             removalSection(removalBlocker)
         }
         .navigationTitle("Transaction")
         .navigationBarTitleDisplayMode(.inline)
+        .sheet(item: $correctionDraft) { draft in
+            TransactionCorrectionSheet(draft: draft)
+        }
         .confirmationDialog(
             "Remove this transaction?",
             isPresented: $confirmsRemoval,
@@ -670,6 +710,11 @@ struct TransactionDetailView: View {
         } message: { error in
             Text(error.message)
         }
+    }
+
+    private func categoryName(_ key: String?, in snapshot: FinanceAppSnapshot) -> String {
+        guard let key else { return "Uncategorized" }
+        return snapshot.entryOptions.categories.first { $0.key == key }?.name ?? "Previous category"
     }
 
     /// Where this transaction came from, when evidence says so.

@@ -2382,6 +2382,8 @@ enum StoredDocumentGraph {
         beforeSave: (ModelContext) throws -> Void = { _ in }
     ) throws {
         try validate(source)
+        try StoredTransactionCorrection.validate(StoredTransactionCorrection.load(from: context),
+            document: source, presentation: presentation)
         let partition = PendingEvidenceArchive.partition(
             source,
             authority: appMetadata.authoritativePendingSnapshots,
@@ -2629,12 +2631,115 @@ enum StoredDocumentGraph {
     }
 }
 
+/// Independent audit rows survive ordinary document replacement. No cascade.
+@Model
+final class StoredTransactionCorrection {
+    // Uniqueness uses serialized preflight plus chain validation. SwiftData
+    // #Unique would upsert conflicting records and rewrite accepted history.
+    #Index<StoredTransactionCorrection>([\.transactionIdentifier, \.revision])
+    var identifier: String = ""
+    var transactionIdentifier: String = ""
+    var revision: Int = 0
+    var recordedAt: Date = Date(timeIntervalSinceReferenceDate: 0)
+    var beforeMerchant: String?
+    var beforeCategoryKey: String?
+    var afterMerchant: String?
+    var afterCategoryKey: String?
+
+    init(_ correction: TransactionMetadataCorrection) {
+        identifier = correction.id
+        transactionIdentifier = correction.transactionID
+        revision = correction.revision
+        recordedAt = correction.recordedAt
+        beforeMerchant = correction.before.merchant
+        beforeCategoryKey = correction.before.categoryKey
+        afterMerchant = correction.after.merchant
+        afterCategoryKey = correction.after.categoryKey
+    }
+
+    var asCorrection: TransactionMetadataCorrection {
+        .init(id: identifier, transactionID: transactionIdentifier, revision: revision,
+              recordedAt: recordedAt,
+              before: .init(merchant: beforeMerchant, categoryKey: beforeCategoryKey),
+              after: .init(merchant: afterMerchant, categoryKey: afterCategoryKey))
+    }
+
+    static func load(from context: ModelContext) throws -> [TransactionMetadataCorrection] {
+        try context.fetch(FetchDescriptor<StoredTransactionCorrection>()).map(\.asCorrection)
+            .sorted { ($0.transactionID, $0.revision) < ($1.transactionID, $1.revision) }
+    }
+
+    static func validate(_ corrections: [TransactionMetadataCorrection], document: FinanceDocument,
+                         presentation: [String: DomainMapper.TransactionPresentation]? = nil) throws {
+        guard Set(corrections.map(\.id)).count == corrections.count else { throw AppImportError.invalidBackupMetadata }
+        for (id, chain) in Dictionary(grouping: corrections, by: \.transactionID) {
+            guard let transaction = document.transactions.first(where: { $0.id == id }) else {
+                throw AppImportError.invalidBackupMetadata
+            }
+            let ordered = chain.sorted { $0.revision < $1.revision }
+            for (index, correction) in ordered.enumerated() {
+                guard UUID(uuidString: correction.id) != nil, correction.revision == index + 1,
+                      correction.recordedAt.timeIntervalSinceReferenceDate.isFinite,
+                      correction.before != correction.after,
+                      correction.after.merchant == TransactionMetadata.normalizedMerchant(correction.after.merchant),
+                      (correction.after.merchant?.count ?? 0) <= 200,
+                      index == 0 || correction.before == ordered[index - 1].after else {
+                    throw AppImportError.invalidBackupMetadata
+                }
+                if correction.before.categoryKey != correction.after.categoryKey {
+                    guard DomainMapper.supportsCategoryCorrection(transaction),
+                          correction.after.categoryKey.map(DomainMapper.spendingCategoryKeys.contains) ?? true else {
+                        throw AppImportError.invalidBackupMetadata
+                    }
+                }
+            }
+            if let presentation, let last = ordered.last {
+                let current = presentation[id]
+                guard last.after == TransactionMetadata(merchant: current?.merchant, categoryKey: current?.categoryKey) else {
+                    throw AppImportError.invalidBackupMetadata
+                }
+            }
+        }
+    }
+
+    /// One save changes metadata, revision and audit. The economic graph stays intact.
+    static func append(_ correction: TransactionMetadataCorrection, in context: ModelContext,
+                       writtenOn: Day) throws {
+        guard !context.hasChanges else { throw AppCorrectionError.persistenceFailed }
+        let id = correction.transactionID
+        let stored = try context.fetch(FetchDescriptor<StoredTransaction>(predicate: #Predicate { $0.identifier == id }))
+        let history = try load(from: context).filter { $0.transactionID == id }
+        guard stored.count == 1, let transaction = stored.first,
+              correction.revision == history.count + 1,
+              correction.before == TransactionMetadata(merchant: transaction.appMerchant, categoryKey: transaction.appCategoryKey),
+              history.last.map({ $0.after == correction.before }) ?? true else {
+            throw AppCorrectionError.staleDraft
+        }
+        guard let meta = try context.fetch(FetchDescriptor<StoredDocumentMeta>()).first else {
+            throw AppCorrectionError.storeUnreadable
+        }
+        let day = try PersistenceCoding.ordinal(writtenOn)
+        do {
+            transaction.appMerchant = correction.after.merchant
+            transaction.appCategoryKey = correction.after.categoryKey
+            context.insert(StoredTransactionCorrection(correction))
+            meta.documentRevision = UUID().uuidString
+            meta.writtenOnDay = day
+            try context.save()
+        } catch {
+            context.rollback()
+            throw error
+        }
+    }
+}
+
 enum FinanceSchema {
     static let models: [any PersistentModel.Type] = [
         StoredDocumentMeta.self,
         StoredAccount.self,
         StoredAccountBalance.self,
         StoredTransaction.self,
+        StoredTransactionCorrection.self,
         StoredAccountLeg.self,
         StoredOwnershipSplit.self,
         StoredIncomeSource.self,

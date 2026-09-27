@@ -113,6 +113,7 @@ struct BackupSummary: Hashable, Sendable {
     var hasFullRecovery = false
     var historicalTransactionCount = 0
     var checkpointRevisionCount = 0
+    var transactionCorrectionCount = 0
     var exclusions: [String] {
         hasFullRecovery ? Self.fullRecoveryExclusions : Self.exclusions
     }

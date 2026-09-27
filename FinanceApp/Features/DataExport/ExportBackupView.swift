@@ -281,6 +281,7 @@ struct ExportReadyStep: View {
                 if summary.hasFullRecovery {
                     ExportCountRow(label: "Historical transactions", count: summary.historicalTransactionCount)
                     ExportCountRow(label: "Verified-month revisions", count: summary.checkpointRevisionCount)
+                    ExportCountRow(label: "Transaction corrections", count: summary.transactionCorrectionCount)
                 }
                 ExportCountRow(
                     label: "Bank evidence",
