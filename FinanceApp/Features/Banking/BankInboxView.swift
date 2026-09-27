@@ -111,7 +111,7 @@ struct BankInboxView: View {
                 } header: {
                     Text("Balance evidence")
                 } footer: {
-                    Text("Provider balances are compared with the ledger. A difference starts reconciliation; it never silently corrects the ledger.")
+                    Text("Bank balance evidence is a dated diagnostic. Review its meaning and recorded movements; a difference never silently changes or verifies the ledger.")
                 }
             }
 
@@ -958,72 +958,139 @@ private struct ProviderBalanceRow: View {
                     .font(.caption)
                     .foregroundStyle(Theme.Role.caution)
             } else if balance.difference != nil {
-                Text("Matches ledger")
+                Text("Same dated amount")
                     .font(.caption)
-                    .foregroundStyle(Theme.Role.positive)
+                    .foregroundStyle(.secondary)
+            } else {
+                Text("Comparison unavailable")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
         .padding(.vertical, 3)
     }
 }
 
+/// A guided diagnostic. Every write remains in its existing explicit review flow.
 struct ProviderBalanceDetailView: View {
     let balanceID: String
     @Environment(FinanceStore.self) private var store
 
-    private var balance: ProviderBalanceStatus? {
-        store.snapshot.providerBalanceStatuses.first { $0.id == balanceID }
-    }
-
     var body: some View {
-        List {
+        let snapshot = store.snapshot
+        let balance = snapshot.providerBalanceStatuses.first { $0.id == balanceID }
+        return List {
             if let balance {
-                Section {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(balance.accountName).font(.headline)
-                        Text("\(balance.providerName) · \(balance.balanceType)")
-                            .font(.subheadline).foregroundStyle(.secondary)
+                Section("1. Check the bank evidence") {
+                    Text(balance.accountName).font(.headline)
+                    Text("\(balance.providerName) · \(balance.balanceType)").foregroundStyle(.secondary)
+                    if let report = balance.reconciliation {
+                        Text(report.balanceMeaning).font(.subheadline.weight(.medium))
+                        Text(report.balanceExplanation).font(.footnote).foregroundStyle(.secondary)
                     }
-                    .padding(.vertical, 4)
+                    LabeledContent("Bank amount") {
+                        MoneyText(amount: balance.providerBalance, size: 20, weight: .semibold)
+                    }
+                    LabeledContent("Reference date", value: balance.referenceDate?.description ?? "Not supplied")
+                        .accessibilityElement(children: .combine)
+                        .accessibilityIdentifier("balance.referenceDate")
+                    LabeledContent("Observed") {
+                        Text(balance.observedAt, format: .dateTime.day().month().year().hour().minute())
+                    }
+                    Text("Observation time records when evidence was received; it does not replace the bank's reference date.")
+                        .font(.footnote).foregroundStyle(.secondary)
                 }
 
-                Section("Comparison") {
-                    LabeledContent("Ledger") {
-                        MoneyText(amount: balance.ledgerBalance, size: 17, weight: .semibold)
-                    }
-                    LabeledContent("Bank") {
-                        MoneyText(amount: balance.providerBalance, size: 17, weight: .semibold)
+                Section("2. Compare the same date") {
+                    LabeledContent("Recorded ledger") {
+                        if let ledger = balance.ledgerBalance {
+                            MoneyText(amount: ledger, size: 20, weight: .semibold)
+                        } else { Text("Unavailable").foregroundStyle(.secondary) }
                     }
                     if let difference = balance.difference {
-                        LabeledContent("Difference") {
-                            MoneyText(
-                                amount: difference, size: 17, weight: .semibold,
-                                showsSign: true, colorBySign: true
-                            )
+                        LabeledContent("Bank minus ledger") {
+                            MoneyText(amount: difference, size: 17, weight: .semibold,
+                                      showsSign: true, colorBySign: false)
                         }
-                    } else {
-                        Text("The provider and ledger currencies differ, so no difference is invented.")
-                            .foregroundStyle(Theme.Role.caution)
+                        .accessibilityIdentifier("balance.diagnosticDifference")
+                    }
+                    if let report = balance.reconciliation {
+                        if let blocker = report.blocker {
+                            Text(blocker.message).foregroundStyle(Theme.Role.caution)
+                                .accessibilityIdentifier("balance.comparisonBlocker")
+                        }
+                        if let opening = report.openingAmount, let day = report.openingDay {
+                            LabeledContent("Opening balance (\(day.description))") {
+                                MoneyText(amount: opening, size: 15, weight: .medium)
+                            }
+                        }
+                        if let net = report.movementNet {
+                            LabeledContent("Net account movement") {
+                                MoneyText(amount: net, size: 15, weight: .medium, showsSign: true, colorBySign: false)
+                            }
+                            Text("\(report.movementIDs.count) recorded movements after the inclusive opening date and through the bank reference date. Transfers move cash without becoming spending.")
+                                .font(.footnote).foregroundStyle(.secondary)
+                            if report.pendingMovementCount > 0 {
+                                Text("Includes \(report.pendingMovementCount) recorded pending entries. These may not appear in booked bank cash yet.")
+                                    .font(.footnote).foregroundStyle(Theme.Role.caution)
+                            }
+                        }
+                        Text(report.comparisonCaution).font(.footnote).foregroundStyle(.secondary)
                     }
                 }
 
-                Section {
-                    if let referenceDate = balance.referenceDate {
-                        LabeledContent("Reference date") {
-                            Text(referenceDate.formatted(.dateTime.day().month(.wide).year()))
+                if let report = balance.reconciliation {
+                    Section {
+                        if !report.unreviewedObservationIDs.isEmpty {
+                            Text("\(report.unreviewedObservationIDs.count) booked bank items await review. Check for an existing record before creating another transaction.")
+                                .font(.footnote).foregroundStyle(.secondary)
+                            observationLinks(report.unreviewedObservationIDs, snapshot: snapshot)
                         }
+                        if !report.currentPendingObservationIDs.isEmpty {
+                            Text("Current pending bank evidence is shown separately. It is not added to the ledger or treated as an explanation of an older balance.")
+                                .font(.footnote).foregroundStyle(.secondary)
+                            observationLinks(report.currentPendingObservationIDs, snapshot: snapshot)
+                        }
+                        let movements = snapshot.activity.flatMap(\.rows).filter { report.movementIDs.contains($0.id) }
+                        ForEach(Array(movements.prefix(10))) { row in
+                            let day = snapshot.activity.first { $0.rows.contains { $0.id == row.id } }!.date
+                            NavigationLink {
+                                TransactionDetailView(row: row, date: day)
+                            } label: {
+                                VStack(alignment: .leading) {
+                                    Text(row.title)
+                                    Text(day.description).font(.caption).foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                        NavigationLink("All bank evidence") { BankInboxView() }
+                        NavigationLink("Account details") { AccountDetailView(accountID: report.accountID) }
+                    } header: { Text("3. Review the records") } footer: {
+                        Text("Review missing entries, duplicate records and date or account mistakes. Use a supported correction for a manual record, or review its bank/payment relationships first. Opening balances, provider evidence and accepted month verifications are never changed by this guide.")
                     }
-                    LabeledContent("Observed") {
-                        Text(balance.observedAt, format: .dateTime.day().month().hour().minute())
-                    }
-                } footer: {
-                    Text("Provider balance evidence never overwrites the local ledger. Resolve the difference by reviewing missing or incorrect economic entries.")
+                }
+            } else {
+                ContentUnavailableView("Balance evidence not available", systemImage: "questionmark.folder",
+                    description: Text("It may have changed since this review was opened."))
+            }
+        }
+        .accessibilityIdentifier("balance.reconciliationGuide")
+        .financeList()
+        .navigationTitle("Review balance")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private func observationLinks(_ ids: [String], snapshot: FinanceAppSnapshot) -> some View {
+        ForEach(Array(snapshot.syncedObservations.filter { ids.contains($0.id) }.prefix(10))) { item in
+            NavigationLink {
+                ObservationReviewView(observationID: item.id)
+            } label: {
+                VStack(alignment: .leading) {
+                    Text(item.displayMerchant)
+                    Text(item.status.displayName).font(.caption).foregroundStyle(.secondary)
                 }
             }
         }
-        .financeList()
-        .navigationTitle("Balance evidence")
-        .navigationBarTitleDisplayMode(.inline)
     }
 }
 

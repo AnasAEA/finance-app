@@ -257,7 +257,8 @@ struct ExternalEvidencePersistenceTests {
         let output = try #require(loaded)
         #expect(output.balances[0].balance.minorUnits == 10_000)
         #expect(output.providerBalanceSnapshots[0].amount.minorUnits == 9_900)
-        let mapper = DomainMapper().bankingSurface(document: output, transactionPresentation: [:])
+        let mapper = DomainMapper().bankingSurface(document: output, transactionPresentation: [:],
+            asOf: Day(year: 2026, month: 8, day: 23))
         #expect(mapper.balances[0].difference?.minorUnits == -100)
     }
 

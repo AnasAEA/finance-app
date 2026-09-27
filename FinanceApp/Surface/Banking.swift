@@ -310,11 +310,13 @@ struct ProviderBalanceStatus: Identifiable, Hashable, Sendable {
     let providerName: String
     let accountName: String
     let balanceType: String
-    let ledgerBalance: Amount
+    let ledgerBalance: Amount?
     let providerBalance: Amount
     let difference: Amount?
     let referenceDate: CalendarDay?
     let observedAt: Date
+
+    var reconciliation: BalanceReconciliation? = nil
 
     var differsFromLedger: Bool { difference?.isZero == false }
 }

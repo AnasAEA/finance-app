@@ -1316,7 +1316,7 @@ struct BankSyncTests {
         try await store.importBankEvidence(from: provider(remoteSnapshot()))
 
         let status = try #require(store.snapshot.providerBalanceStatuses.first { $0.accountName == "BNP" && $0.balanceType == "CLBD" })
-        #expect(status.ledgerBalance.minorUnits == 30_000)
+        #expect(status.ledgerBalance?.minorUnits == 30_000)
         #expect(status.providerBalance.minorUnits == 36_456)
         #expect(status.difference?.minorUnits == 6_456)  // 36_456 provider − 30_000 ledger
         #expect(status.differsFromLedger)

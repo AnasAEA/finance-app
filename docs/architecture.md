@@ -163,6 +163,18 @@ re-entry: delete-then-add would mint a new identifier and drop every relationshi
 the old one carried. See
 [the correction design](design/transaction-correction.md).
 
+## Guided balance review
+
+Bank balance evidence compares with the recorded ledger at its explicit reference
+civil day, not current cash. Mapped evidence remains visible when the ledger or
+comparison is unavailable, with a typed reason. The read-only guide distinguishes
+booked, expected and available amounts, shows the inclusive opening anchor and
+included account movements, and routes to existing transaction/evidence review.
+Checked arithmetic refuses overflow. Pending evidence is separate, observation
+time is never a financial-date fallback, and equal numbers do not verify the
+account. No difference creates income, spending, a balance adjustment or a month
+verification. See [the delivery plan](design/guided-balance-reconciliation.md).
+
 ## Currency at the entry boundary
 
 `EntryOptions` carries each account's currency exponent, and entry parses at
