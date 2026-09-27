@@ -1771,7 +1771,11 @@ struct DomainMapper {
         installmentPlanNames: [String: String],
         metadata: TransactionPresentation?
     ) -> ActivityRow {
-        let effect = Economics.effect(of: transaction, currency: .eur)
+        // Rows describe a record in its native currency. Daily net totals above
+        // remain in the home currency; a foreign row is never converted to EUR.
+        let nativeCurrency = transaction.legs.first(where: \.isOutflow)?.amount.currency
+            ?? transaction.legs.first!.amount.currency
+        let effect = Economics.effect(of: transaction, currency: nativeCurrency)
         let displayMoney: Money = {
             switch transaction.kind {
             case .expense: return effect.spending.negated
@@ -1808,7 +1812,7 @@ struct DomainMapper {
             }
         }()
         let owned: Amount? = transaction.kind == .passThrough && effect.passThroughNotMine.isPositive
-            ? Self.amount(Economics.ownedShare(of: transaction, currency: .eur))
+            ? Self.amount(Economics.ownedShare(of: transaction, currency: nativeCurrency))
             : nil
         let flow: ActivityFlow = {
             switch effect.role {

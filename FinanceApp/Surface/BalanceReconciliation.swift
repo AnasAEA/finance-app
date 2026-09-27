@@ -3,11 +3,12 @@ import Foundation
 /// A diagnostic review, never a reconciliation acceptance or balance adjustment.
 struct BalanceReconciliation: Hashable, Sendable {
     enum Blocker: String, Hashable, Sendable {
-        case missingDate, invalidDate, futureDate, identityMismatch, missingAnchor, beforeAnchor, currencyMismatch
+        case missingCurrentDay, missingDate, invalidDate, futureDate, identityMismatch, missingAnchor, beforeAnchor, currencyMismatch
         case inactiveBinding, unsupportedType, unsafeArithmetic
 
         var message: String {
             switch self {
+            case .missingCurrentDay: "The current civil day could not be read. Bank evidence remains visible, but its dated comparison is unavailable."
             case .missingDate: "The bank supplied no balance reference date. Observation time does not establish the date of the money."
             case .invalidDate: "The bank reference date is invalid. No dated comparison is available."
             case .identityMismatch: "The retained balance does not belong to this provider mapping. Review the bank connection before comparing it."

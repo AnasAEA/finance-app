@@ -111,7 +111,7 @@ struct BankInboxView: View {
                 } header: {
                     Text("Balance evidence")
                 } footer: {
-                    Text("Provider balances are compared with the ledger. A difference starts reconciliation; it never silently corrects the ledger.")
+                    Text("Bank balance evidence is a dated diagnostic. Review its meaning and recorded movements; a difference never silently changes or verifies the ledger.")
                 }
             }
 

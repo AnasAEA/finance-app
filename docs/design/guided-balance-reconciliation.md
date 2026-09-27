@@ -19,13 +19,15 @@ a guided review. It does not introduce a balance adjustment or acceptance stamp.
    checked minor-unit arithmetic for both replay and bank-minus-ledger difference.
 3. State why comparison is unavailable for absent dates/anchors, dates before the
    anchor or after today, inactive mappings, inconsistent provider identity,
-   currency/precision mismatch, unknown balance type or arithmetic range failure.
+   currency/precision mismatch, unknown balance type, unavailable current civil day
+   or arithmetic range failure.
    Never use observation time as a financial date, infer FX, clip overflow, or
    fabricate a zero balance.
 4. Explain the opening balance, net account movement and included record count.
    Offer routes to those recorded transactions, relevant unreviewed booked bank
    evidence, current pending evidence, all evidence and account details. Pending
-   evidence is separate and is not added to the ledger. Lists show up to ten
+   evidence is separate and is not added to the ledger. Activity records retain native currency and exponent; daily
+   home-currency totals do not convert foreign amounts. Lists show up to ten
    relevant rows; the complete evidence/account destinations remain available.
 5. Verify that reading and rendering cannot mutate anchors, provider evidence,
    audit history, checkpoint revisions or backup bytes. Test date boundaries,

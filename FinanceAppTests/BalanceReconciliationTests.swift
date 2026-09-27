@@ -54,6 +54,16 @@ struct BalanceReconciliationTests {
         #expect(result.reconciliation?.blocker == .missingAnchor)
     }
 
+    @Test func unknownCurrentDayCannotAdmitFutureDatedComparison() throws {
+        for reference in [day, Day(year: 2026, month: 9, day: 21)] {
+            let result = try #require(DomainMapper().bankingSurface(document: document(reference: reference),
+                transactionPresentation: [:]).balances.first)
+            #expect(result.ledgerBalance == nil && result.difference == nil)
+            #expect(result.reconciliation?.blocker == .missingCurrentDay)
+            #expect(result.providerBalance.minorUnits == 9000)
+        }
+    }
+
     @Test func observationTimestampNeverSubstitutesForMissingReferenceDate() throws {
         let result = try status(document(reference: nil))
         #expect(result.referenceDate == nil && result.ledgerBalance == nil && result.difference == nil)
@@ -158,6 +168,29 @@ struct BalanceReconciliationTests {
         #expect(result.reconciliation?.unreviewedObservationIDs == ["booked"])
         #expect(result.reconciliation?.currentPendingObservationIDs == ["pending"])
         #expect(result.ledgerBalance?.minorUnits == 10000 && result.reconciliation?.movementNet?.isZero == true)
+    }
+
+    @Test func foreignMovementDestinationKeepsNativeAmountAndPrecisionWithoutChangingEuroTotals() throws {
+        for currency in [Currency.mad, .kwd] {
+            for kind in [TransactionKind.expense, .income, .refund] {
+                var doc = document()
+                doc.accounts = [.init(id: account.id, name: "Synthetic foreign account", currency: currency, kind: .bank, supportedRails: [])]
+                doc.balances = [.init(accountID: account.id, balance: Money(minorUnits: 10000, currency: currency), asOf: anchorDay)]
+                doc.providerBalanceSnapshots = [.init(id: "synthetic-balance", bindingID: binding.id, provider: .bnp,
+                    balanceType: "CLBD", amount: Money(minorUnits: 9000, currency: currency), referenceDate: Day(year: 2026, month: 9, day: 10), observedAt: fixtureInstant(day))]
+                let units: Int64 = kind == .expense ? -1234 : 1234
+                doc.transactions = [.init(id: "synthetic-foreign", date: Day(year: 2026, month: 9, day: 2), kind: kind,
+                    legs: [.init(accountID: account.id, amount: Money(minorUnits: units, currency: currency))], factivity: .observed,
+                    lifecycle: .cleared, provenance: .init(source: "SYNTHETIC", evidenceGrade: .userConfirmed))]
+                let h = try EntryFixtures.Harness(doc)
+                let group = try #require(h.store.snapshot.activity.first)
+                let row = try #require(group.rows.first)
+                #expect(row.amount.minorUnits == units && row.amount.currencyCode == currency.code)
+                #expect(row.amount.fractionDigits == currency.minorUnitDigits)
+                #expect(group.net == .zeroEUR)
+                #expect(h.store.snapshot.providerBalanceStatuses.first?.reconciliation?.movementIDs == [row.id])
+            }
+        }
     }
 
     @Test func readingAndRenderingGuideDoesNotChangeLedgerEvidenceAuditOrBackup() throws {

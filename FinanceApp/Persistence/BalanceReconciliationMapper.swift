@@ -33,6 +33,7 @@ extension DomainMapper {
         else if provider.amount.currency != account.currency ||
             anchor.map({ $0.balance.currency != account.currency }) == true { blocker = .currencyMismatch }
         else if !["CLBD", "XPCD", "ITAV"].contains(provider.balanceType) { blocker = .unsupportedType }
+        else if asOf == nil { blocker = .missingCurrentDay }
         else if provider.referenceDate == nil { blocker = .missingDate }
         else if let day = provider.referenceDate, (try? PersistenceCoding.ordinal(day)) == nil { blocker = .invalidDate }
         else if let day = provider.referenceDate, asOf.map({ day > $0 }) == true { blocker = .futureDate }
