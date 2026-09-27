@@ -35,8 +35,13 @@ class CostTests(unittest.TestCase):
 
     def test_rejected_before_execution_is_not_paid_work(self):
         job = self.job()
-        job["steps"] = []
+        job.update(steps=[], status="completed", conclusion="failure", runner_id=0)
         self.assertEqual(cost.estimate(job)[2], 0)
+
+    def test_queued_hosted_job_without_steps_is_not_a_false_zero(self):
+        job = self.job() | {"steps": [], "status": "queued", "conclusion": None}
+        with self.assertRaises(ValueError):
+            cost.estimate(job)
 
     def test_unknown_or_running_hosted_job_cannot_be_reported_as_zero(self):
         for job in [self.job(labels=["macos-latest-xlarge"]), self.job() | {"completed_at": None}]:
