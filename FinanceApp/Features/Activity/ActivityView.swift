@@ -43,7 +43,8 @@ struct ActivityView: View {
                         }
                     }
                     .buttonStyle(.plain)
-                    .foregroundStyle(navigation.activitySection == section ? Theme.Role.accent : .secondary)
+                    .foregroundStyle(navigation.activitySection == section
+                                     ? Theme.Role.accent : Theme.Role.supporting)
                     .accessibilityIdentifier("activity.section.\(section.rawValue)")
                     .accessibilityLabel(section.title)
                     .accessibilityValue(section == .toReview && reviewCount > 0

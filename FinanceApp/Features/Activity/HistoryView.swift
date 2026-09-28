@@ -136,7 +136,8 @@ struct HistoryBrowserView: View {
                         ActivityMark(symbol: "clock", tint: Theme.Role.information)
                         VStack(alignment: .leading, spacing: 3) {
                             Text("Pending at bank").font(Theme.TypeStyle.action)
-                            Text("Awaiting completion").font(Theme.TypeStyle.metadata).foregroundStyle(.secondary)
+                            Text("Awaiting completion").font(Theme.TypeStyle.metadata)
+                                .foregroundStyle(Theme.Role.supporting)
                         }
                         Spacer(minLength: 8)
                         Text(pending.count.formatted()).font(Theme.TypeStyle.numeric)
@@ -170,8 +171,10 @@ struct HistoryBrowserView: View {
                     ForEach(group.rows) { item in historyLink(item, quickIDs: quickIDs) }
                 } header: {
                     ActivitySectionHeading(title: dateHeading(group.date), compact: true)
-                        .listRowInsets(EdgeInsets(top: 0, leading: Theme.Space.xl, bottom: 0, trailing: Theme.Space.xl))
+                        .listRowInsets(EdgeInsets(top: 0, leading: Theme.Space.xl,
+                                                 bottom: 0, trailing: Theme.Space.xl))
                 }
+                .headerProminence(.increased)
             }
 
             if nextOffset != nil {
@@ -581,7 +584,8 @@ private struct UnifiedHistoryRowView: View {
             VStack(alignment: .leading, spacing: 5) {
                 Text(title).font(Theme.TypeStyle.supporting.weight(.semibold))
                     .lineLimit(1).fixedSize(horizontal: true, vertical: false)
-                Text(subtitle).font(Theme.TypeStyle.metadata).foregroundStyle(.secondary)
+                Text(subtitle).font(Theme.TypeStyle.metadata)
+                    .foregroundStyle(Theme.Role.supporting)
                     .lineLimit(1)
             }
             Spacer(minLength: Theme.Space.sm)
@@ -590,7 +594,8 @@ private struct UnifiedHistoryRowView: View {
                 stateLabel.fixedSize(horizontal: true, vertical: false)
                 if let personal = personalAmount {
                     Text("\(personal.formatted()) yours")
-                        .font(Theme.TypeStyle.metadata).foregroundStyle(.secondary)
+                        .font(Theme.TypeStyle.metadata)
+                        .foregroundStyle(Theme.Role.supporting)
                 }
             }
         }
@@ -602,13 +607,15 @@ private struct UnifiedHistoryRowView: View {
             VStack(alignment: .leading, spacing: Theme.Space.xs) {
                 Text(title).font(Theme.TypeStyle.supporting.weight(.semibold))
                     .fixedSize(horizontal: false, vertical: true)
-                Text(subtitle).font(Theme.TypeStyle.metadata).foregroundStyle(.secondary)
+                Text(subtitle).font(Theme.TypeStyle.metadata)
+                    .foregroundStyle(Theme.Role.supporting)
                     .fixedSize(horizontal: false, vertical: true)
                 amountText
                 stateLabel
                 if let personal = personalAmount {
                     Text("\(personal.formatted()) yours")
-                        .font(Theme.TypeStyle.metadata).foregroundStyle(.secondary)
+                        .font(Theme.TypeStyle.metadata)
+                        .foregroundStyle(Theme.Role.supporting)
                 }
             }
         }
@@ -669,7 +676,7 @@ private struct UnifiedHistoryRowView: View {
         case let .live(row):
             ActivityStateLabel(title: row.row.trailingNote ?? "Recorded",
                                symbol: row.row.isPending ? "clock" : nil,
-                               tint: row.row.isPending ? Theme.Role.information : .secondary)
+                               tint: row.row.isPending ? Theme.Role.information : Theme.Role.supporting)
         case let .bank(row):
             if row.status == .pending {
                 ActivityStateLabel(title: "Pending", symbol: "clock", tint: Theme.Role.information)
