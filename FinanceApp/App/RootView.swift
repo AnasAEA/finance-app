@@ -151,6 +151,9 @@ enum VisualValidationScreen: String {
 final class AppNavigation {
     var selectedTab: AppTab
     var activitySection: ActivitySection = .transactions
+    /// Exact actionable bank observations named by an Insight. Nil restores
+    /// the normal complete review queue.
+    var activityReviewIDs: Set<String>?
     var homePath = NavigationPath()
     var planPath = NavigationPath()
     var insightsPath = NavigationPath()
@@ -188,6 +191,14 @@ final class AppNavigation {
     }
 
     func openToReview() {
+        activityReviewIDs = nil
+        activitySection = .toReview
+        selectedTab = .activity
+    }
+
+    func openReviewItems(_ ids: [String]) {
+        guard !ids.isEmpty else { return }
+        activityReviewIDs = Set(ids)
         activitySection = .toReview
         selectedTab = .activity
     }

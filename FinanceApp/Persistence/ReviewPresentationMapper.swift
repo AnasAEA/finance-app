@@ -23,6 +23,10 @@ enum ReviewPresentationMapper {
         /// more often than a name — "ob-rent", not "Rent". Nothing reaches the
         /// screen through it without landing in this map first.
         var riskTriggers: [String: String] = [:]
+        /// IDs present as actionable observation decisions in Activity now.
+        /// An engine finding can also name ledger or archive records, so it
+        /// must not route those into this queue by accident.
+        var actionableObservationIDs: Set<String> = []
     }
 
     static func present(
@@ -450,7 +454,25 @@ enum ReviewPresentationMapper {
         case .info: .info
         }
         let (title, detail) = copy(for: finding, labels: labels)
-        return ReviewFindingCard(id: finding.id, tone: tone, title: title, detail: detail)
+        return ReviewFindingCard(
+            id: finding.id, tone: tone, title: title, detail: detail,
+            destination: destination(
+                kind: finding.kind, ids: finding.ids,
+                actionableObservationIDs: labels.actionableObservationIDs
+            )
+        )
+    }
+
+    static func destination(
+        kind: ReviewFindingKind,
+        ids: [String],
+        actionableObservationIDs: Set<String>
+    ) -> ReviewFindingDestination? {
+        guard kind == .unresolvedEvidenceAffectingAccuracy,
+              !ids.isEmpty,
+              ids.allSatisfy(actionableObservationIDs.contains)
+        else { return nil }
+        return .reviewItems(ids)
     }
 
     /// Wording for each engine finding, built only from what that finding

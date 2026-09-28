@@ -9,6 +9,7 @@ struct ActivityView: View {
     @Environment(FinanceStore.self) private var store
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @State private var showsSearch = false
 
     var body: some View {
         @Bindable var navigation = navigation
@@ -22,6 +23,8 @@ struct ActivityView: View {
             tabLayout {
                 ForEach(ActivitySection.allCases) { section in
                     Button {
+                        showsSearch = false
+                        navigation.activityReviewIDs = nil
                         navigation.activitySection = section
                     } label: {
                         VStack(spacing: Theme.Space.sm) {
@@ -57,10 +60,12 @@ struct ActivityView: View {
 
             switch navigation.activitySection {
             case .transactions:
-                HistoryBrowserView(snapshot: presentation.snapshot)
+                HistoryBrowserView(snapshot: presentation.snapshot, showsSearch: $showsSearch)
             case .toReview:
                 NeedsReviewView.content(sections: sections, observations: presentation.snapshot.syncedObservations,
-                                        reduceMotion: reduceMotion)
+                                        reduceMotion: reduceMotion,
+                                        focusedIDs: navigation.activityReviewIDs,
+                                        clearFocus: { navigation.activityReviewIDs = nil })
             }
         }
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: navigation.activitySection)
@@ -68,6 +73,17 @@ struct ActivityView: View {
         .navigationTitle("Activity")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                if navigation.activitySection == .transactions {
+                    Button {
+                        showsSearch.toggle()
+                    } label: {
+                        Label(showsSearch ? "Close search" : "Search transactions",
+                              systemImage: showsSearch ? "xmark" : "magnifyingglass")
+                    }
+                    .accessibilityIdentifier("activity.search")
+                }
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     navigation.isAddingTransaction = true
@@ -132,12 +148,31 @@ struct NeedsReviewView: View {
     }
 
     static func content(sections: ActivityAttentionPresentation, observations: [SyncedObservationItem] = [],
-                        reduceMotion: Bool = true) -> some View {
+                        reduceMotion: Bool = true, focusedIDs: Set<String>? = nil,
+                        clearFocus: (() -> Void)? = nil) -> some View {
         let quickIDs = Set(observations.filter(\.canQuicklyCategorize).map(\.id))
-        let quick = sections.decisions.filter { quickIDs.contains($0.id) }
-        let decisions = sections.decisions.filter { !quickIDs.contains($0.id) }
+        let visibleDecisions = sections.decisions.filter { focusedIDs?.contains($0.id) ?? true }
+        let quick = visibleDecisions.filter { quickIDs.contains($0.id) }
+        let decisions = visibleDecisions.filter { !quickIDs.contains($0.id) }
+        // An Insight route names bank observations, never expected payments.
+        // A coincidentally equal opaque ID must not pull another kind of work
+        // into this exact-subject view.
+        let payments = focusedIDs == nil ? sections.paymentsToConfirm : []
         return List {
-            if !sections.decisions.isEmpty {
+            if focusedIDs != nil {
+                Section {
+                    VStack(alignment: .leading, spacing: Theme.Space.sm) {
+                        Text("From Insights")
+                            .font(Theme.TypeStyle.action)
+                        Text("Only the items behind that finding are shown.")
+                            .font(Theme.TypeStyle.metadata).foregroundStyle(.secondary)
+                        Button("Show all review items") { clearFocus?() }
+                            .font(Theme.TypeStyle.action)
+                            .accessibilityIdentifier("activity.review.show-all")
+                    }
+                }
+            }
+            if focusedIDs == nil && !sections.decisions.isEmpty {
                 Section {
                     NavigationLink { TrustedRulesView() } label: {
                         Label("Rules for repeat merchants", systemImage: "checkmark.shield")
@@ -162,7 +197,14 @@ struct NeedsReviewView: View {
                                            detail: "Choose a category and confirm the purchase.")
                 }
             }
-            if sections.isEmpty {
+            if focusedIDs != nil && quick.isEmpty && decisions.isEmpty && payments.isEmpty {
+                ContentUnavailableView(
+                    "These items no longer need review",
+                    systemImage: "checkmark.circle",
+                    description: Text("Show all review items to see what else needs a decision.")
+                )
+                .listRowBackground(Color.clear)
+            } else if focusedIDs == nil && sections.isEmpty {
                 ContentUnavailableView(
                     "Nothing needs review",
                     systemImage: "checkmark.circle",
@@ -187,9 +229,9 @@ struct NeedsReviewView: View {
                 }
             }
 
-            if !sections.paymentsToConfirm.isEmpty {
+            if !payments.isEmpty {
                 Section {
-                    ForEach(sections.paymentsToConfirm) { item in
+                    ForEach(payments) { item in
                         NavigationLink {
                             destination(item.destination)
                         } label: {
@@ -199,11 +241,11 @@ struct NeedsReviewView: View {
                         .accessibilityIdentifier(ActivityID.payment(item.id))
                     }
                 } header: {
-                    ActivitySectionHeading(title: "Payments to Confirm", count: sections.paymentsToConfirm.count)
+                    ActivitySectionHeading(title: "Payments to Confirm", count: payments.count)
                 }
             }
 
-            if !sections.pending.isEmpty {
+            if focusedIDs == nil && !sections.pending.isEmpty {
                 Section {
                     ForEach(sections.pending) { item in
                         PendingObservationRow(item: item)
@@ -216,7 +258,7 @@ struct NeedsReviewView: View {
                 }
             }
 
-            if !sections.limitations.isEmpty {
+            if focusedIDs == nil && !sections.limitations.isEmpty {
                 Section {
                     ForEach(sections.limitations) { item in
                         VStack(alignment: .leading, spacing: 5) {

@@ -847,6 +847,7 @@ final class FinanceStore: FinanceProviding {
         case "exactExisting": return hciExactExistingPreview()
         case "foreignExpense": return hciForeignExpensePreview()
         case "projectionFailure": return hciProjectionFailurePreview()
+        case "longRow": return hciLongRowPreview()
         default: return hciFullPreview()
         }
     }
@@ -856,6 +857,36 @@ final class FinanceStore: FinanceProviding {
         let store = bankSyncPreview()
         applyPlanningPreviewState(to: &store.document)
         store.document.note = "HCIPrototypeNeedsReviewQueue"
+        store.recalculate()
+        return store
+    }
+
+    /// Synthetic stress case for ordinary narrow-width transaction rows.
+    /// The amount and descriptor are deliberately wider than the default
+    /// preview. The descriptor and amount are invented for this Debug state.
+    private static func hciLongRowPreview() -> FinanceStore {
+        let store = hciFullPreview()
+        guard let index = store.document.externalObservations.firstIndex(where: {
+            $0.id == "obs-streaming"
+        }) else { return store }
+        let original = store.document.externalObservations[index]
+        let descriptor = "LONG STREAMING MEMBERSHIP AND FAMILY ADD-ONS"
+        store.document.externalObservations[index] = ExternalObservation(
+            id: original.id, bindingID: original.bindingID, provider: original.provider,
+            identity: original.identity, status: original.status,
+            creditDebitIndicator: original.creditDebitIndicator,
+            amount: Money(minorUnits: -12_345_678, currency: .eur),
+            bookingDate: original.bookingDate, transactionDate: original.transactionDate,
+            valueDate: original.valueDate,
+            derivedTransactionDate: original.derivedTransactionDate,
+            derivedDateProvenance: original.derivedDateProvenance,
+            rawMerchantText: descriptor, structuredMerchantName: nil,
+            merchantEmail: original.merchantEmail, remittance: descriptor,
+            bankTransactionCode: original.bankTransactionCode,
+            bankTransactionSubCode: original.bankTransactionSubCode,
+            eligibleForEconomicActual: original.providerEligibleForEconomicActual,
+            observedAt: original.observedAt
+        )
         store.recalculate()
         return store
     }
@@ -2947,7 +2978,10 @@ final class FinanceStore: FinanceProviding {
                     }
                     + document.debts.map { ($0.id, $0.name) },
                 uniquingKeysWith: { first, _ in first }
-            )
+            ),
+            actionableObservationIDs: Set(
+                currentPresentation().attention.activity.decisions.map(\.id)
+            ).subtracting(document.transactions.map(\.id))
         )
     }
 
