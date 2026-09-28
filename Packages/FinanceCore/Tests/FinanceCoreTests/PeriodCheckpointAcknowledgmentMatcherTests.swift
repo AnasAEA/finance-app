@@ -185,7 +185,7 @@ final class PeriodCheckpointAcknowledgmentMatcherTests: XCTestCase {
             ),
             budget: ReviewBudget(
                 periodEconomicSpending: zero, attributions: [], monthlyContexts: [],
-                uncategorized: zero, financingRepayments: zero, drivers: [],
+                uncategorized: zero, financingRepayments: zero, drivers: [], contributions: [],
                 ordinaryRecurring: zero, ordinaryVariable: zero, exceptional: zero,
                 unresolvedNature: zero
             ),

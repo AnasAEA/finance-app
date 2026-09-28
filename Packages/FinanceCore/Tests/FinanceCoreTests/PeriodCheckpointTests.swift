@@ -95,7 +95,7 @@ final class PeriodCheckpointTests: XCTestCase {
             budget: ReviewBudget(
                 periodEconomicSpending: zero, attributions: [], monthlyContexts: [],
                 uncategorized: uncategorized ?? zero, financingRepayments: zero,
-                drivers: [], ordinaryRecurring: zero, ordinaryVariable: zero,
+                drivers: [], contributions: [], ordinaryRecurring: zero, ordinaryVariable: zero,
                 exceptional: zero, unresolvedNature: zero
             ),
             income: ReviewIncome(
