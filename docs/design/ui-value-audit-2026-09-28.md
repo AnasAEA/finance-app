@@ -4,7 +4,7 @@
 
 The app is functionally much stronger than its daily experience. Keep the four financial questions (Home, Activity, Plan, Insights), but redesign **Activity as the place to find and resolve a record** and **Insights as the place to understand a period and act on the explanation**. Do not solve this by adding more cards, charts, or color. The current presentation spends too much space repeating caveats and too little connecting an answer to its evidence.
 
-This is an audit and implementation plan, not a claim that the redesign has shipped. Evidence is current `main` at `881b0a1`, source review, existing tests, and fresh synthetic iPhone simulator captures of Activity (light/dark) and Insights (`full` and `positive`) from a Debug build. No private document or physical-phone data was used. Prior [visual acceptance](visual-acceptance.md) acknowledged repeated Insights prose and crowded Activity chrome; the fresh review finds those issues material to product value.
+This is an audit and implementation plan, not a claim that the redesign has shipped. Evidence is current `main` at `881b0a1`, source review, existing tests, and fresh Debug-preview iPhone simulator captures of Activity (light/dark) and Insights (`full` and `positive`). The Debug preview is seeded from the local development fixture; screenshots remained local and were not committed. No live phone data was used. Prior [visual acceptance](visual-acceptance.md) acknowledged repeated Insights prose and crowded Activity chrome; the fresh review finds those issues material to product value.
 
 ## What a person should be able to do
 
