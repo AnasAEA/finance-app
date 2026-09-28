@@ -171,6 +171,29 @@ struct InsightsAdapterTests {
         ) == nil)
     }
 
+    @Test("The first Insights conclusion prioritizes unresolved evidence over a change")
+    func reviewFindingLeadsThePeriod() {
+        let change = ReviewFindingCard(
+            id: "change", tone: .info, role: .change,
+            title: "Spending changed", detail: "A period change.", destination: nil
+        )
+        let review = ReviewFindingCard(
+            id: "review", tone: .warning, role: .reviewItems,
+            title: "Items still to review", detail: "One item needs review.",
+            destination: .reviewItems(["bank-a"])
+        )
+        let zero = ReviewFigure.known(Amount(
+            minorUnits: 0, currencyCode: "EUR", fractionDigits: 2
+        ))
+        #expect(ReviewPresentationMapper.summary(
+            findings: [change, review], spending: zero, income: zero, complete: true
+        ) == review.title)
+        #expect(ReviewPresentationMapper.summary(
+            findings: [change, review], spending: .unavailable,
+            income: .unavailable, complete: false
+        ) == "Totals unavailable")
+    }
+
     @Test("An Insight focus can be cleared without leaving Activity")
     func reviewFocusNavigation() {
         let navigation = AppNavigation()
@@ -357,6 +380,9 @@ struct InsightsAdapterTests {
         #expect(review.coverage.explanation.contains("Current"))
         // Never the language of an empty period.
         #expect(!review.summary.contains("No spending"))
+        #expect(review.summary == "Totals unavailable")
+        #expect(review.findings.contains { $0.role == .coverage })
+        #expect(!review.remainingFindings.contains { $0.role == .coverage })
     }
 
     // MARK: - E. True zero

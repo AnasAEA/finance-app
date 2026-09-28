@@ -64,9 +64,9 @@ final class ProductionHCIUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["Home"].waitForExistence(timeout: 8))
         app.tabBars.buttons["tab.insights"].tap()
         XCTAssertTrue(app.navigationBars["Insights"].waitForExistence(timeout: 8))
-        // The default body states records quality in one line. The full Data
-        // Quality section is still reachable, behind Show Details.
-        XCTAssertTrue(app.staticTexts["Records"].waitForExistence(timeout: 5))
+        // The default body leads with one conclusion and its coverage state.
+        // Full Data Quality detail is still reachable behind Show Details.
+        XCTAssertTrue(app.staticTexts["insights.summary"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.staticTexts["Data quality"].exists)
         app.buttons["Show Details"].tap()
         reveal("Data quality")
