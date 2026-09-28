@@ -28,9 +28,10 @@ enum Theme {
         /// Every secondary line in the app: captions, labels, dates, accounts,
         /// states, section footers and quiet indicators. System secondary text
         /// blends to about 3.3:1 on the paper background; this stays at 6.2:1
-        /// or more on page, card and inset surfaces in both appearances and
-        /// darkens further under Increase Contrast. It is still visibly
-        /// quieter than primary text, so hierarchy survives.
+        /// or more on page, card and inset surfaces in both appearances. Like
+        /// every role, it darkens under Increase Contrast in light mode only;
+        /// the dark value is already 7.3:1 or more and is used as is. It is
+        /// still visibly quieter than primary text, so hierarchy survives.
         static let supporting = adaptive(0x4B5953, dark: 0xB9CBC2, contrast: 0x34433B)
         static let positive = adaptive(0x216650, dark: 0x8ACCB2, contrast: 0x124735)
         static let negative = adaptive(0xAD343B, dark: 0xFFABA9, contrast: 0x8A1623)
