@@ -81,14 +81,6 @@ private struct InsightsPeriodView: View {
             FinanceSection { header }
             verificationSection
             FinanceSection { summaryCard }
-            FinanceSection {
-                Text(review.recordsQualityStatement)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            } header: {
-                Text("Records")
-            }
             findingsSection
             if review.showsHistoricalHomePointer {
                 FinanceSection {
@@ -192,7 +184,7 @@ private struct InsightsPeriodView: View {
 
     // MARK: - Summary
 
-    /// The identifier sits on the sentence, not on the card.
+    /// The identifier sits on the conclusion, not on the card.
     ///
     /// SwiftUI hands an identifier applied to a plain container down to every
     /// accessibility element inside it, so `insights.summary` on this stack
@@ -201,22 +193,43 @@ private struct InsightsPeriodView: View {
     /// what a person hearing them wants, so the name belongs to the sentence
     /// that is actually the summary.
     private var summaryCard: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 12) {
             Text(review.summary)
                 .font(Theme.TypeStyle.screen)
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier(RouteID.insightsSummary)
-
-            // Reflows into a column at accessibility sizes so a figure is
-            // never truncated to fit beside another one.
-            ViewThatFits(in: .horizontal) {
-                HStack(alignment: .top, spacing: 24) {
-                    figure("Spent", review.spending)
-                    figure("Came in", review.income)
+            if review.coverage.quality == .complete {
+                Label("Date coverage complete", systemImage: "checkmark.circle")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                if let primary = review.primaryFinding {
+                    Text(primary.detail)
+                        .font(.subheadline)
+                        .fixedSize(horizontal: false, vertical: true)
+                    findingAction(primary)
                 }
-                VStack(alignment: .leading, spacing: 14) {
-                    figure("Spent", review.spending)
-                    figure("Came in", review.income)
+                // A true quiet zero is already stated above. Where bank
+                // evidence awaits review, "recorded" distinguishes these
+                // confirmed totals from an eventual reviewed result.
+                if review.spending.amount?.isZero != true
+                    || review.income.amount?.isZero != true {
+                    ViewThatFits(in: .horizontal) {
+                        HStack(alignment: .top, spacing: 24) {
+                            figure("Recorded spent", review.spending)
+                            figure("Recorded inflow", review.income)
+                        }
+                        VStack(alignment: .leading, spacing: 14) {
+                            figure("Recorded spent", review.spending)
+                            figure("Recorded inflow", review.income)
+                        }
+                    }
+                }
+            } else {
+                Text(review.recordsQualityStatement)
+                    .font(.subheadline)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let primary = review.primaryFinding {
+                    findingRow(primary)
                 }
             }
         }
@@ -259,6 +272,11 @@ private struct InsightsPeriodView: View {
                     .fixedSize(horizontal: false, vertical: true)
                 if !review.coverage.missingRanges.isEmpty {
                     Text(missingRangeText)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                if case let .unavailable(reason) = review.comparison {
+                    Text(reason)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -519,15 +537,11 @@ private struct InsightsPeriodView: View {
 
     @ViewBuilder
     private var findingsSection: some View {
-        if !review.findings.isEmpty {
+        if !review.remainingFindings.isEmpty {
             FinanceSection {
-                ForEach(review.findings) { finding in findingRow(finding) }
+                ForEach(review.remainingFindings) { finding in findingRow(finding) }
             } header: {
-                Text("What changed")
-            } footer: {
-                if case let .unavailable(reason) = review.comparison {
-                    Text(reason)
-                }
+                Text("Also in this period")
             }
         }
     }
@@ -595,17 +609,22 @@ private struct InsightsPeriodView: View {
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            if case let .reviewItems(ids)? = finding.destination {
-                Button {
-                    navigation.openReviewItems(ids)
-                } label: {
-                    ActionLabel(title: "Review these items")
-                }
-                .buttonStyle(FinancePressStyle())
-                .accessibilityIdentifier("insights.review-items")
-            }
+            findingAction(finding)
         }
         .padding(.vertical, 2)
+    }
+
+    @ViewBuilder
+    private func findingAction(_ finding: ReviewFindingCard) -> some View {
+        if case let .reviewItems(ids)? = finding.destination {
+            Button {
+                navigation.openReviewItems(ids)
+            } label: {
+                ActionLabel(title: "Review these items")
+            }
+            .buttonStyle(FinancePressStyle())
+            .accessibilityIdentifier("insights.review-items")
+        }
     }
 
     private func toneSymbol(_ tone: ReviewFindingTone) -> String {

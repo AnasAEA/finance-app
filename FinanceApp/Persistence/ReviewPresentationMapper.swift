@@ -43,6 +43,7 @@ enum ReviewPresentationMapper {
         let coverage = coverageSummary(result.coverage, live: live, labels: labels)
         let complete = result.coverage.status == .complete
         let (periodFindings, forwardFindings) = partition(result.findings, risk: result.risk)
+        let mappedFindings = periodFindings.map { finding($0, labels: labels) }
 
         // A figure is stated only when every day behind it is accounted for.
         // Otherwise the honest answer is that it is not known — never zero,
@@ -61,10 +62,8 @@ enum ReviewPresentationMapper {
             canGoBack: canGoBack,
             canGoForward: canGoForward,
             coverage: coverage,
-            summary: summary(
-                changeCount: periodFindings.count,
-                spending: spending, income: income, complete: complete
-            ),
+            summary: summary(findings: mappedFindings, spending: spending,
+                             income: income, complete: complete),
             spending: spending,
             income: income,
             notableChangeCount: periodFindings.count,
@@ -74,7 +73,7 @@ enum ReviewPresentationMapper {
             incomeBreakdown: incomeBreakdown(result.income, complete: complete),
             expectations: result.expectations.items.map(expectation),
             goals: goals(result.goals, labels: labels),
-            findings: periodFindings.map { finding($0, labels: labels) },
+            findings: mappedFindings,
             forwardFindings: forwardFindings.map { finding($0, labels: labels) },
             outlook: outlook(result.risk, labels: labels),
             comparison: comparison(result.comparison),
@@ -271,37 +270,28 @@ enum ReviewPresentationMapper {
 
     // MARK: - Summary sentence
 
-    /// Says only what the figures above already established. No adjectives the
-    /// engine did not earn, and no total when coverage cannot support one.
+    /// The first useful conclusion. The selected engine finding is rendered
+    /// with its explanation in the summary card, so its title is not repeated
+    /// in a second section. Figures carry their own values below this line.
     static func summary(
-        changeCount: Int,
+        findings: [ReviewFindingCard],
         spending: ReviewFigure,
         income: ReviewFigure,
         complete: Bool
     ) -> String {
-        guard complete else {
-            return "Some records for this period are missing, so totals are not shown."
+        guard complete else { return "Totals unavailable" }
+        if let first = findings.first(where: { $0.role == .reviewItems })
+            ?? findings.first(where: { $0.role == .change }) {
+            return first.title
         }
-        var sentence: String
         switch (spending.amount, income.amount) {
         case let (spent?, received?) where spent.isZero && received.isZero:
-            sentence = "No spending or income recorded."
-        case let (spent?, received?) where spent.isZero:
-            sentence = "No spending recorded, and \(received.formatted()) came in."
-        case let (spent?, received?) where received.isZero:
-            sentence = "You spent \(spent.formatted()); nothing came in."
-        case let (spent?, received?):
-            sentence = "You spent \(spent.formatted()) and \(received.formatted()) came in."
+            return "No spending or income recorded."
+        case (_?, _?):
+            return "Period totals"
         default:
-            sentence = "Totals are not available."
+            return "Totals unavailable"
         }
-        let count = changeCount
-        if count == 1 {
-            sentence += " One thing stands out."
-        } else if count > 1 {
-            sentence += " \(count) things stand out."
-        }
-        return sentence
     }
 
     // MARK: - Budget
@@ -455,12 +445,20 @@ enum ReviewPresentationMapper {
         }
         let (title, detail) = copy(for: finding, labels: labels)
         return ReviewFindingCard(
-            id: finding.id, tone: tone, title: title, detail: detail,
+            id: finding.id, tone: tone, role: role(for: finding),
+            title: title, detail: detail,
             destination: destination(
                 kind: finding.kind, ids: finding.ids,
                 actionableObservationIDs: labels.actionableObservationIDs
             )
         )
+    }
+
+    private static func role(for finding: ReviewFinding) -> ReviewFindingRole {
+        guard finding.kind == .unresolvedEvidenceAffectingAccuracy else { return .change }
+        return !finding.ids.isEmpty && finding.ids.allSatisfy {
+            ReviewCoverageReasonKind(rawValue: $0) != nil
+        } ? .coverage : .reviewItems
     }
 
     static func destination(
@@ -494,10 +492,7 @@ enum ReviewPresentationMapper {
             // The engine emits this for two different reasons; the ids say
             // which. Coverage reasons are a closed vocabulary, review items
             // are opaque ids.
-            let isCoverage = !finding.ids.isEmpty && finding.ids.allSatisfy {
-                ReviewCoverageReasonKind(rawValue: $0) != nil
-            }
-            if isCoverage {
+            if role(for: finding) == .coverage {
                 return ("Records are incomplete",
                         "Some days in this period have no confirmed records, "
                             + "so the totals above are not shown.")

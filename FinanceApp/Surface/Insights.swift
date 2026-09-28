@@ -182,12 +182,17 @@ enum ReviewFindingTone: String, Hashable, Sendable {
     case important, warning, info
 }
 
+enum ReviewFindingRole: Hashable, Sendable {
+    case coverage, reviewItems, change
+}
+
 /// One engine finding, rendered. The UI never decides that something is
 /// interesting: every card here corresponds to a `ReviewFinding` the engine
 /// returned, in the engine's own order.
 struct ReviewFindingCard: Identifiable, Hashable, Sendable {
     let id: String
     let tone: ReviewFindingTone
+    let role: ReviewFindingRole
     let title: String
     let detail: String
     let destination: ReviewFindingDestination?
@@ -285,6 +290,18 @@ struct InsightsPresentation: Hashable, Sendable {
     /// True when the period is covered well enough that an empty collection
     /// means "nothing happened" rather than "nothing is known".
     var zeroMeansZero: Bool { coverage.quality == .complete }
+
+    /// One engine finding leads the review. Coverage is stated separately;
+    /// an unresolved bank item takes priority over a numeric change because
+    /// it may change what can be counted after the user reviews it.
+    var primaryFinding: ReviewFindingCard? {
+        findings.first(where: { $0.role == .reviewItems })
+            ?? findings.first(where: { $0.role == .change })
+    }
+
+    var remainingFindings: [ReviewFindingCard] {
+        findings.filter { $0.role != .coverage && $0.id != primaryFinding?.id }
+    }
 }
 
 /// What the stored checkpoint history says about an ended period, as the
