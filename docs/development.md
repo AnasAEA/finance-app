@@ -56,7 +56,9 @@ arguments under **Edit Scheme → Run → Arguments Passed On Launch**:
 
 The `full` scenario includes pending movements, review items, and planning risk.
 Use `positive` for a funded Home example, `healthySync` for fresh bank status,
-and `emptyReview` for the completed review state. Tabs include `home`, `activity`,
+`emptyReview` for the completed review state, and `insights` for a period with
+categorized spending, a budget overrun and a comparison, so Insights' record
+links have something to open. Tabs include `home`, `activity`,
 `plan`, and `insights`. Remove the arguments to return to normal persistence.
 Preview arguments are Debug-only and are not an onboarding mechanism.
 
