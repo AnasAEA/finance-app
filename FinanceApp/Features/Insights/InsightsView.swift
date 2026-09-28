@@ -307,9 +307,7 @@ private struct InsightsPeriodView: View {
 
     private var missingRangeText: String {
         let ranges = review.coverage.missingRanges.map { range in
-            range.lowerBound == range.upperBound
-                ? dayText(range.lowerBound)
-                : "\(dayText(range.lowerBound))–\(dayText(range.upperBound))"
+            range.lowerBound.formatted(through: range.upperBound)
         }
         return "Missing: " + ranges.joined(separator: ", ")
     }
@@ -708,10 +706,9 @@ private struct InsightsPeriodView: View {
         }
     }
 
+    /// The same short day every other screen writes, in the person's locale.
     private func dayText(_ day: CalendarDay) -> String {
-        let months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
-                      "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-        return "\(day.day) \(months[max(0, min(11, day.month - 1))])"
+        day.formatted(.dateTime.day().month(.abbreviated))
     }
 }
 

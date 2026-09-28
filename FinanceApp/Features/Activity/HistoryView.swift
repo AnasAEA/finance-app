@@ -292,9 +292,7 @@ struct HistoryBrowserView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
                 if let range = query.dateRange {
-                    FilterChip(label: range.lowerBound == range.upperBound
-                               ? range.lowerBound.description
-                               : "\(range.lowerBound)–\(range.upperBound)")
+                    FilterChip(label: range.lowerBound.formatted(through: range.upperBound))
                 }
                 selectionChip("account", values: query.accountIDs, options: catalog.accounts)
                 selectionChip("category", values: query.categoryIDs, options: catalog.categories)

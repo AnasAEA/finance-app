@@ -428,7 +428,10 @@ struct InsightsAdapterTests {
         )
         // Both touched months appear, each against its own monthly ceiling.
         #expect(review.monthContexts.count == 2)
-        #expect(review.monthContexts.map(\.monthLabel) == ["August 2026", "September 2026"])
+        #expect(review.monthContexts.map(\.monthLabel) == [
+            CalendarDay.monthTitle(year: 2026, month: 8),
+            CalendarDay.monthTitle(year: 2026, month: 9),
+        ])
         for context in review.monthContexts {
             #expect(context.ceiling == Amount(minorUnits: 70_000, currencyCode: "EUR"))
         }

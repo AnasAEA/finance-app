@@ -1020,7 +1020,7 @@ struct ProviderBalanceDetailView: View {
                                 .accessibilityIdentifier("balance.comparisonBlocker")
                         }
                         if let opening = report.openingAmount, let day = report.openingDay {
-                            LabeledContent("Opening balance (\(day.description))") {
+                            LabeledContent("Opening balance (\(day.formatted(date: .abbreviated, time: .omitted)))") {
                                 MoneyText(amount: opening, size: 15, weight: .medium)
                             }
                         }
@@ -1059,7 +1059,8 @@ struct ProviderBalanceDetailView: View {
                             } label: {
                                 VStack(alignment: .leading) {
                                     Text(row.title)
-                                    Text(day.description).font(.caption).foregroundStyle(.secondary)
+                                    Text(day.formatted(date: .abbreviated, time: .omitted))
+                                        .font(.caption).foregroundStyle(.secondary)
                                 }
                             }
                         }

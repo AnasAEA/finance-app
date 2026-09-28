@@ -702,8 +702,8 @@ struct TransactionDetailView: View {
                             Text(correction.recordedAt.formatted(date: .abbreviated, time: .shortened))
                                 .font(.caption).foregroundStyle(.secondary)
                             Text(correction.reason)
-                            Text("Before: \(correction.before.amount.formatted()) · \(correction.before.day.description) · \(correction.beforeAccountName)")
-                            Text("After: \(correction.after.amount.formatted()) · \(correction.after.day.description) · \(correction.afterAccountName)")
+                            Text("Before: \(correction.before.amount.formatted()) · \(correction.before.day.formatted(date: .abbreviated, time: .omitted)) · \(correction.beforeAccountName)")
+                            Text("After: \(correction.after.amount.formatted()) · \(correction.after.day.formatted(date: .abbreviated, time: .omitted)) · \(correction.afterAccountName)")
                         }
                         .fixedSize(horizontal: false, vertical: true)
                     }
