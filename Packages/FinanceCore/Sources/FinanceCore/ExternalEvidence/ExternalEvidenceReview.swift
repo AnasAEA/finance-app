@@ -137,6 +137,23 @@ public struct ExternalObservationSuggestion: Identifiable, Hashable, Sendable {
 /// Import, validation and explicit resolution of provider evidence.
 public enum ExternalEvidenceReview {
 
+    /// Reusable read-only lookups for a batch of suggestion evaluations over
+    /// the same document. Build once while composing the bank presentation.
+    public struct SuggestionLookup: Sendable {
+        fileprivate let observationsByID: [String: ExternalObservation]
+        fileprivate let linksByTransactionID: [String: [ExternalEvidenceLink]]
+
+        public init(in document: FinanceDocument) {
+            observationsByID = Dictionary(
+                document.externalObservations.map { ($0.id, $0) },
+                uniquingKeysWith: { first, _ in first }
+            )
+            linksByTransactionID = Dictionary(
+                grouping: document.externalEvidenceLinks, by: \.transactionID
+            )
+        }
+    }
+
     /// Idempotently imports one local/provider feed. It never creates a
     /// transaction and never updates a ledger balance.
     public static func importBatch(_ batch: ExternalEvidenceBatch, into document: inout FinanceDocument) throws {
@@ -481,14 +498,27 @@ public enum ExternalEvidenceReview {
         in document: FinanceDocument,
         transactionLabels: [String: String] = [:]
     ) -> [ExternalObservationSuggestion] {
-        guard let observation = document.externalObservations.first(where: { $0.id == observationID }),
-              document.externalAccountBindings.contains(where: { $0.id == observation.bindingID })
+        guard let observation = document.externalObservations.first(where: { $0.id == observationID })
+        else { return [] }
+        return suggestions(for: observation, in: document, transactionLabels: transactionLabels)
+    }
+
+    /// Batch callers already hold the observation. Avoid searching the entire
+    /// provider history once for every row while building a presentation.
+    public static func suggestions(
+        for observation: ExternalObservation,
+        in document: FinanceDocument,
+        transactionLabels: [String: String] = [:],
+        lookup: SuggestionLookup? = nil
+    ) -> [ExternalObservationSuggestion] {
+        guard document.externalAccountBindings.contains(where: { $0.id == observation.bindingID })
         else { return [] }
 
         var result: [ExternalObservationSuggestion] = []
         let date = observation.suggestedEconomicDate
 
-        if observation.amount.isNegative, let date {
+        if observation.amount.isNegative, let date,
+           !document.planning.recurringObligations.isEmpty {
             let ledger = ReconciliationLedger(document.planning.settlements)
             // Advisory five-day expansion. A window that cannot be built
             // proposes no recurring-expectation suggestion; it never asserts
@@ -521,7 +551,8 @@ public enum ExternalEvidenceReview {
         }
 
         result.append(contentsOf: existingTransactionSuggestions(
-            for: observation, in: document, transactionLabels: transactionLabels
+            for: observation, in: document, transactionLabels: transactionLabels,
+            lookup: lookup
         ))
 
         for candidate in document.crossProviderCandidates where
@@ -611,27 +642,30 @@ public enum ExternalEvidenceReview {
     public static func existingTransactionSuggestions(
         for observation: ExternalObservation,
         in document: FinanceDocument,
-        transactionLabels: [String: String] = [:]
+        transactionLabels: [String: String] = [:],
+        lookup: SuggestionLookup? = nil
     ) -> [ExternalObservationSuggestion] {
         guard observation.eligibleForEconomicActual,
               let binding = document.externalAccountBindings.first(where: { $0.id == observation.bindingID })
         else { return [] }
         let date = observation.suggestedEconomicDate
         let merchant = matchingMerchant(observation)
-        let observations = Dictionary(document.externalObservations.map { ($0.id, $0) },
-                                      uniquingKeysWith: { first, _ in first })
-        let links = Dictionary(grouping: document.externalEvidenceLinks, by: \.transactionID)
         let paymentDate = observation.transactionDate ?? observation.derivedTransactionDate
-        let candidates = document.transactions.filter { transaction in
-            guard transaction.lifecycle != .reversed,
-                  transaction.legs.contains(where: {
+        let amountCandidates = document.transactions.filter { transaction in
+            transaction.lifecycle != .reversed
+                && transaction.legs.contains(where: {
                       $0.accountID == binding.localAccountID && $0.amount == observation.amount
-                  }) else { return false }
-            let attached = links[transaction.id] ?? []
+                  })
+        }
+        guard !amountCandidates.isEmpty else { return [] }
+        let prepared = lookup ?? SuggestionLookup(in: document)
+        let candidates = amountCandidates.filter { transaction in
+            let attached = prepared.linksByTransactionID[transaction.id] ?? []
             // A different durable payment on this provider binding already
             // owns the record. Repeated same-price purchases are distinct.
             if attached.contains(where: { link in
-                guard link.role == .accountMovement, let other = observations[link.observationID] else { return false }
+                guard link.role == .accountMovement,
+                      let other = prepared.observationsByID[link.observationID] else { return false }
                 return other.bindingID == observation.bindingID && other.identity == .durable
                     && observation.identity == .durable && other.id != observation.id
             }) { return false }
@@ -640,7 +674,7 @@ public enum ExternalEvidenceReview {
                   paymentDate == nil || paymentDate == transaction.date else { return false }
             let labelMatches = transactionLabels[transaction.id].map(normalizedMatchLabel) == merchant
             let evidenceMatches = attached.contains { link in
-                observations[link.observationID].flatMap(matchingMerchant) == merchant
+                prepared.observationsByID[link.observationID].flatMap(matchingMerchant) == merchant
             }
             return labelMatches || evidenceMatches
         }

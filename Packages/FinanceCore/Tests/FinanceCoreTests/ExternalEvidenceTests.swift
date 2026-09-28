@@ -331,6 +331,12 @@ final class ExternalEvidenceTests: XCTestCase {
         XCTAssertTrue(ExternalEvidenceReview.suggestions(for: bank.id, in: value).contains {
             $0.kind == .crossProviderEvidence && $0.relatedObservationID == wallet.id
         })
+        XCTAssertEqual(
+            ExternalEvidenceReview.suggestions(
+                for: bank, in: value, lookup: .init(in: value)
+            ),
+            ExternalEvidenceReview.suggestions(for: bank.id, in: value)
+        )
     }
 
     // 9

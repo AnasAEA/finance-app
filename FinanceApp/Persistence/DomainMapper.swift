@@ -161,6 +161,7 @@ struct DomainMapper {
         )
         let warnings = Set(ExternalEvidenceReview.providerStatusWarnings(in: document))
         let transactionLabels = transactionPresentation.compactMapValues(\.merchant)
+        let suggestionLookup = ExternalEvidenceReview.SuggestionLookup(in: document)
 
         let bindingSurface = document.externalAccountBindings.map { binding in
             ProviderAccountBinding(
@@ -179,8 +180,9 @@ struct DomainMapper {
                   state != .outsideSyncBoundary,
                   binding.isActive || state != .unreviewed else { return nil }
             let domainSuggestions = state == .unreviewed
-                ? ExternalEvidenceReview.suggestions(for: observation.id, in: document,
-                                                     transactionLabels: transactionLabels)
+                ? ExternalEvidenceReview.suggestions(for: observation, in: document,
+                                                     transactionLabels: transactionLabels,
+                                                     lookup: suggestionLookup)
                 : []
             var surfaceSuggestions = domainSuggestions.map(observationSuggestion)
             if state == .unreviewed {
