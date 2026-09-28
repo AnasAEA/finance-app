@@ -66,6 +66,20 @@ struct LocaleDateTextTests {
         #expect(CalendarDay.monthTitle(year: 2026, month: 9, locale: Self.frFR) == "septembre 2026")
     }
 
+    @Test("Both ends and the span are written in the locale's own calendar")
+    func calendarFollowsTheLocale() {
+        // Pinned to the locale, not the device: a Hebrew-calendar locale reads
+        // Hebrew dates end to end, and a Gregorian one stays Gregorian.
+        let hebrew = Locale(identifier: "en_US@calendar=hebrew")
+        let span = Self.day(9, 1).formatted(through: Self.day(9, 6), locale: hebrew)
+        let single = Self.day(9, 1).formatted(through: Self.day(9, 1), locale: hebrew)
+        #expect(span.contains("Elul") && !span.contains("Sep"), "\(span)")
+        #expect(single.contains("Elul") && !single.contains("Sep"), "\(single)")
+        #expect(CalendarDay.monthTitle(year: 2026, month: 9, locale: hebrew).contains("Elul"))
+        #expect(Self.day(9, 1).formatted(through: Self.day(9, 6), locale: Self.enUS)
+                == "Sep 1\(Self.thin)–\(Self.thin)6")
+    }
+
     @Test("A day with no instant prints structurally instead of becoming another day")
     func uninstantiableDays() {
         let text = Self.day(9, 1, year: 0).formatted(through: Self.day(9, 6, year: 0), locale: Self.enUS)
