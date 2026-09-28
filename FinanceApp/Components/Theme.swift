@@ -25,6 +25,10 @@ enum Theme {
     }
 
     enum Role {
+        /// Secondary facts that identify a record or an available action.
+        /// Unlike system secondary text, this stays readable on both the
+        /// page and inset surfaces in the two appearances.
+        static let supporting = adaptive(0x4B5953, dark: 0xB9CBC2, contrast: 0x34433B)
         static let positive = adaptive(0x216650, dark: 0x8ACCB2, contrast: 0x124735)
         static let negative = adaptive(0xAD343B, dark: 0xFFABA9, contrast: 0x8A1623)
         static let caution = adaptive(0x895414, dark: 0xEBC182, contrast: 0x673A04)

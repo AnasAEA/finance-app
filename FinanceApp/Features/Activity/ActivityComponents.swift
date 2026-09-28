@@ -24,7 +24,7 @@ struct ActivityMark: View {
 struct ActivityStateLabel: View {
     let title: String
     var symbol: String? = nil
-    var tint: Color = .secondary
+    var tint: Color = Theme.Role.supporting
 
     var body: some View {
         HStack(spacing: 4) {
@@ -47,15 +47,15 @@ struct ActivitySectionHeading: View {
         VStack(alignment: .leading, spacing: Theme.Space.xs) {
             HStack(alignment: .firstTextBaseline) {
                 Text(title).font(compact ? Theme.TypeStyle.metadata.weight(.semibold) : Theme.TypeStyle.section)
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(compact ? Theme.Role.supporting : Color.primary)
                 if let count {
                     Text(count.formatted()).font(Theme.TypeStyle.metadata.monospacedDigit())
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Role.supporting)
                 }
                 Spacer(minLength: 8)
             }
             if let detail {
-                Text(detail).font(Theme.TypeStyle.metadata).foregroundStyle(.secondary)
+                Text(detail).font(Theme.TypeStyle.metadata).foregroundStyle(Theme.Role.supporting)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
