@@ -36,16 +36,16 @@ struct MoneyText: View {
         guard colorBySign else { return .primary }
         if amount.isNegative { return Theme.Role.negative }
         if amount.isPositive { return Theme.Role.positive }
-        return .secondary
+        return Theme.Role.supporting
     }
 }
 
 /// The small uppercase caption that sits above a figure.
 struct Eyebrow: View {
     let text: String
-    var tint: Color = .secondary
+    var tint: Color = Theme.Role.supporting
 
-    init(_ text: String, tint: Color = .secondary) {
+    init(_ text: String, tint: Color = Theme.Role.supporting) {
         self.text = text
         self.tint = tint
     }
@@ -63,7 +63,7 @@ struct Eyebrow: View {
 struct Chip: View {
     let text: String
     var systemImage: String?
-    var tint: Color = .secondary
+    var tint: Color = Theme.Role.supporting
 
     var body: some View {
         HStack(spacing: 4) {
@@ -101,7 +101,7 @@ struct LedgerRow: View {
                     .font(emphasis ? .subheadline.weight(.semibold) : .subheadline)
                     .foregroundStyle(.primary)
                 if let caption {
-                    Text(caption).font(.caption).foregroundStyle(.secondary)
+                    Text(caption).font(.caption).foregroundStyle(Theme.Role.supporting)
                 }
             }
             if !dynamicTypeSize.isAccessibilitySize { Spacer(minLength: Theme.Space.md) }

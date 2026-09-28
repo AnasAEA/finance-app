@@ -124,7 +124,7 @@ struct BudgetEditView: View {
         Section {
             if budget.lines.isEmpty {
                 Text("No lines yet. Add one to claim part of the ceiling.")
-                    .font(.subheadline).foregroundStyle(.secondary)
+                    .font(.subheadline).foregroundStyle(Theme.Role.supporting)
             }
             ForEach(budget.lines) { line in
                 Button {
@@ -193,7 +193,7 @@ struct BudgetEditView: View {
             let unlinked = store.unlinkedCommitments()
             if unlinked.isEmpty {
                 Text("Every recurring charge belongs to a line.")
-                    .font(.subheadline).foregroundStyle(.secondary)
+                    .font(.subheadline).foregroundStyle(Theme.Role.supporting)
             }
             ForEach(unlinked) { commitment in
                 Picker(commitment.name, selection: budgetBinding(for: commitment.id)) {

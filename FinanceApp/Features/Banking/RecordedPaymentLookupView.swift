@@ -14,7 +14,7 @@ struct RecordedPaymentLookupView: View {
         return List {
             Section {
                 Text("Recorded payments with the same account and amount. Choose one only if it represents this exact payment.")
-                    .font(Theme.TypeStyle.supporting).foregroundStyle(.secondary)
+                    .font(Theme.TypeStyle.supporting).foregroundStyle(Theme.Role.supporting)
             }.listRowBackground(Theme.Surface.background)
             if rows.isEmpty {
                 ContentUnavailableView("No recorded payments", systemImage: "magnifyingglass",
@@ -28,8 +28,8 @@ struct RecordedPaymentLookupView: View {
                             Text(row.day.formatted(.dateTime.day().month(.abbreviated).year()))
                             Spacer()
                             MoneyText(amount: row.amount, size: 16, showsSign: true)
-                        }.font(Theme.TypeStyle.metadata).foregroundStyle(.secondary)
-                        Text(row.accountName).font(Theme.TypeStyle.metadata).foregroundStyle(.secondary)
+                        }.font(Theme.TypeStyle.metadata).foregroundStyle(Theme.Role.supporting)
+                        Text(row.accountName).font(Theme.TypeStyle.metadata).foregroundStyle(Theme.Role.supporting)
                     }
                     .padding(.vertical, Theme.Space.sm).contentShape(Rectangle())
                 }

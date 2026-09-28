@@ -70,7 +70,7 @@ struct GoalEditorView: View {
                     .accessibilityIdentifier("goal.status")
                     Text(draft.status.caption)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Role.supporting)
                 }
 
                 Section {
@@ -88,7 +88,7 @@ struct GoalEditorView: View {
                         if compatibleFunds.isEmpty {
                             Text("No compatible fund yet. Create a sinking fund first — one is not created automatically.")
                                 .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(Theme.Role.supporting)
                             Button("Create a fund") { isCreatingFund = true }
                         } else {
                             Picker("Sinking fund", selection: $draft.sinkingFundID) {
@@ -105,7 +105,7 @@ struct GoalEditorView: View {
                         if snapshot.instalments.isEmpty {
                             Text("No financing plan is on file. This stays a plan; it does not create repayments.")
                                 .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(Theme.Role.supporting)
                         } else {
                             Picker("Existing plan", selection: $draft.installmentPlanID) {
                                 Text("None yet").tag(Optional<String>.none)

@@ -108,7 +108,7 @@ struct ExpectedPaymentRow: View {
                 }
             }
             .font(.caption)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(Theme.Role.supporting)
         }
     }
 
@@ -150,7 +150,7 @@ struct StatusChip: View {
         switch tone {
         case .positive: Theme.Role.positive
         case .caution: Theme.Role.caution
-        case .quiet: .secondary
+        case .quiet: Theme.Role.supporting
         }
     }
 
@@ -353,7 +353,7 @@ struct MatchPickerView: View {
                 if !matches.isEmpty {
                     Text(explanation)
                         .font(.footnote)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Role.supporting)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, Theme.Metric.screenPadding)
                         .padding(.bottom, 8)
@@ -422,12 +422,12 @@ struct MatchRow: View {
                 StatusChip(text: match.strength.label, tone: chipTone)
             }
             .font(.caption)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(Theme.Role.supporting)
 
             ForEach(match.reasons, id: \.self) { reason in
                 Label(reason, systemImage: "checkmark")
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Role.supporting)
                     .labelStyle(.titleAndIcon)
                     .fixedSize(horizontal: false, vertical: true)
             }

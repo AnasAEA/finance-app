@@ -33,12 +33,12 @@ struct ExpenseCategorizationView: View {
                 FinanceSection {
                     Text(ActivityTextPresentation.readableTitle(draft.label)).font(Theme.TypeStyle.screen)
                     MoneyText(amount: item.amount, size: 36, showsSign: true)
-                    Text(item.providerAccountName).font(Theme.TypeStyle.metadata).foregroundStyle(.secondary)
+                    Text(item.providerAccountName).font(Theme.TypeStyle.metadata).foregroundStyle(Theme.Role.supporting)
                 }
                 if item.requiresChargedAmount, let code = item.accountCurrencyCode {
                     FinanceSection("Amount charged in \(code)") {
                         Text("\(item.providerName) reported the purchase in \(item.amount.currencyCode). Enter the exact amount charged to \(item.providerAccountName) in \(code), including any conversion fee. Check your statement; no exchange rate is estimated.")
-                            .font(Theme.TypeStyle.supporting).foregroundStyle(.secondary)
+                            .font(Theme.TypeStyle.supporting).foregroundStyle(Theme.Role.supporting)
                         TextField("Amount in \(code)", text: $chargedAmountText)
                             .keyboardType(.decimalPad)
                             .accessibilityIdentifier("review.expense.chargedAmount")

@@ -22,7 +22,7 @@ struct FundingNeededView: View {
                         }
                         Text(funding.day.formatted(.dateTime.day().month(.wide).year()))
                             .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Theme.Role.supporting)
                             .accessibilityIdentifier(FundingID.date)
                     }
                     .padding(.vertical, 4)
@@ -40,7 +40,7 @@ struct FundingNeededView: View {
                             .accessibilityIdentifier(FundingID.paymentAccount)
                     case let .paymentAccounts(names):
                         VStack(alignment: .leading, spacing: 5) {
-                            Text("PAYMENT ACCOUNTS").font(.eyebrow).foregroundStyle(.secondary)
+                            Text("PAYMENT ACCOUNTS").font(.eyebrow).foregroundStyle(Theme.Role.supporting)
                             Text(names.isEmpty ? "Eligible payment accounts" : names.joined(separator: ", "))
                                 .fixedSize(horizontal: false, vertical: true)
                         }
@@ -64,7 +64,7 @@ struct FundingNeededView: View {
                                     Text(event.label)
                                     Text(event.date.formatted(.dateTime.day().month(.abbreviated)))
                                         .font(.caption)
-                                        .foregroundStyle(.secondary)
+                                        .foregroundStyle(Theme.Role.supporting)
                                 }
                             }
                         }
@@ -74,7 +74,7 @@ struct FundingNeededView: View {
                 FinanceSection {
                     Text(funding.footer)
                         .font(.footnote)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Role.supporting)
                         .fixedSize(horizontal: false, vertical: true)
                         .accessibilityIdentifier(FundingID.explanation)
                 }
@@ -125,7 +125,7 @@ struct FundingNeededView: View {
         VStack(alignment: .leading, spacing: 3) {
             Text(label.uppercased())
                 .font(.eyebrow)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Role.supporting)
                 .fixedSize(horizontal: false, vertical: true)
             MoneyText(amount: amount, size: 20, weight: .semibold)
         }

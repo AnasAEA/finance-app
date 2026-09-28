@@ -191,7 +191,7 @@ struct ExportBlockedStep: View {
                     if let suggestion = problem.recoverySuggestion {
                         Text(suggestion)
                             .font(.footnote)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Theme.Role.supporting)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
@@ -238,7 +238,7 @@ struct ExportReadyStep: View {
                         .fixedSize(horizontal: false, vertical: true)
                     Text("\(summary.fileSizeLabel)\(encryptionEnabled ? " before encryption" : "") · schema \(summary.schemaVersion)")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Role.supporting)
                 }
                 .padding(.vertical, 2)
                 .accessibilityElement(children: .combine)
@@ -256,7 +256,7 @@ struct ExportReadyStep: View {
                     SecureField("Confirm password", text: $passwordConfirmation)
                         .textContentType(.newPassword).accessibilityIdentifier("backup.password-confirmation")
                     Text("Keep this password somewhere safe. It is not stored in the app and cannot be recovered.")
-                        .font(.footnote).foregroundStyle(.secondary)
+                        .font(.footnote).foregroundStyle(Theme.Role.supporting)
                 }
                 if protecting { ProgressView("Protecting and checking backup") }
                 if let protectionError { Text(protectionError).foregroundStyle(.red) }
@@ -294,7 +294,7 @@ struct ExportReadyStep: View {
                 ForEach(summary.exclusions, id: \.self) { line in
                     Text(line)
                         .font(.footnote)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Role.supporting)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             } header: {
@@ -338,7 +338,7 @@ struct ExportSavedStep: View {
                         .font(.title3.bold())
                     Text(fileName)
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Role.supporting)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .financeCard()
@@ -347,7 +347,7 @@ struct ExportSavedStep: View {
 
                 Text("Nothing on this device changed. Take another whenever the plan moves — a backup is only as current as the day it was written.")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Role.supporting)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 4)
 
@@ -376,7 +376,7 @@ struct ExportCountRow: View {
                 if let caption {
                     Text(caption)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Role.supporting)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }

@@ -237,7 +237,7 @@ private struct AddTransactionContent: View {
                 Spacer(minLength: 0)
                 Text(currencySymbol)
                     .font(.money(34, weight: .semibold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Role.supporting)
                 TextField(amountPlaceholder, text: $amountText)
                     .font(.money(46, weight: .bold))
                     .keyboardType(.decimalPad)
@@ -390,7 +390,7 @@ private struct AddTransactionContent: View {
             if let selected {
                 Text(selected.secondaryLabel)
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Role.supporting)
             }
         }
         .multilineTextAlignment(.trailing)
@@ -429,7 +429,7 @@ private struct AddTransactionContent: View {
                         Text(shareProblem).font(.caption).foregroundStyle(Theme.Role.negative)
                     } else {
                         Text("Only your share counts as income. The rest passes through.")
-                            .font(.caption).foregroundStyle(.secondary)
+                            .font(.caption).foregroundStyle(Theme.Role.supporting)
                     }
                 }
             }

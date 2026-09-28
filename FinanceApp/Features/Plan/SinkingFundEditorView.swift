@@ -63,12 +63,12 @@ struct SinkingFundEditorView: View {
                     }
                     Text(draft.custody.caption)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Role.supporting)
                     if draft.custody == .dedicated {
                         if compatibleAccounts.isEmpty {
                             Text("No account in this currency. Dedicated custody needs an existing local account.")
                                 .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(Theme.Role.supporting)
                         } else {
                             Picker("Account", selection: $draft.dedicatedAccountID) {
                                 Text("Choose an account").tag(Optional<String>.none)

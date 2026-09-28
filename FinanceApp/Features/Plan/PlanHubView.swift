@@ -62,7 +62,7 @@ struct PlanView: View {
                 VStack(alignment: .leading, spacing: Theme.Space.xs) {
                     ActionLabel(title: "Can I afford this?")
                     Text("Try a purchase against your plan.")
-                        .font(Theme.TypeStyle.supporting).foregroundStyle(.secondary)
+                        .font(Theme.TypeStyle.supporting).foregroundStyle(Theme.Role.supporting)
                 }
                 .padding(.top, Theme.Space.sm)
                 .overlay(alignment: .top) { Rectangle().fill(Theme.Surface.separator).frame(height: 1) }
@@ -80,7 +80,7 @@ struct PlanView: View {
                 VStack(alignment: .leading, spacing: Theme.Space.sm) {
                     ActionLabel(title: "Upcoming")
                     Text(Self.upcomingDetail(snapshot))
-                        .font(Theme.TypeStyle.supporting).foregroundStyle(.secondary)
+                        .font(Theme.TypeStyle.supporting).foregroundStyle(Theme.Role.supporting)
                     if let value = Self.matchingValue(snapshot) {
                         Chip(text: value, tint: Theme.Role.information)
                     }
@@ -106,7 +106,7 @@ struct PlanView: View {
                     }
                 }
                 Text(Self.goalsDetail(snapshot))
-                    .font(Theme.TypeStyle.supporting).foregroundStyle(.secondary)
+                    .font(Theme.TypeStyle.supporting).foregroundStyle(Theme.Role.supporting)
             }
         }
         .buttonStyle(FinancePressStyle())
@@ -127,7 +127,7 @@ struct PlanView: View {
                     Text("Not set").font(Theme.TypeStyle.numeric)
                 }
                 Text(budget ? Self.budgetDetail(snapshot) : Self.reserveDetail(snapshot))
-                    .font(Theme.TypeStyle.metadata).foregroundStyle(.secondary)
+                    .font(Theme.TypeStyle.metadata).foregroundStyle(Theme.Role.supporting)
                     .fixedSize(horizontal: false, vertical: true)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -174,7 +174,7 @@ struct PlanView: View {
                 Text(status.headline).font(Theme.TypeStyle.editorial)
                     .fixedSize(horizontal: false, vertical: true)
                 if let detail = status.detail {
-                    Text(detail).font(Theme.TypeStyle.supporting).foregroundStyle(.secondary)
+                    Text(detail).font(Theme.TypeStyle.supporting).foregroundStyle(Theme.Role.supporting)
                 }
                 if let actionTitle { ActionLabel(title: actionTitle) }
             }
@@ -251,7 +251,7 @@ struct UpcomingView: View {
             FinanceSection("Coming up") {
                 if snapshot.upcomingEvents.isEmpty {
                     Text("Nothing scheduled.")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Role.supporting)
                 } else {
                     ForEach(snapshot.upcomingEvents.prefix(20)) { event in
                         // The status sends a person here to find out which
@@ -331,7 +331,7 @@ struct UpcomingView: View {
             ActionLabel(title: title)
             Text(detail)
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Role.supporting)
         }
         .padding(.vertical, 2)
     }
@@ -364,7 +364,7 @@ struct GoalsAndSetAsideView: View {
             FinanceSection {
                 if snapshot.plannedPurchases.isEmpty {
                     Text(PlanningCopy.emptyGoals)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Role.supporting)
                 } else {
                     ForEach(snapshot.plannedPurchases) { goal in
                         NavigationLink {
@@ -388,7 +388,7 @@ struct GoalsAndSetAsideView: View {
             FinanceSection {
                 if standaloneFunds.isEmpty {
                     Text("Set-aside not tied to a goal appears here.")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Role.supporting)
                 } else {
                     ForEach(standaloneFunds) { fund in
                         NavigationLink {

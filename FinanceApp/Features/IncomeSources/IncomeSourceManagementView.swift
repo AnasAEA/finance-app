@@ -88,7 +88,7 @@ private struct IncomeSourceManagementRow: View {
                     }
                 }
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Role.supporting)
             } else {
                 HStack(spacing: 6) {
                     Text(source.certainty.displayName)
@@ -98,7 +98,7 @@ private struct IncomeSourceManagementRow: View {
                     }
                 }
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Role.supporting)
             }
         }
         .padding(.vertical, 3)

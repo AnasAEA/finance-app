@@ -26,7 +26,7 @@ struct BankHistoryDetailView: View {
                     LabeledContent("Last received", value: row.observedAt.formatted(.dateTime.day().month(.abbreviated).hour().minute()))
                 }
                 FinanceSection("Recorded meaning") {
-                    Text(meaning(row)).foregroundStyle(.secondary)
+                    Text(meaning(row)).foregroundStyle(Theme.Role.supporting)
                     if snapshot.syncedObservations.contains(where: { $0.id == row.id }) {
                         NavigationLink {
                             ObservationReviewView(observationID: row.id)

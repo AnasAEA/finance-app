@@ -166,7 +166,7 @@ struct NeedsReviewView: View {
                         Text("From Insights")
                             .font(Theme.TypeStyle.action)
                         Text("Only the items behind that finding are shown.")
-                            .font(Theme.TypeStyle.metadata).foregroundStyle(.secondary)
+                            .font(Theme.TypeStyle.metadata).foregroundStyle(Theme.Role.supporting)
                         Button("Show all review items") { clearFocus?() }
                             .font(Theme.TypeStyle.action)
                             .accessibilityIdentifier("activity.review.show-all")
@@ -174,14 +174,25 @@ struct NeedsReviewView: View {
                 }
             }
             if focusedIDs == nil && !sections.decisions.isEmpty {
+                // The explanation belongs to the row it explains. As a plain
+                // list footer it rendered as a white band of body text that
+                // read like a separate, unrelated notice.
                 Section {
                     NavigationLink { TrustedRulesView() } label: {
-                        Label("Rules for repeat merchants", systemImage: "checkmark.shield")
-                            .font(Theme.TypeStyle.action).foregroundStyle(Theme.Role.accent)
+                        Label {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("Rules for repeat merchants")
+                                    .font(Theme.TypeStyle.action).foregroundStyle(Theme.Role.accent)
+                                Text("Approve a merchant rule once to reduce future reviews.")
+                                    .font(Theme.TypeStyle.metadata).foregroundStyle(Theme.Role.supporting)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        } icon: {
+                            Image(systemName: "checkmark.shield").foregroundStyle(Theme.Role.accent)
+                        }
+                        .accessibilityElement(children: .combine)
                     }
                     .listRowBackground(Theme.Surface.background)
-                } footer: {
-                    Text("Approve a merchant rule once to reduce future reviews.")
                 }
             }
             if !quick.isEmpty {
@@ -272,7 +283,7 @@ struct NeedsReviewView: View {
                             }
                             Text(item.detail)
                                 .font(.footnote)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(Theme.Role.supporting)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                         .padding(.vertical, 3)
@@ -317,7 +328,7 @@ struct NeedsReviewView: View {
                     MoneyText(amount: item.amount, size: 18, weight: .semibold, showsSign: true)
                 }
             }
-            Text(item.subtitle).font(Theme.TypeStyle.metadata).foregroundStyle(.secondary)
+            Text(item.subtitle).font(Theme.TypeStyle.metadata).foregroundStyle(Theme.Role.supporting)
                 .fixedSize(horizontal: false, vertical: true)
             if let decision = item.decision {
                 Label(decision, systemImage: "arrow.turn.down.right")
@@ -375,7 +386,7 @@ private struct PendingObservationRow: View {
                 HStack(alignment: .top, spacing: 12) {
                     Image(systemName: "clock")
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Role.supporting)
                         .frame(width: 24, height: 24)
                         .accessibilityHidden(true)
                     labels
@@ -396,12 +407,12 @@ private struct PendingObservationRow: View {
                 .fixedSize(horizontal: false, vertical: true)
             Text(item.subtitle)
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Role.supporting)
                 .fixedSize(horizontal: false, vertical: true)
             if let day = item.day {
                 Text(day.formatted(.dateTime.day().month().year()))
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Role.supporting)
             }
         }
     }
@@ -420,7 +431,7 @@ private struct PendingObservationRow: View {
             )
             Text(PendingObservationPresentation.rowStatus)
                 .font(.caption2)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Role.supporting)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -488,10 +499,10 @@ struct TransactionRow: View {
             Text(row.title)
                 .font(.body)
                 .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 1)
-                .strikethrough(row.isReversed, color: .secondary)
+                .strikethrough(row.isReversed, color: Theme.Role.supporting)
             Text(row.subtitle)
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Role.supporting)
                 .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 1)
             if let owned = row.ownedPortion {
                 Text("\(owned.formatted()) yours · the rest passes through")
@@ -502,7 +513,7 @@ struct TransactionRow: View {
             if isMatchedToRecurring {
                 Text("Matched to recurring payment")
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Role.supporting)
                     .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
             }
         }
@@ -516,7 +527,7 @@ struct TransactionRow: View {
             if let note = row.trailingNote {
                 Text(note)
                     .font(.caption2)
-                    .foregroundStyle(row.isReversed ? Theme.Role.caution : .secondary)
+                    .foregroundStyle(row.isReversed ? Theme.Role.caution : Theme.Role.supporting)
             }
         }
     }
@@ -588,7 +599,7 @@ struct TransactionDetailView: View {
                     MoneyText(amount: row.amount, size: 44, weight: .medium, showsSign: true)
                         .accessibilityIdentifier("transaction.amount")
                     Text(liveDate.formatted(date: .long, time: .omitted))
-                        .font(Theme.TypeStyle.supporting).foregroundStyle(.secondary)
+                        .font(Theme.TypeStyle.supporting).foregroundStyle(Theme.Role.supporting)
                 }
                 .padding(.vertical, 6)
             }
@@ -682,7 +693,7 @@ struct TransactionDetailView: View {
             if (try? store.correctionDraft(forTransaction: row.id)) != nil {
                 FinanceSection {
                     if let blocker = store.financialCorrectionBlocker(forTransaction: row.id) {
-                        Text(blocker.message).font(.footnote).foregroundStyle(.secondary)
+                        Text(blocker.message).font(.footnote).foregroundStyle(Theme.Role.supporting)
                     } else {
                         Button("Correct amount, date or account") {
                             do { financialDraft = try store.financialCorrectionDraft(forTransaction: row.id) }
@@ -700,7 +711,7 @@ struct TransactionDetailView: View {
                     ForEach(financialHistory.reversed()) { correction in
                         VStack(alignment: .leading, spacing: 6) {
                             Text(correction.recordedAt.formatted(date: .abbreviated, time: .shortened))
-                                .font(.caption).foregroundStyle(.secondary)
+                                .font(.caption).foregroundStyle(Theme.Role.supporting)
                             Text(correction.reason)
                             Text("Before: \(correction.before.amount.formatted()) · \(correction.before.day.formatted(date: .abbreviated, time: .omitted)) · \(correction.beforeAccountName)")
                             Text("After: \(correction.after.amount.formatted()) · \(correction.after.day.formatted(date: .abbreviated, time: .omitted)) · \(correction.afterAccountName)")
@@ -717,7 +728,7 @@ struct TransactionDetailView: View {
                     ForEach(history.reversed()) { correction in
                         VStack(alignment: .leading, spacing: 6) {
                             Text(correction.recordedAt.formatted(date: .abbreviated, time: .shortened))
-                                .font(.caption).foregroundStyle(.secondary)
+                                .font(.caption).foregroundStyle(Theme.Role.supporting)
                             if correction.before.merchant != correction.after.merchant {
                                 Text("Merchant: \(correction.before.merchant ?? "No custom name") → \(correction.after.merchant ?? "No custom name")")
                             }
@@ -834,7 +845,7 @@ struct TransactionDetailView: View {
                             }
                             Text(item.detailLine)
                                 .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(Theme.Role.supporting)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                         .padding(.vertical, Theme.Space.sm)
@@ -890,7 +901,7 @@ struct TransactionDetailView: View {
                     if let suggestion = blocker.recoverySuggestion {
                         Text(suggestion)
                             .font(.footnote)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Theme.Role.supporting)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }

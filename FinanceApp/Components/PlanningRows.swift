@@ -23,11 +23,11 @@ struct HoldingRow: View {
                     // not money that can pay a French direct debit.
                     Text("Carried at \(carriedAt.formatted()) · not spendable here")
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Role.supporting)
                 } else if !holding.isSpendableHere {
                     Text("Not spendable here")
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Role.supporting)
                 }
             }
 
@@ -69,7 +69,7 @@ struct UpcomingRow: View {
             if dynamicTypeSize.isAccessibilitySize {
                 Text(event.date.formatted(.dateTime.day().month(.wide)))
                     .font(Theme.TypeStyle.metadata)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Role.supporting)
                     .fixedSize(horizontal: false, vertical: true)
             } else {
                 VStack(spacing: 0) {
@@ -77,7 +77,7 @@ struct UpcomingRow: View {
                         .font(.money(17, weight: .semibold))
                     Text(event.date.formatted(.dateTime.month(.abbreviated)))
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Role.supporting)
                         .textCase(.uppercase)
                         .fixedSize()
                 }
@@ -102,7 +102,7 @@ struct UpcomingRow: View {
                     }
                     if event.hasApproximateDate {
                         Text("around this date")
-                            .font(.caption2).foregroundStyle(.secondary)
+                            .font(.caption2).foregroundStyle(Theme.Role.supporting)
                     }
                     if marksPlanRisk {
                         Chip(text: "Where the plan falls short", tint: Theme.Role.caution)
