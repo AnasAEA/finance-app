@@ -150,6 +150,38 @@ struct InsightsAdapterTests {
 
     // MARK: - Period boundaries
 
+    @Test("An unresolved finding links only when every subject is an actionable bank decision")
+    func actionableFindingDestination() {
+        let known: Set<String> = ["bank-a", "bank-b"]
+        #expect(ReviewPresentationMapper.destination(
+            kind: .unresolvedEvidenceAffectingAccuracy,
+            ids: ["bank-a", "bank-b"], actionableObservationIDs: known
+        ) == .reviewItems(["bank-a", "bank-b"]))
+        #expect(ReviewPresentationMapper.destination(
+            kind: .unresolvedEvidenceAffectingAccuracy,
+            ids: ["bank-a", "ledger-c"], actionableObservationIDs: known
+        ) == nil)
+        #expect(ReviewPresentationMapper.destination(
+            kind: .unresolvedEvidenceAffectingAccuracy,
+            ids: ["missing-live-coverage"], actionableObservationIDs: known
+        ) == nil)
+        #expect(ReviewPresentationMapper.destination(
+            kind: .budgetOverrun,
+            ids: ["bank-a"], actionableObservationIDs: known
+        ) == nil)
+    }
+
+    @Test("An Insight focus can be cleared without leaving Activity")
+    func reviewFocusNavigation() {
+        let navigation = AppNavigation()
+        navigation.openReviewItems(["bank-a", "bank-b"])
+        #expect(navigation.selectedTab == .activity)
+        #expect(navigation.activitySection == .toReview)
+        #expect(navigation.activityReviewIDs == ["bank-a", "bank-b"])
+        navigation.openToReview()
+        #expect(navigation.activityReviewIDs == nil)
+    }
+
     @Test("Weeks start on Monday")
     func weekStartsMonday() throws {
         // 2026-09-02 is a Wednesday; its week began Monday the 31st.

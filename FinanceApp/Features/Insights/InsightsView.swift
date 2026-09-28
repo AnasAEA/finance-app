@@ -595,6 +595,15 @@ private struct InsightsPeriodView: View {
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+            if case let .reviewItems(ids)? = finding.destination {
+                Button {
+                    navigation.openReviewItems(ids)
+                } label: {
+                    ActionLabel(title: "Review these items")
+                }
+                .buttonStyle(FinancePressStyle())
+                .accessibilityIdentifier("insights.review-items")
+            }
         }
         .padding(.vertical, 2)
     }

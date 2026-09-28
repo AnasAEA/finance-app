@@ -190,6 +190,14 @@ struct ReviewFindingCard: Identifiable, Hashable, Sendable {
     let tone: ReviewFindingTone
     let title: String
     let detail: String
+    let destination: ReviewFindingDestination?
+}
+
+/// A route exists only when the adapter can account for every subject the
+/// engine named. An explanation with mixed or unavailable subjects stays
+/// informational rather than opening a misleading subset.
+enum ReviewFindingDestination: Hashable, Sendable {
+    case reviewItems([String])
 }
 
 // MARK: - Outlook

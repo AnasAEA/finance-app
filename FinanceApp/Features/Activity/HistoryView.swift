@@ -7,9 +7,11 @@ struct HistoryBrowserView: View {
     @Environment(FinanceStore.self) private var store
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let snapshot: FinanceAppSnapshot
+    @Binding var showsSearch: Bool
 
     @State private var query = HistoryQuery()
     @State private var searchText = ""
+    @FocusState private var searchFocused: Bool
     @State private var archiveRows: [HistoryTransactionSummary] = []
     @State private var nextOffset: Int?
     @State private var coverageGaps: [HistorySourceGap] = []
@@ -93,6 +95,24 @@ struct HistoryBrowserView: View {
         let pending = separatesPending ? rows.filter(\.isBankPending) : []
         let groups = dateGroups(separatesPending ? rows.filter { !$0.isBankPending } : rows)
         return List {
+            if showsSearch {
+                HStack(spacing: Theme.Space.sm) {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundStyle(.secondary).accessibilityHidden(true)
+                    TextField("Search transactions", text: $searchText)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .focused($searchFocused)
+                        .accessibilityIdentifier("activity.search.field")
+                }
+                .padding(.horizontal, Theme.Space.md)
+                .frame(minHeight: Theme.Metric.minimumTarget)
+                .background(Theme.Surface.card, in: RoundedRectangle(cornerRadius: Theme.Metric.controlRadius))
+                .listRowInsets(EdgeInsets(top: Theme.Space.sm, leading: Theme.Space.xl,
+                                         bottom: 0, trailing: Theme.Space.xl))
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+            }
             browserControls
                 .listRowInsets(EdgeInsets(top: 0, leading: Theme.Space.xl,
                                          bottom: 0, trailing: Theme.Space.xl))
@@ -170,8 +190,15 @@ struct HistoryBrowserView: View {
         .listSectionSpacing(0)
         .environment(\.defaultMinListHeaderHeight, 12)
         .financeList()
-        .searchable(text: $searchText, prompt: "Search transactions")
         .task { reload() }
+        .onChange(of: showsSearch) { _, open in
+            searchFocused = open
+            if !open {
+                searchText = ""
+                query.searchText = ""
+                reload()
+            }
+        }
         .onChange(of: snapshot.bankHistory) { _, _ in reload() }
         .onChange(of: snapshot.activity) { _, _ in reload() }
         .onChange(of: store.history.hasImportedArchive) { _, _ in reload() }
@@ -521,25 +548,63 @@ private struct UnifiedHistoryRowView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        let layout = dynamicTypeSize.isAccessibilitySize
-            ? AnyLayout(VStackLayout(alignment: .leading, spacing: Theme.Space.sm))
-            : AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: Theme.Space.md))
-        layout {
-            HStack(alignment: .top, spacing: Theme.Space.md) {
-                ActivityMark(symbol: symbol, text: markText,
-                             tint: item.isBankPending ? Theme.Role.information : Theme.Role.accent)
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(title).font(Theme.TypeStyle.supporting.weight(.semibold))
-                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Text(subtitle).font(Theme.TypeStyle.metadata).foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                expandedRow
+            } else {
+                // The compact row has an intrinsic one-line name. If name,
+                // amount and state cannot all fit, the whole row reflows;
+                // SwiftUI must not squeeze the name into the status column.
+                ViewThatFits(in: .horizontal) {
+                    compactRow
+                    expandedRow
                 }
             }
-            if !dynamicTypeSize.isAccessibilitySize { Spacer(minLength: Theme.Space.sm) }
-            VStack(alignment: dynamicTypeSize.isAccessibilitySize ? .leading : .trailing, spacing: Theme.Space.xs) {
-                MoneyText(amount: amount, size: 17, weight: .semibold, showsSign: !amount.isZero)
-                    .fixedSize(horizontal: true, vertical: false)
+        }
+        .padding(.vertical, Theme.Space.sm)
+        .accessibilityElement(children: .combine)
+    }
+
+    private var mark: some View {
+        ActivityMark(symbol: symbol, text: markText,
+                     tint: item.isBankPending ? Theme.Role.information : Theme.Role.accent)
+    }
+
+    private var amountText: some View {
+        MoneyText(amount: amount, size: 17, weight: .semibold, showsSign: !amount.isZero)
+            .fixedSize(horizontal: true, vertical: false)
+    }
+
+    private var compactRow: some View {
+        HStack(alignment: .top, spacing: Theme.Space.md) {
+            mark
+            VStack(alignment: .leading, spacing: 5) {
+                Text(title).font(Theme.TypeStyle.supporting.weight(.semibold))
+                    .lineLimit(1).fixedSize(horizontal: true, vertical: false)
+                Text(subtitle).font(Theme.TypeStyle.metadata).foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: Theme.Space.sm)
+            VStack(alignment: .trailing, spacing: Theme.Space.xs) {
+                amountText
+                stateLabel.fixedSize(horizontal: true, vertical: false)
+                if let personal = personalAmount {
+                    Text("\(personal.formatted()) yours")
+                        .font(Theme.TypeStyle.metadata).foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    private var expandedRow: some View {
+        HStack(alignment: .top, spacing: Theme.Space.md) {
+            mark
+            VStack(alignment: .leading, spacing: Theme.Space.xs) {
+                Text(title).font(Theme.TypeStyle.supporting.weight(.semibold))
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(subtitle).font(Theme.TypeStyle.metadata).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                amountText
                 stateLabel
                 if let personal = personalAmount {
                     Text("\(personal.formatted()) yours")
@@ -547,8 +612,6 @@ private struct UnifiedHistoryRowView: View {
                 }
             }
         }
-        .padding(.vertical, Theme.Space.sm)
-        .accessibilityElement(children: .combine)
     }
 
     private var personalAmount: Amount? {

@@ -79,6 +79,29 @@ final class ProductionHCIUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["Insights"].exists)
     }
 
+    func testInsightReviewFindingOpensOnlyItsDecisionsAndKeepsContextOnReturn() {
+        launch(tab: "insights")
+        XCTAssertTrue(app.navigationBars["Insights"].waitForExistence(timeout: 8))
+        let link = app.buttons["insights.review-items"]
+        XCTAssertTrue(link.waitForExistence(timeout: 5))
+        link.tap()
+
+        XCTAssertTrue(app.navigationBars["Activity"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["From Insights"].exists)
+        XCTAssertTrue(app.buttons["activity.review.show-all"].exists)
+        XCTAssertFalse(app.descendants(matching: .any)["activity.pending-section"].exists)
+
+        let item = revealIdentifier(AutomationTokenMirror.decision("obs-streaming"), as: .any)
+        item.tap()
+        XCTAssertTrue(app.navigationBars["Review activity"].waitForExistence(timeout: 5))
+        app.navigationBars["Review activity"].buttons.firstMatch.tap()
+        XCTAssertTrue(app.staticTexts["From Insights"].waitForExistence(timeout: 5))
+
+        app.buttons["activity.review.show-all"].tap()
+        XCTAssertFalse(app.staticTexts["From Insights"].exists)
+        _ = revealIdentifier("activity.pending-section", as: .any)
+    }
+
     func testHomeReviewMonthOpensCanonicalVerificationDetail() {
         launch(variant: "positive")
         XCTAssertTrue(app.navigationBars["Home"].waitForExistence(timeout: 8))
@@ -141,10 +164,16 @@ final class ProductionHCIUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Transactions"].exists)
         XCTAssertTrue(app.buttons["To Review"].exists)
         XCTAssertTrue(app.buttons["activity.filters"].exists)
-        XCTAssertTrue(app.searchFields.firstMatch.exists)
+        XCTAssertTrue(app.buttons["activity.search"].exists)
+        XCTAssertFalse(app.searchFields.firstMatch.exists)
+        app.buttons["activity.search"].tap()
+        XCTAssertTrue(app.textFields["activity.search.field"].waitForExistence(timeout: 5))
 
         app.buttons["To Review"].tap()
         XCTAssertTrue(app.staticTexts["Needs a Decision"].waitForExistence(timeout: 5))
+        app.buttons["Transactions"].tap()
+        XCTAssertFalse(app.textFields["activity.search.field"].exists)
+        app.buttons["To Review"].tap()
         // Scrolled to rather than assumed on screen: the queue's length is a
         // product decision, and a row that now states its own decision is
         // taller than one that stated only a merchant.
@@ -186,7 +215,8 @@ final class ProductionHCIUITests: XCTestCase {
         summary.tap()
         let pending = app.descendants(matching: .any)[AutomationTokenMirror.transaction("bank:pending-snapshot")].firstMatch
         XCTAssertTrue(pending.waitForExistence(timeout: 5), app.debugDescription)
-        let search = app.searchFields.firstMatch
+        app.buttons["activity.search"].tap()
+        let search = app.textFields["activity.search.field"]
         search.tap()
         search.typeText("Pending")
         XCTAssertTrue(pending.waitForExistence(timeout: 5))
