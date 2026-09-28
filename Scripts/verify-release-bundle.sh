@@ -46,6 +46,30 @@ else
 fi
 
 echo "Inspecting $APP"
+
+# The app's optional lock preference uses @AppStorage (app-private
+# UserDefaults). Keep the required-reason declaration in the shipped bundle,
+# not just in the source tree.
+PRIVACY_MANIFEST="$APP/PrivacyInfo.xcprivacy"
+if [ ! -f "$PRIVACY_MANIFEST" ] || ! python3 - "$PRIVACY_MANIFEST" <<'PY'
+import plistlib
+import sys
+
+with open(sys.argv[1], "rb") as handle:
+    manifest = plistlib.load(handle)
+
+declares_app_private_defaults = any(
+    entry.get("NSPrivacyAccessedAPIType") == "NSPrivacyAccessedAPICategoryUserDefaults"
+    and "CA92.1" in entry.get("NSPrivacyAccessedAPITypeReasons", [])
+    for entry in manifest.get("NSPrivacyAccessedAPITypes", [])
+)
+sys.exit(0 if declares_app_private_defaults else 1)
+PY
+then
+    echo "FAIL: Release privacy manifest is missing the app-private UserDefaults reason"
+    exit 1
+fi
+
 FOUND=$(find "$APP" -name "*fixture*" -o -name "*.fixture.json" | head -20)
 
 if [ -n "$FOUND" ]; then
