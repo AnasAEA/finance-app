@@ -373,10 +373,11 @@ struct TransactionCorrectionTests {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
+        let sourceURL = directory.appendingPathComponent("legacy.store")
         let url = directory.appendingPathComponent("synthetic.store")
         let baseline = Schema(FinanceSchema.models.filter { ObjectIdentifier($0) != ObjectIdentifier(StoredTransactionCorrection.self) && ObjectIdentifier($0) != ObjectIdentifier(StoredTransactionFinancialCorrection.self) })
         func seed() throws -> FinanceDocument {
-            let container = try ModelContainer(for: baseline, configurations: ModelConfiguration(schema: baseline, url: url))
+            let container = try ModelContainer(for: baseline, configurations: ModelConfiguration(schema: baseline, url: sourceURL))
             var legacy = EntryFixtures.document()
             let transaction = Transaction(id: "synthetic-legacy", date: EntryFixtures.today, kind: .expense,
                 legs: [.init(accountID: EntryFixtures.bank.id, amount: Money(minorUnits: -100, currency: .eur))], factivity: .observed)
@@ -388,6 +389,16 @@ struct TransactionCorrectionTests {
             let stored = try StoredTransaction(transaction, sequence: 0)
             container.mainContext.insert(stored)
             try container.mainContext.save()
+            // Copy the live SQLite set before the legacy container closes. A
+            // database-only copy can omit committed rows still in the WAL.
+            let wal = URL(fileURLWithPath: sourceURL.path + "-wal")
+            let walSize = try FileManager.default.attributesOfItem(atPath: wal.path)[.size] as? NSNumber
+            #expect((walSize?.intValue ?? 0) > 0)
+            for suffix in ["", "-wal", "-shm"] {
+                let source = URL(fileURLWithPath: sourceURL.path + suffix)
+                guard FileManager.default.fileExists(atPath: source.path) else { continue }
+                try FileManager.default.copyItem(at: source, to: URL(fileURLWithPath: url.path + suffix))
+            }
             return legacy
         }
         let legacy = try seed()
