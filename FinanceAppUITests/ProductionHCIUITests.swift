@@ -328,6 +328,31 @@ final class ProductionHCIUITests: XCTestCase {
         app.buttons["activity.filters.apply"].tap()
         XCTAssertTrue(app.navigationBars["Activity"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["activity.filters"].label.contains("Filters on"), app.debugDescription)
+
+        // The applied filter survives a trip to To Review and back.
+        let chip = app.buttons["activity.filter-chip.categories"]
+        XCTAssertTrue(chip.waitForExistence(timeout: 5))
+        XCTAssertTrue(chip.label.hasPrefix("Remove filter"), chip.label)
+        app.buttons["To Review"].tap()
+        XCTAssertTrue(app.staticTexts["Needs a Decision"].waitForExistence(timeout: 5))
+        app.buttons["Transactions"].tap()
+        XCTAssertTrue(chip.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["activity.filters"].label.contains("Filters on"))
+
+        // One tap removes it, and only it.
+        chip.tap()
+        XCTAssertFalse(chip.waitForExistence(timeout: 2))
+        XCTAssertFalse(app.buttons["activity.filters"].label.contains("Filters on"))
+    }
+
+    /// A timeline row is one sentence to VoiceOver: what it is, how much, its
+    /// state — not the provider's initials first.
+    func testTimelineRowSaysWhatKindOfRecordItIs() {
+        launch(tab: "activity")
+        let row = revealIdentifier(AutomationTokenMirror.transaction("bank:obs-streaming"), as: .any)
+        XCTAssertTrue(row.label.hasPrefix("Streaming Membership"), row.label)
+        XCTAssertTrue(row.label.contains("bank movement"), row.label)
+        XCTAssertFalse(row.label.hasPrefix("BNP"), row.label)
     }
 
     func testPlanHubExposesFourPushedDestinations() {

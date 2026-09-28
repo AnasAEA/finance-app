@@ -8,8 +8,10 @@ struct HistoryBrowserView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let snapshot: FinanceAppSnapshot
     @Binding var showsSearch: Bool
+    /// Owned by Activity, not by this list, so applied filters survive a
+    /// switch to To Review and back.
+    @Binding var query: HistoryQuery
 
-    @State private var query = HistoryQuery()
     @State private var searchText = ""
     @FocusState private var searchFocused: Bool
     @State private var archiveRows: [HistoryTransactionSummary] = []
@@ -74,19 +76,7 @@ struct HistoryBrowserView: View {
         ActivityTimelineGrouping.adjacent(rows, date: \.date)
     }
 
-    private var hasFilters: Bool {
-        query.dateRange != nil
-            || !query.accountIDs.isEmpty
-            || !query.categoryIDs.isEmpty
-            || !query.economicTypes.isEmpty
-            || !query.economicSourceIDs.isEmpty
-            || query.minimumAmountMinor != nil
-            || query.maximumAmountMinor != nil
-            || !query.currencies.isEmpty
-            || !query.sourceIDs.isEmpty
-            || !query.statuses.isEmpty
-            || !query.provenanceValues.isEmpty
-    }
+    private var hasFilters: Bool { !query.appliedFacets.isEmpty }
 
     var body: some View {
         let rows = displayedRows()
@@ -193,7 +183,16 @@ struct HistoryBrowserView: View {
         .listSectionSpacing(0)
         .environment(\.defaultMinListHeaderHeight, 12)
         .financeList()
-        .task { reload() }
+        .task {
+            // The query outlives this list. An open field shows the search it
+            // kept; a closed one never leaves a search applied out of sight.
+            if showsSearch {
+                searchText = query.searchText
+            } else {
+                query.searchText = ""
+            }
+            reload()
+        }
         .onChange(of: showsSearch) { _, open in
             searchFocused = open
             if !open {
@@ -288,45 +287,52 @@ struct HistoryBrowserView: View {
             : date.formatted(.dateTime.day().month(.abbreviated).year())
     }
 
+    /// Each applied filter, removable on its own; Clear all removes the rest.
     private var activeFilters: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                if let range = query.dateRange {
-                    FilterChip(label: range.lowerBound.formatted(through: range.upperBound))
+                ForEach(query.appliedFacets, id: \.self) { facet in
+                    FilterChip(label: chipLabel(facet)) {
+                        query = query.removing(facet)
+                        reload()
+                    }
+                    .accessibilityIdentifier("activity.filter-chip.\(facet.rawValue)")
                 }
-                selectionChip("account", values: query.accountIDs, options: catalog.accounts)
-                selectionChip("category", values: query.categoryIDs, options: catalog.categories)
-                selectionChip("type", values: query.economicTypes, options: catalog.economicTypes)
-                selectionChip(
-                    "source", values: query.economicSourceIDs, options: catalog.economicSources
-                )
-                selectionChip("currency", values: query.currencies, options: catalog.currencies)
-                selectionChip("source", values: query.sourceIDs, options: catalog.sources)
-                if query.minimumAmountMinor != nil || query.maximumAmountMinor != nil {
-                    FilterChip(label: amountRangeLabel)
+                Button { clearFilters() } label: {
+                    Text("Clear all")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Theme.Role.accent)
+                        .frame(minHeight: Theme.Metric.minimumTarget)
+                        .contentShape(Rectangle())
                 }
-                if !query.statuses.isEmpty || !query.provenanceValues.isEmpty {
-                    FilterChip(label: "Advanced")
-                }
-                Button("Clear all") { clearFilters() }
-                    .font(.caption.weight(.semibold))
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
+                .buttonStyle(.plain)
+                .padding(.leading, Theme.Space.xs)
             }
             .padding(.horizontal, Theme.Metric.screenPadding)
         }
     }
 
-    @ViewBuilder
-    private func selectionChip(
-        _ noun: String,
-        values: Set<String>,
-        options: [HistoryFilterOption]
-    ) -> some View {
-        if let value = values.first, values.count == 1 {
-            FilterChip(label: options.first(where: { $0.id == value })?.name ?? value)
-        } else if values.count > 1 {
-            FilterChip(label: "\(values.count) \(noun)s")
+    /// What a chip says: the one value chosen, or how many were.
+    private func chipLabel(_ facet: HistoryFilterFacet) -> String {
+        func selection(_ values: Set<String>, _ options: [HistoryFilterOption], _ noun: String) -> String {
+            if let value = values.first, values.count == 1 {
+                return options.first(where: { $0.id == value })?.name ?? value
+            }
+            return "\(values.count) \(noun)"
+        }
+        switch facet {
+        case .date:
+            guard let range = query.dateRange else { return "Dates" }
+            return range.lowerBound.formatted(through: range.upperBound)
+        case .accounts: return selection(query.accountIDs, catalog.accounts, "accounts")
+        case .categories: return selection(query.categoryIDs, catalog.categories, "categories")
+        case .types: return selection(query.economicTypes, catalog.economicTypes, "types")
+        case .economicSources:
+            return selection(query.economicSourceIDs, catalog.economicSources, "income sources")
+        case .currencies: return selection(query.currencies, catalog.currencies, "currencies")
+        case .providers: return selection(query.sourceIDs, catalog.sources, "providers")
+        case .amount: return amountRangeLabel
+        case .evidence: return "Evidence filters"
         }
     }
 
@@ -563,7 +569,45 @@ private struct UnifiedHistoryRowView: View {
             }
         }
         .padding(.vertical, Theme.Space.sm)
-        .accessibilityElement(children: .combine)
+        // One sentence, in the order a person needs it, instead of the
+        // combined children — which began with the provider's initials and
+        // never said what kind of record this is or what opening it does.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityText)
+        .accessibilityHint(accessibilityHintText)
+    }
+
+    /// Name, amount, what kind of record it is and its state, then where.
+    var accessibilityText: String {
+        var parts = [title, amount.accessibleDescription(), kindAndState]
+        if let personal = personalAmount { parts.append("\(personal.accessibleDescription()) yours") }
+        if !subtitle.isEmpty { parts.append(subtitle) }
+        return parts.joined(separator: ", ")
+    }
+
+    private var kindAndState: String {
+        switch item {
+        case .archive:
+            return "archived record"
+        case let .live(row):
+            if row.row.isPending { return "recorded, pending" }
+            return row.row.trailingNote.map { "recorded, \($0)" } ?? "recorded"
+        case let .bank(row):
+            if row.status == .pending { return "pending at the bank, no action needed" }
+            if row.resolution == .unreviewed {
+                return isQuickCategorization ? "bank movement to categorize" : "bank movement, needs review"
+            }
+            return "bank movement, \(row.status.displayName)"
+        }
+    }
+
+    /// Where the row goes, matching the destinations `historyLink` opens.
+    private var accessibilityHintText: String {
+        switch item {
+        case .archive: "Opens the archived record"
+        case .live: "Opens transaction details"
+        case .bank: isQuickCategorization ? "Opens categorization" : "Opens bank details"
+        }
     }
 
     private var mark: some View {
@@ -720,16 +764,29 @@ private struct UnifiedHistoryRowView: View {
     }
 }
 
+/// An applied filter that removes itself when tapped. The capsule stays
+/// compact; the tap target is the full 44-point row height.
 private struct FilterChip: View {
     let label: String
+    let remove: () -> Void
 
     var body: some View {
-        Text(label)
-            .font(.caption.weight(.medium))
+        Button(action: remove) {
+            HStack(spacing: 6) {
+                Text(label).font(.caption.weight(.medium))
+                Image(systemName: "xmark")
+                    .font(.caption2.weight(.bold))
+                    .accessibilityHidden(true)
+            }
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
             .background(Theme.Role.accent.opacity(0.12), in: Capsule())
             .foregroundStyle(Theme.Role.accent)
+            .frame(minHeight: Theme.Metric.minimumTarget)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Remove filter: \(label)")
     }
 }
 

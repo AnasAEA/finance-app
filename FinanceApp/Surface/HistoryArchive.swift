@@ -80,6 +80,63 @@ struct HistoryQuery: Hashable, Sendable {
     init() {}
 }
 
+/// One removable part of an applied query: what a single chip stands for.
+enum HistoryFilterFacet: String, CaseIterable, Hashable, Sendable {
+    case date, accounts, categories, types, economicSources, currencies, providers, amount, evidence
+}
+
+extension HistoryQuery {
+    /// The facets narrowing the list now, in the order chips show them.
+    /// Search and sort are not filters and never appear here.
+    var appliedFacets: [HistoryFilterFacet] {
+        HistoryFilterFacet.allCases.filter { facet in
+            switch facet {
+            case .date: dateRange != nil
+            case .accounts: !accountIDs.isEmpty
+            case .categories: !categoryIDs.isEmpty
+            case .types: !economicTypes.isEmpty
+            case .economicSources: !economicSourceIDs.isEmpty
+            case .currencies: !currencies.isEmpty
+            case .providers: !sourceIDs.isEmpty
+            case .amount: minimumAmountMinor != nil || maximumAmountMinor != nil
+            case .evidence: !statuses.isEmpty || !provenanceValues.isEmpty
+            }
+        }
+    }
+
+    /// This query without one facet, everything else untouched.
+    ///
+    /// Removing the currency also removes what only means something inside
+    /// one currency — an amount range and an amount sort — so the list never
+    /// compares minor units across currencies.
+    func removing(_ facet: HistoryFilterFacet) -> HistoryQuery {
+        var next = self
+        switch facet {
+        case .date: next.dateRange = nil
+        case .accounts: next.accountIDs = []
+        case .categories: next.categoryIDs = []
+        case .types: next.economicTypes = []
+        case .economicSources: next.economicSourceIDs = []
+        case .currencies:
+            next.currencies = []
+            next.minimumAmountMinor = nil
+            next.maximumAmountMinor = nil
+            next.amountFractionDigits = nil
+            if next.sort == .amountHighToLow || next.sort == .amountLowToHigh {
+                next.sort = .newestFirst
+            }
+        case .providers: next.sourceIDs = []
+        case .amount:
+            next.minimumAmountMinor = nil
+            next.maximumAmountMinor = nil
+        case .evidence:
+            next.statuses = []
+            next.provenanceValues = []
+        }
+        return next
+    }
+}
+
 struct HistoryTransactionSummary: Identifiable, Hashable, Sendable {
     let id: String
     let date: CalendarDay
