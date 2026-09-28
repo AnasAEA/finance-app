@@ -123,6 +123,13 @@ versions are readable because every difference is additive: missing
 settlements, external evidence, monthly ceiling, trusted rules, or rule audit
 events decode as absent/empty rather than as zero or inferred state. A disk
 migration test proves adding the three rule entities preserves a pre-1.5 store.
+The correction-table migration test also seeds the prior disk schema while its
+SQLite connection is open, copies the database together with its nonempty WAL
+and shm sidecars, and opens that copy with the current model. It checks the
+complete economic document before a correction, then reopens and checks the
+correction audit. This covers the file-copy path used for a real-device
+preservation canary; it does not replace a physical upgrade check or establish
+that every future schema change is additive.
 `StoredDocumentGraph.load` gates on the stored meta version and
 `replace` gates on the incoming document, before purging anything. Versions
 outside that list are not decoded on the assumption that their fields still
