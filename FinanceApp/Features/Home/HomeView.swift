@@ -212,7 +212,7 @@ private struct HomeDashboard: View {
                         Text(attentionLabel(card)).font(.eyebrow).foregroundStyle(attentionTone(card).color)
                         Text(card.title).font(Theme.TypeStyle.card).fixedSize(horizontal: false, vertical: true)
                         if let detail = card.detail {
-                            Text(detail).font(Theme.TypeStyle.supporting).foregroundStyle(.secondary)
+                            Text(detail).font(Theme.TypeStyle.supporting).foregroundStyle(Theme.Role.supporting)
                         }
                         ActionLabel(title: card.actionTitle)
                     }
@@ -237,7 +237,7 @@ private struct HomeDashboard: View {
                 Label("Nothing needs you right now.", systemImage: "checkmark.circle").font(Theme.TypeStyle.card)
                     .foregroundStyle(Theme.Role.positive)
                 if let detail {
-                    Text(detail).font(.subheadline).foregroundStyle(.secondary)
+                    Text(detail).font(.subheadline).foregroundStyle(Theme.Role.supporting)
                 }
             }
             .accessibilityElement(children: .combine)
@@ -285,7 +285,7 @@ private struct HomeDashboard: View {
                 Spacer()
                 Image(systemName: "chevron.right")
                     .font(.caption)
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(Theme.Role.supporting)
                     .accessibilityHidden(true)
             }
             .frame(minHeight: Theme.Metric.minimumTarget)
@@ -298,13 +298,13 @@ private struct HomeDashboard: View {
     private func uncertaintyRow(_ message: String, tappable: Bool) -> some View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: "questionmark.circle")
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Role.supporting)
                 .accessibilityHidden(true)
             Text(message).font(.subheadline).fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 4)
             if tappable {
                 Image(systemName: "chevron.right")
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(Theme.Role.supporting)
                     .accessibilityHidden(true)
             }
         }
@@ -346,24 +346,24 @@ private struct HomeDashboard: View {
         if let week = WeekAheadSummary.make(from: snapshot, isAvailable: attention.heroIsAvailable) {
             VStack(alignment: .leading, spacing: 6) {
                 Text(WeekAheadSummary.title)
-                    .font(Theme.TypeStyle.supporting).foregroundStyle(.secondary)
+                    .font(Theme.TypeStyle.supporting).foregroundStyle(Theme.Role.supporting)
                 ViewThatFits(in: .horizontal) {
                     HStack(alignment: .firstTextBaseline, spacing: Theme.Space.md) {
                         MoneyText(amount: week.low, size: 28, weight: .medium,
                                   tint: week.low.isNegative ? Theme.Role.negative : nil)
                         Spacer(minLength: Theme.Space.sm)
-                        Text(week.dayText).font(Theme.TypeStyle.metadata).foregroundStyle(.secondary)
+                        Text(week.dayText).font(Theme.TypeStyle.metadata).foregroundStyle(Theme.Role.supporting)
                     }
                     VStack(alignment: .leading, spacing: Theme.Space.xs) {
                         MoneyText(amount: week.low, size: 28, weight: .medium,
                                   tint: week.low.isNegative ? Theme.Role.negative : nil)
-                        Text(week.dayText).font(Theme.TypeStyle.metadata).foregroundStyle(.secondary)
+                        Text(week.dayText).font(Theme.TypeStyle.metadata).foregroundStyle(Theme.Role.supporting)
                     }
                 }
                 ForEach(week.notes, id: \.self) { note in
                     Text(note.sentence)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Role.supporting)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -383,10 +383,10 @@ private struct HomeDashboard: View {
         if events.isEmpty {
             if let end = PlanningTotals.sevenDayWindowEnd(from: snapshot) {
                 Text("Nothing scheduled through \(end.formatted(.dateTime.day().month(.abbreviated))).")
-                    .font(.subheadline).foregroundStyle(.secondary)
+                    .font(.subheadline).foregroundStyle(Theme.Role.supporting)
             } else {
                 Text("The upcoming date range is unavailable.")
-                    .font(.subheadline).foregroundStyle(.secondary)
+                    .font(.subheadline).foregroundStyle(Theme.Role.supporting)
             }
         } else {
             ForEach(events) { event in
@@ -412,7 +412,7 @@ private struct HomeDashboard: View {
             Text(event.label).font(Theme.TypeStyle.supporting.weight(.medium))
                 .fixedSize(horizontal: false, vertical: true)
             Text(event.date.formatted(.dateTime.day().month(.abbreviated)))
-                .font(Theme.TypeStyle.metadata).foregroundStyle(.secondary)
+                .font(Theme.TypeStyle.metadata).foregroundStyle(Theme.Role.supporting)
         }
     }
 
@@ -428,7 +428,7 @@ private struct FirstAccountCard: View {
                 .font(.title2.bold())
             Text("Accounts show where money is held. Start with a bank, wallet, or cash balance as of a date.")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Role.supporting)
             NavigationLink {
                 AccountEditorView()
             } label: {

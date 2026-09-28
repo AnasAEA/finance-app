@@ -58,7 +58,7 @@ struct SafetyReserveView: View {
                 }
                 Text(SafetyReserveBreakdown.meaning)
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Role.supporting)
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier(SafetyReserveID.meaning)
             }
@@ -110,7 +110,7 @@ struct SafetyReserveView: View {
                 case .unavailable:
                     Text(breakdown.summary)
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Role.supporting)
                         .accessibilityIdentifier(SafetyReserveID.unavailable)
                 case let .staysAbove(lowest, _):
                     LedgerRow(label: "Lowest projected cash", value: lowest)
@@ -118,7 +118,7 @@ struct SafetyReserveView: View {
                     LedgerRow(label: "Safety reserve", value: breakdown.amount)
                     Text(breakdown.summary)
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Role.supporting)
                         .accessibilityIdentifier(SafetyReserveID.comparison)
                 case let .dipsBelow(lowest, _, _):
                     LedgerRow(

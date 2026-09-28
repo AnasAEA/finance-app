@@ -34,7 +34,7 @@ struct BankInboxView: View {
                 } label: {
                     LabeledContent("Trusted rules") {
                         Text(snapshot.trustedRules.count, format: .number)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Theme.Role.supporting)
                     }
                 }
             } footer: {
@@ -182,7 +182,7 @@ private struct SyncedObservationRow: View {
                 .fixedSize(horizontal: false, vertical: true)
             Text("\(item.providerName) · \(item.providerAccountName)")
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Role.supporting)
                 .fixedSize(horizontal: false, vertical: true)
             if let suggestion = item.primarySuggestion {
                 Text(suggestion.title)
@@ -196,7 +196,7 @@ private struct SyncedObservationRow: View {
             } else if item.resolution == .noEconomicEffect {
                 Text("No economic effect")
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Role.supporting)
             }
         }
     }
@@ -206,7 +206,7 @@ private struct SyncedObservationRow: View {
             MoneyText(amount: item.amount.magnitude, size: 17, weight: .semibold)
             Text(item.status.displayName)
                 .font(.caption2)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Role.supporting)
         }
     }
 
@@ -281,7 +281,7 @@ struct ObservationReviewView: View {
                                     if let explanation = suggestion.explanation {
                                         Text(explanation)
                                             .font(.caption)
-                                            .foregroundStyle(.secondary)
+                                            .foregroundStyle(Theme.Role.supporting)
                                     }
                                     if suggestion.kind == .trustedRule {
                                         Text(suggestion.automaticResolutionEligible
@@ -311,7 +311,7 @@ struct ObservationReviewView: View {
                                 ForEach(conflict.transactionIDs, id: \.self) { transactionID in
                                     Label(activityTitle(snapshot, transactionID), systemImage: "link")
                                         .font(.caption)
-                                        .foregroundStyle(.secondary)
+                                        .foregroundStyle(Theme.Role.supporting)
                                 }
                                 if let relatedID = conflict.relatedObservationID,
                                    let related = snapshot.syncedObservations.first(where: {
@@ -322,7 +322,7 @@ struct ObservationReviewView: View {
                                         systemImage: "arrow.triangle.branch"
                                     )
                                     .font(.caption)
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(Theme.Role.supporting)
                                 }
                             }
                             .accessibilityIdentifier("review.duplicate.warning")
@@ -448,7 +448,7 @@ struct ObservationReviewView: View {
                 if let day = dates.derivedTransaction {
                     dayRow("Derived transaction date", day)
                     if let provenance = dates.derivedProvenanceLabel {
-                        Text(provenance).font(.caption).foregroundStyle(.secondary)
+                        Text(provenance).font(.caption).foregroundStyle(Theme.Role.supporting)
                     }
                 }
             }
@@ -480,19 +480,19 @@ struct ObservationReviewView: View {
                                     Spacer()
                                     MoneyText(amount: row.amount, size: 16, showsSign: true)
                                 }
-                                .font(Theme.TypeStyle.metadata).foregroundStyle(.secondary)
+                                .font(Theme.TypeStyle.metadata).foregroundStyle(Theme.Role.supporting)
                                 if let account = row.primaryAccountLabel {
-                                    Text(account).font(Theme.TypeStyle.metadata).foregroundStyle(.secondary)
+                                    Text(account).font(Theme.TypeStyle.metadata).foregroundStyle(Theme.Role.supporting)
                                 }
                             }
                             if let explanation = suggestion.explanation {
-                                Text(explanation).font(Theme.TypeStyle.metadata).foregroundStyle(.secondary)
+                                Text(explanation).font(Theme.TypeStyle.metadata).foregroundStyle(Theme.Role.supporting)
                                     .fixedSize(horizontal: false, vertical: true)
                             }
                         }
                     }
                     Text("Tap the recorded payment only if this is the same payment.")
-                        .font(Theme.TypeStyle.metadata).foregroundStyle(.secondary)
+                        .font(Theme.TypeStyle.metadata).foregroundStyle(Theme.Role.supporting)
                 }
             }
 
@@ -596,7 +596,7 @@ struct ObservationReviewView: View {
 
     private func evidenceText(_ label: String, _ value: String) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(label).font(.caption).foregroundStyle(.secondary)
+            Text(label).font(.caption).foregroundStyle(Theme.Role.supporting)
             Text(value).font(.body).textSelection(.enabled)
         }
     }
@@ -691,9 +691,9 @@ struct TrustedRulesView: View {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(rule.title).font(.body.weight(.medium))
                             Text("\(rule.lifecycle) · \(rule.trust)")
-                                .font(.caption).foregroundStyle(.secondary)
+                                .font(.caption).foregroundStyle(Theme.Role.supporting)
                             Text("\(rule.supportCount) prior confirmation(s)")
-                                .font(.caption2).foregroundStyle(.secondary)
+                                .font(.caption2).foregroundStyle(Theme.Role.supporting)
                         }
                         .padding(.vertical, 3)
                     }
@@ -774,7 +774,7 @@ private struct TrustedRuleDetailView: View {
                     LabeledContent("Counterparty", value: "Not inferred")
                     LabeledContent("Ownership", value: "Not inferred")
                     Text("Provider description, merchant evidence, category, label, economic source, counterparty, and ownership remain separate dimensions. Rules never infer ownership.")
-                        .font(.caption).foregroundStyle(.secondary)
+                        .font(.caption).foregroundStyle(Theme.Role.supporting)
                 }
 
                 TrustedRuleSafetySection(rule: rule)
@@ -808,9 +808,9 @@ private struct TrustedRuleDetailView: View {
                             VStack(alignment: .leading, spacing: 3) {
                                 Text(event.action).font(.body.weight(.medium))
                                 Text(event.occurredAt, format: .dateTime.day().month().year().hour().minute())
-                                    .font(.caption).foregroundStyle(.secondary)
+                                    .font(.caption).foregroundStyle(Theme.Role.supporting)
                                 Text(event.explanation)
-                                    .font(.caption).foregroundStyle(.secondary)
+                                    .font(.caption).foregroundStyle(Theme.Role.supporting)
                             }
                             .padding(.vertical, 3)
                         }
@@ -877,7 +877,7 @@ private struct TrustedRuleSafetySection: View {
             ForEach(rule.currentSuggestionOnlyReasons, id: \.self) { reason in
                 Text(reason)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Role.supporting)
             }
             LabeledContent("Blocked", value: String(rule.currentBlockedMatches.count))
             ForEach(rule.currentBlockedMatches) { match in
@@ -886,7 +886,7 @@ private struct TrustedRuleSafetySection: View {
                     ForEach(match.reasons, id: \.self) { reason in
                         Text(reason)
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Theme.Role.supporting)
                     }
                 }
             }
@@ -907,7 +907,7 @@ private struct TrustedRuleSupportSection: View {
                         format: .dateTime.day().month().year().hour().minute()
                     )
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Role.supporting)
                     if let economicDate = support.economicDate {
                         LabeledContent("Economic date") {
                             Text(economicDate.formatted(.dateTime.day().month().year()))
@@ -948,7 +948,7 @@ private struct ProviderBalanceRow: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(balance.accountName).font(.body.weight(.medium))
                     Text("\(balance.providerName) · \(balance.balanceType)")
-                        .font(.caption).foregroundStyle(.secondary)
+                        .font(.caption).foregroundStyle(Theme.Role.supporting)
                 }
                 Spacer()
                 MoneyText(amount: balance.providerBalance, size: 17, weight: .semibold)
@@ -960,11 +960,11 @@ private struct ProviderBalanceRow: View {
             } else if balance.difference != nil {
                 Text("Same dated amount")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Role.supporting)
             } else {
                 Text("Comparison unavailable")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Role.supporting)
             }
         }
         .padding(.vertical, 3)
@@ -983,10 +983,10 @@ struct ProviderBalanceDetailView: View {
             if let balance {
                 Section("1. Check the bank evidence") {
                     Text(balance.accountName).font(.headline)
-                    Text("\(balance.providerName) · \(balance.balanceType)").foregroundStyle(.secondary)
+                    Text("\(balance.providerName) · \(balance.balanceType)").foregroundStyle(Theme.Role.supporting)
                     if let report = balance.reconciliation {
                         Text(report.balanceMeaning).font(.subheadline.weight(.medium))
-                        Text(report.balanceExplanation).font(.footnote).foregroundStyle(.secondary)
+                        Text(report.balanceExplanation).font(.footnote).foregroundStyle(Theme.Role.supporting)
                     }
                     LabeledContent("Bank amount") {
                         MoneyText(amount: balance.providerBalance, size: 20, weight: .semibold)
@@ -998,14 +998,14 @@ struct ProviderBalanceDetailView: View {
                         Text(balance.observedAt, format: .dateTime.day().month().year().hour().minute())
                     }
                     Text("Observation time records when evidence was received; it does not replace the bank's reference date.")
-                        .font(.footnote).foregroundStyle(.secondary)
+                        .font(.footnote).foregroundStyle(Theme.Role.supporting)
                 }
 
                 Section("2. Compare the same date") {
                     LabeledContent("Recorded ledger") {
                         if let ledger = balance.ledgerBalance {
                             MoneyText(amount: ledger, size: 20, weight: .semibold)
-                        } else { Text("Unavailable").foregroundStyle(.secondary) }
+                        } else { Text("Unavailable").foregroundStyle(Theme.Role.supporting) }
                     }
                     if let difference = balance.difference {
                         LabeledContent("Bank minus ledger") {
@@ -1029,13 +1029,13 @@ struct ProviderBalanceDetailView: View {
                                 MoneyText(amount: net, size: 15, weight: .medium, showsSign: true, colorBySign: false)
                             }
                             Text("\(report.movementIDs.count) recorded movements after the inclusive opening date and through the bank reference date. Transfers move cash without becoming spending.")
-                                .font(.footnote).foregroundStyle(.secondary)
+                                .font(.footnote).foregroundStyle(Theme.Role.supporting)
                             if report.pendingMovementCount > 0 {
                                 Text("Includes \(report.pendingMovementCount) recorded pending entries. These may not appear in booked bank cash yet.")
                                     .font(.footnote).foregroundStyle(Theme.Role.caution)
                             }
                         }
-                        Text(report.comparisonCaution).font(.footnote).foregroundStyle(.secondary)
+                        Text(report.comparisonCaution).font(.footnote).foregroundStyle(Theme.Role.supporting)
                     }
                 }
 
@@ -1043,12 +1043,12 @@ struct ProviderBalanceDetailView: View {
                     Section {
                         if !report.unreviewedObservationIDs.isEmpty {
                             Text("\(report.unreviewedObservationIDs.count) booked bank items await review. Check for an existing record before creating another transaction.")
-                                .font(.footnote).foregroundStyle(.secondary)
+                                .font(.footnote).foregroundStyle(Theme.Role.supporting)
                             observationLinks(report.unreviewedObservationIDs, snapshot: snapshot)
                         }
                         if !report.currentPendingObservationIDs.isEmpty {
                             Text("Current pending bank evidence is shown separately. It is not added to the ledger or treated as an explanation of an older balance.")
-                                .font(.footnote).foregroundStyle(.secondary)
+                                .font(.footnote).foregroundStyle(Theme.Role.supporting)
                             observationLinks(report.currentPendingObservationIDs, snapshot: snapshot)
                         }
                         let movements = snapshot.activity.flatMap(\.rows).filter { report.movementIDs.contains($0.id) }
@@ -1060,7 +1060,7 @@ struct ProviderBalanceDetailView: View {
                                 VStack(alignment: .leading) {
                                     Text(row.title)
                                     Text(day.formatted(date: .abbreviated, time: .omitted))
-                                        .font(.caption).foregroundStyle(.secondary)
+                                        .font(.caption).foregroundStyle(Theme.Role.supporting)
                                 }
                             }
                         }
@@ -1096,7 +1096,7 @@ struct ProviderBalanceDetailView: View {
                                   showsSign: true, colorBySign: false)
                             .fixedSize(horizontal: true, vertical: false)
                     }
-                    Text(item.status.displayName).font(.caption).foregroundStyle(.secondary)
+                    Text(item.status.displayName).font(.caption).foregroundStyle(Theme.Role.supporting)
                 }
             }
         }

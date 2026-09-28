@@ -107,7 +107,7 @@ private struct AccountRegisterRow: View {
             HStack(spacing: 6) {
                 Text(account.secondaryLabel)
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Role.supporting)
                 if !account.isActive { Chip(text: "Inactive") }
             }
             .padding(.leading, 30)
@@ -171,10 +171,10 @@ private struct AccountDetailContent: View {
                         MoneyText(amount: account.balance, size: 30, weight: .bold)
                         Text("\(account.kind.displayName) · \(account.currencyCode)")
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Theme.Role.supporting)
                         Text("As of \(account.balanceAsOf.formatted(.dateTime.day().month(.abbreviated).year()))")
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Theme.Role.supporting)
                         if let holding, !holding.isSpendableHere {
                             Text(holding.carriedAt == nil
                                  ? "Not spendable here."
@@ -186,7 +186,7 @@ private struct AccountDetailContent: View {
                         if !account.isActive {
                             Text("Inactive. Past transactions still resolve to it.")
                                 .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(Theme.Role.supporting)
                         }
                     }
                     .padding(.vertical, 4)
@@ -221,7 +221,7 @@ private struct AccountDetailContent: View {
                 Section("Recent activity") {
                     if recent.isEmpty {
                         Text("No activity on this account yet.")
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Theme.Role.supporting)
                     } else {
                         ForEach(recent) { row in
                             HStack {
@@ -350,7 +350,7 @@ struct AccountEditorView: View {
                 DisclosureGroup("Payment capabilities") {
                     Text(capabilityExplanation)
                         .font(.footnote)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Role.supporting)
                 }
             } footer: {
                 Text("Payment capabilities are inferred conservatively from account kind and currency.")
@@ -383,7 +383,7 @@ struct AccountEditorView: View {
                 .keyboardType(.numbersAndPunctuation)
                 .multilineTextAlignment(.trailing)
                 .frame(maxWidth: 150)
-            Text(currencyCode).foregroundStyle(.secondary)
+            Text(currencyCode).foregroundStyle(Theme.Role.supporting)
         }
     }
 

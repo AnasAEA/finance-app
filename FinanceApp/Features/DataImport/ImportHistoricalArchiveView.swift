@@ -83,7 +83,7 @@ struct ImportHistoricalArchiveView: View {
                         .font(.title3.bold())
                     Text("The archive is checked before anything is saved. It stays separate from balances, forecasts, commitments, and safe to spend.")
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Role.supporting)
                 }
                 .financeCard()
 
@@ -98,7 +98,7 @@ struct ImportHistoricalArchiveView: View {
 
                 Text("The source file is read once and is not copied into the app bundle. Only normalized, indexed rows are stored on this device.")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Role.supporting)
                     .padding(.horizontal, 4)
             }
             .padding(Theme.Metric.screenPadding)
@@ -197,10 +197,10 @@ struct ImportHistoricalArchiveView: View {
                         .font(.title2.bold())
                     Text(verbatim: "\(metadata.transactionCount.formatted()) transactions · \(metadata.dateRange.lowerBound) through \(metadata.dateRange.upperBound)")
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Role.supporting)
                     Text("Browse it under Activity → History. It remains separate from the live ledger.")
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Role.supporting)
                 }
                 .financeCard()
 

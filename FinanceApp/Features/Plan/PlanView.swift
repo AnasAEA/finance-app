@@ -64,7 +64,7 @@ private struct BudgetDetailContent: View {
 
             Text(snapshot.scenario.explanation)
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Role.supporting)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
@@ -147,7 +147,7 @@ private struct BudgetDetailContent: View {
                 // Why the three scenarios can look identical here.
                 Text("Every payment coming in this month is guaranteed, so the scenario does not change what arrives.")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Role.supporting)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
@@ -233,7 +233,7 @@ private struct BudgetDetailContent: View {
             }
 
             Text("Projection on \(snapshot.scenario.displayName.lowercased()) assumptions.")
-                .font(.caption).foregroundStyle(.secondary)
+                .font(.caption).foregroundStyle(Theme.Role.supporting)
         }
         .financeCard()
     }
@@ -266,7 +266,7 @@ private struct BudgetDetailContent: View {
 
             if budget.summary.isEmpty && budget.lines.isEmpty {
                 Text("No budget set for this month.")
-                    .font(.subheadline).foregroundStyle(.secondary)
+                    .font(.subheadline).foregroundStyle(Theme.Role.supporting)
             } else {
                 budgetHeadline
                 if budget.lines.isEmpty {
@@ -275,7 +275,7 @@ private struct BudgetDetailContent: View {
                     // plan starts. Saying so beats showing the whole ceiling
                     // as "unallocated" and leaving the reason to be guessed.
                     Text("No budget lines are in effect this month.")
-                        .font(.caption).foregroundStyle(.secondary)
+                        .font(.caption).foregroundStyle(Theme.Role.supporting)
                 }
                 if budget.hasSuggestedLines { suggestionNotice }
                 if !budget.lines.isEmpty {
@@ -293,7 +293,7 @@ private struct BudgetDetailContent: View {
             HStack(alignment: .firstTextBaseline) {
                 MoneyText(amount: budget.summary.safeToSpend, size: 26, weight: .bold)
                 Text(budget.summary.headlineCaption)
-                    .font(.subheadline).foregroundStyle(.secondary)
+                    .font(.subheadline).foregroundStyle(Theme.Role.supporting)
                 Spacer()
             }
             BudgetBar(summary: budget.summary)
@@ -306,14 +306,14 @@ private struct BudgetDetailContent: View {
             }
             if budget.summary.ceiling == nil {
                 Text("No monthly ceiling set. Figures compare against what the lines allocate.")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.caption).foregroundStyle(Theme.Role.supporting)
             }
         }
     }
 
     private func budgetStat(_ label: String, _ value: Amount) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(label).font(.caption2).foregroundStyle(.secondary)
+            Text(label).font(.caption2).foregroundStyle(Theme.Role.supporting)
             MoneyText(amount: value, size: 13, weight: .medium)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -343,7 +343,7 @@ private struct BudgetDetailContent: View {
                                     .font(.caption2)
                                     .padding(.horizontal, 6).padding(.vertical, 2)
                                     .background(Theme.Surface.inset, in: Capsule())
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(Theme.Role.supporting)
                             }
                         }
                     } icon: {
@@ -352,11 +352,11 @@ private struct BudgetDetailContent: View {
                     Spacer()
                     Text("\(line.spent.formatted()) / \(line.limit.formatted())")
                         .font(.caption).monospacedDigit()
-                        .foregroundStyle(line.isOverspent ? Theme.Role.negative : .secondary)
+                        .foregroundStyle(line.isOverspent ? Theme.Role.negative : Theme.Role.supporting)
                 }
                 BudgetBar(line: line)
                 if let detail = lineDetail(line) {
-                    Text(detail).font(.caption2).foregroundStyle(.secondary)
+                    Text(detail).font(.caption2).foregroundStyle(Theme.Role.supporting)
                 }
             }
         }
@@ -391,10 +391,10 @@ private struct BudgetDetailContent: View {
             }
             if !budget.financingRepayments.isZero {
                 Text("\(budget.financingRepayments.formatted()) of instalment repayments left your accounts this month. Repaying a purchase is not new spending, so it is not counted here.")
-                    .font(.caption2).foregroundStyle(.secondary)
+                    .font(.caption2).foregroundStyle(Theme.Role.supporting)
             }
             Text("What is left of the budget, not what is in your accounts.")
-                .font(.caption2).foregroundStyle(.secondary)
+                .font(.caption2).foregroundStyle(Theme.Role.supporting)
         }
     }
 
@@ -414,17 +414,17 @@ struct GoalPlanRow: View {
                 Chip(text: goal.status.displayName, tint: statusTint)
                 Text(goal.fundingLabel)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Role.supporting)
                 if let date = goal.targetDate {
                     Text(date.formatted(.dateTime.day().month(.abbreviated)))
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Role.supporting)
                 }
             }
             if goal.reserved.isPositive {
                 Text("Set aside \(goal.reserved.formatted())")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Role.supporting)
             }
         }
         .padding(.vertical, 8)
@@ -436,10 +436,10 @@ struct GoalPlanRow: View {
 
     private var statusTint: Color {
         switch goal.status {
-        case .wishlist: .secondary
+        case .wishlist: Theme.Role.supporting
         case .saving: Theme.Role.accent
         case .bought: Theme.Role.positive
-        case .cancelled: .secondary
+        case .cancelled: Theme.Role.supporting
         }
     }
 
@@ -469,7 +469,7 @@ struct FundPlanRow: View {
             }
             Text(custodyLine)
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Role.supporting)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.vertical, 8)

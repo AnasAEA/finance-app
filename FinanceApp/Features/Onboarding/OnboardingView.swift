@@ -75,7 +75,7 @@ struct OnboardingView: View {
     private var footnote: some View {
         Text(privacyLine)
             .font(.caption)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(Theme.Role.supporting)
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 4)
@@ -145,13 +145,13 @@ private struct OnboardingChoice<Destination: View>: View {
                     .foregroundStyle(.primary)
                 Text(explanation)
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Role.supporting)
                     .fixedSize(horizontal: false, vertical: true)
                     .multilineTextAlignment(.leading)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             Image(systemName: "chevron.right")
-                .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                .font(.caption.weight(.semibold)).foregroundStyle(Theme.Role.supporting)
                 .accessibilityHidden(true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -194,11 +194,11 @@ struct UnreadableStoreView: View {
                 .fixedSize(horizontal: false, vertical: true)
             Text("The records on this device are still there. This version of the app could not read them, so it has not changed or replaced anything.")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Role.supporting)
                 .fixedSize(horizontal: false, vertical: true)
             Text("Restoring a backup is unavailable until they can be read, because a restore would overwrite them.")
                 .font(.footnote)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Role.supporting)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .financeCard()

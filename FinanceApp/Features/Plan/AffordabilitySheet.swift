@@ -161,7 +161,7 @@ struct AffordabilityCheckView: View {
                 if snapshot.instalments.isEmpty {
                     Text("No financing plan on file. The check will treat this as a cash purchase.")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Role.supporting)
                 } else {
                     Picker("Plan", selection: $draft.installmentPlanID) {
                         Text("Choose a plan").tag(Optional<String>.none)
@@ -187,7 +187,7 @@ struct AffordabilityCheckView: View {
                 ForEach(result.why, id: \.self) { line in
                     Text(line)
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Role.supporting)
                 }
             }
         }
@@ -206,14 +206,14 @@ struct AffordabilityCheckView: View {
                 } else {
                     Text("No monthly budget ceiling is set, so the budget axis cannot be judged.")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Role.supporting)
                 }
             }
         } else {
             Section("Monthly budget") {
                 Text("Setting money aside is not spending, so it does not use the monthly budget.")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Role.supporting)
             }
         }
 
@@ -223,7 +223,7 @@ struct AffordabilityCheckView: View {
             LedgerRow(label: "Unreserved", value: result.unreservedCash)
             Text("Unreserved cash is not Home “safe to spend”. That Home figure is unchanged.")
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Role.supporting)
         }
 
         Section("This payment") {
@@ -276,7 +276,7 @@ struct AffordabilityCheckView: View {
                 LedgerRow(label: "Still set aside after", value: after)
                 Text("This is a simulation. The fund is not changed until you edit it yourself.")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Role.supporting)
             }
         }
 

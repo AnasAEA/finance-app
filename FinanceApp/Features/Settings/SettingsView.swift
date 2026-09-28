@@ -127,7 +127,7 @@ struct SettingsView: View {
                 Text(title)
                 Text(detail)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Role.supporting)
             }
         }
         .padding(.vertical, 4)
@@ -256,7 +256,7 @@ struct AppSettingsView: View {
                     .disabled(!FinancePrivacy.canAuthenticate && !appLock)
                     .accessibilityIdentifier("privacy.app-lock")
                 Text("Protects access with Face ID, Touch ID, or your device passcode. Amounts are hidden in the app switcher.")
-                    .font(.footnote).foregroundStyle(.secondary)
+                    .font(.footnote).foregroundStyle(Theme.Role.supporting)
                 LabeledContent("Analytics", value: "None")
                 LabeledContent("Storage", value: "On this device")
             }

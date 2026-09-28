@@ -76,7 +76,7 @@ struct SafeToUseExplanationView: View {
                         Spacer()
                         Image(systemName: "chevron.right")
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(.tertiary)
+                            .foregroundStyle(Theme.Role.supporting)
                             .accessibilityHidden(true)
                     }
                     .contentShape(Rectangle())
@@ -94,12 +94,12 @@ struct SafeToUseExplanationView: View {
     /// tapped, so arriving here can never look like a different answer.
     private func headline(_ breakdown: SafeToUseBreakdown) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Eyebrow("Safe to use", tint: breakdown.isShort ? Theme.Role.negative : .secondary)
+            Eyebrow("Safe to use", tint: breakdown.isShort ? Theme.Role.negative : Theme.Role.supporting)
             MoneyText(amount: breakdown.safeToUse, size: 34, weight: .bold)
                 .accessibilityIdentifier(SafeToUseID.headline)
             Text(breakdown.summary)
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Role.supporting)
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier(SafeToUseID.summary)
         }

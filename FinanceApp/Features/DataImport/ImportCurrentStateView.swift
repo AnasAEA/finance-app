@@ -46,7 +46,7 @@ struct ImportCurrentStateView: View {
                             SecureField("Backup password", text: $password)
                                 .textContentType(.password).accessibilityIdentifier("restore.password")
                             Text("Enter the password used when this file was saved.")
-                                .font(.footnote).foregroundStyle(.secondary)
+                                .font(.footnote).foregroundStyle(Theme.Role.supporting)
                             Button("Unlock backup", action: unlockBackup)
                                 .disabled(password.isEmpty || unlocking)
                                 .accessibilityIdentifier("restore.unlock")
@@ -252,7 +252,7 @@ struct ChooseFileStep: View {
                         .fixedSize(horizontal: false, vertical: true)
                     Text("Choose an exported finance file. Accounts, balances, commitments and planning are read from it, checked, and shown to you before anything is saved.")
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Role.supporting)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .financeCard()
@@ -270,7 +270,7 @@ struct ChooseFileStep: View {
 
                 Text("The file is read once and not kept. What is saved is the accounts and plan themselves, on this device.")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Role.supporting)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 4)
             }
@@ -292,7 +292,7 @@ private struct BlockedCard: View {
             if let suggestion = blocker.recoverySuggestion {
                 Text(suggestion)
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Role.supporting)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -376,7 +376,7 @@ struct PreviewStep: View {
                     CountRow(label: "Verified-month revisions", count: preview.checkpointRevisionCount)
                     CountRow(label: "Transaction corrections", count: preview.transactionCorrectionCount)
                     Text("Restores the archive and verified-month history together with your ledger.")
-                        .font(.footnote).foregroundStyle(.secondary)
+                        .font(.footnote).foregroundStyle(Theme.Role.supporting)
                 }
             }
 
@@ -384,7 +384,7 @@ struct PreviewStep: View {
                 LabeledContent("Export", value: preview.sourceLabel)
                 LabeledContent("Schema", value: preview.schemaVersion)
                 if let note = preview.note {
-                    Text(note).font(.footnote).foregroundStyle(.secondary)
+                    Text(note).font(.footnote).foregroundStyle(Theme.Role.supporting)
                 }
             } header: {
                 Text("Source")
@@ -415,7 +415,7 @@ private struct CountRow: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text(label).font(.subheadline)
                 if let caption {
-                    Text(caption).font(.caption).foregroundStyle(.secondary)
+                    Text(caption).font(.caption).foregroundStyle(Theme.Role.supporting)
                 }
             }
             Spacer(minLength: 12)
@@ -446,11 +446,11 @@ struct ImportBalanceRow: View {
                 HStack(spacing: 6) {
                     Text(Self.caption(for: account))
                         .font(.caption)
-                        .foregroundStyle(account.freshness.isStale ? Theme.Role.caution : .secondary)
+                        .foregroundStyle(account.freshness.isStale ? Theme.Role.caution : Theme.Role.supporting)
                     if !account.isSpendableHere {
                         Text("· not spendable here")
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Theme.Role.supporting)
                     }
                 }
                 .fixedSize(horizontal: false, vertical: true)
@@ -532,7 +532,7 @@ struct BalanceReviewStep: View {
                 .disabled(!allValid)
                 Text("All of it is saved, or none of it is.")
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Role.supporting)
             }
             .padding(Theme.Metric.screenPadding)
             .background(.bar)
@@ -578,7 +578,7 @@ private struct BalanceEditor: View {
                 .keyboardType(.numbersAndPunctuation)
                 .multilineTextAlignment(.trailing)
                 .frame(maxWidth: 150)
-            Text(account.currencyCode).foregroundStyle(.secondary)
+            Text(account.currencyCode).foregroundStyle(Theme.Role.supporting)
         }
     }
 }
@@ -669,7 +669,7 @@ struct ExclusionsCard: View {
             ForEach(exclusions, id: \.self) { line in
                 Text(line)
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Role.supporting)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }

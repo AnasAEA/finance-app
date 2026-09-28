@@ -50,7 +50,7 @@ struct InsightsView: View {
                 } else {
                     Text("This period cannot be reviewed.")
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Role.supporting)
                 }
             }
         }
@@ -154,7 +154,7 @@ private struct InsightsPeriodView: View {
             Text(review.title).font(.headline)
             Text(review.rangeLabel)
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Role.supporting)
         }
     }
 
@@ -201,7 +201,7 @@ private struct InsightsPeriodView: View {
             if review.coverage.quality == .complete {
                 Label("Date coverage complete", systemImage: "checkmark.circle")
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Role.supporting)
                 if let primary = review.primaryFinding {
                     Text(primary.detail)
                         .font(.subheadline)
@@ -240,7 +240,7 @@ private struct InsightsPeriodView: View {
         VStack(alignment: .leading, spacing: 2) {
             Text(label.uppercased())
                 .font(.eyebrow)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Role.supporting)
             switch value {
             case let .known(amount):
                 MoneyText(amount: amount, size: 28)
@@ -249,7 +249,7 @@ private struct InsightsPeriodView: View {
                 // answers and must never look the same.
                 Text("Unavailable")
                     .font(.money(20, weight: .medium))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Role.supporting)
             }
         }
     }
@@ -268,17 +268,17 @@ private struct InsightsPeriodView: View {
                 }
                 Text(review.coverage.explanation)
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Role.supporting)
                     .fixedSize(horizontal: false, vertical: true)
                 if !review.coverage.missingRanges.isEmpty {
                     Text(missingRangeText)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Role.supporting)
                 }
                 if case let .unavailable(reason) = review.comparison {
                     Text(reason)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Role.supporting)
                 }
             }
             .padding(.vertical, 2)
@@ -301,7 +301,7 @@ private struct InsightsPeriodView: View {
         switch review.coverage.quality {
         case .complete: Theme.Role.positive
         case .partial: Theme.Role.caution
-        case .insufficient: .secondary
+        case .insufficient: Theme.Role.supporting
         }
     }
 
@@ -333,18 +333,18 @@ private struct InsightsPeriodView: View {
                         if !review.zeroMeansZero {
                             Text(unavailableMonthStatus(context))
                                 .font(.footnote)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(Theme.Role.supporting)
                                 .fixedSize(horizontal: false, vertical: true)
                         } else if let ceiling = context.ceiling {
                             Text(monthStatus(context, ceiling: ceiling))
                                 .font(.footnote)
                                 .foregroundStyle(context.overage.map(\.isPositive) == true
-                                    ? Theme.Role.negative : .secondary)
+                                    ? Theme.Role.negative : Theme.Role.supporting)
                                 .fixedSize(horizontal: false, vertical: true)
                         } else {
                             Text("No monthly budget set.")
                                 .font(.footnote)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(Theme.Role.supporting)
                         }
                     }
                     .padding(.vertical, 2)
@@ -400,7 +400,7 @@ private struct InsightsPeriodView: View {
                      ? "No spending recorded."
                      : "Spending breakdown unavailable.")
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Role.supporting)
             }
             ForEach(review.exceptional) { purchase in
                 VStack(alignment: .leading, spacing: 2) {
@@ -411,7 +411,7 @@ private struct InsightsPeriodView: View {
                     }
                     Text("One-off · \(dayText(purchase.day))")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Role.supporting)
                 }
             }
         } header: {
@@ -433,7 +433,7 @@ private struct InsightsPeriodView: View {
                     Text("\(income.supportGross.formatted()) arrived; "
                          + "\(income.passThroughNotMine.formatted()) of it was passed on.")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Role.supporting)
                 }
             }
             if !income.reimbursements.isZero {
@@ -448,7 +448,7 @@ private struct InsightsPeriodView: View {
                     Text("Money arrived that the evidence does not yet explain. "
                          + "It is not counted as income.")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Role.supporting)
                 }
             }
             if isIncomeEmpty {
@@ -456,7 +456,7 @@ private struct InsightsPeriodView: View {
                      ? "No income recorded."
                      : "Income unavailable.")
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Role.supporting)
             }
         } header: {
             Text("Income and support")
@@ -484,7 +484,7 @@ private struct InsightsPeriodView: View {
                         }
                         Text(expectationText(item))
                             .font(.caption)
-                            .foregroundStyle(item.state == .missed ? Theme.Role.caution : .secondary)
+                            .foregroundStyle(item.state == .missed ? Theme.Role.caution : Theme.Role.supporting)
                     }
                 }
             } header: {
@@ -518,7 +518,7 @@ private struct InsightsPeriodView: View {
                             if let day = goal.targetDay {
                                 Text("Target \(goal.target.formatted()) by \(dayText(day))")
                                     .font(.caption)
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(Theme.Role.supporting)
                             }
                         }
                     }
@@ -569,11 +569,11 @@ private struct InsightsPeriodView: View {
                                 Text("·").accessibilityHidden(true)
                                 Text("\(verification.limitationCount) limitation\(verification.limitationCount == 1 ? "" : "s")")
                             }
-                            .font(Theme.TypeStyle.supporting).foregroundStyle(.secondary)
+                            .font(Theme.TypeStyle.supporting).foregroundStyle(Theme.Role.supporting)
                         }
                         Text(verification.totalsStatement)
                             .font(.footnote)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Theme.Role.supporting)
                             .fixedSize(horizontal: false, vertical: true)
                         NavigationLink {
                             PeriodVerificationDetailView(
@@ -605,7 +605,7 @@ private struct InsightsPeriodView: View {
             }
             Text(finding.detail)
                 .font(.footnote)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Role.supporting)
                 .fixedSize(horizontal: false, vertical: true)
             findingAction(finding)
         }
@@ -637,7 +637,7 @@ private struct InsightsPeriodView: View {
         switch tone {
         case .important: Theme.Role.negative
         case .warning: Theme.Role.caution
-        case .info: .secondary
+        case .info: Theme.Role.supporting
         }
     }
 
@@ -666,7 +666,7 @@ private struct InsightsPeriodView: View {
             } else {
                 Text("Nothing scheduled puts cash at risk before \(dayText(review.outlook.horizonEnd)).")
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Role.supporting)
             }
             // Forward-looking engine findings belong here, not under What
             // changed, and appear in exactly one of the two.
@@ -677,7 +677,7 @@ private struct InsightsPeriodView: View {
                 } label: {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(item.name)
-                        Text(dayText(item.day)).font(.caption).foregroundStyle(.secondary)
+                        Text(dayText(item.day)).font(.caption).foregroundStyle(Theme.Role.supporting)
                     }
                 }
             }
@@ -953,7 +953,7 @@ private struct PeriodVerificationDetailView: View {
         } label: {
             HStack(alignment: .top, spacing: 10) {
                 Image(systemName: rowSymbol(row))
-                    .foregroundStyle(row.isAcknowledged ? Theme.Role.positive : .secondary)
+                    .foregroundStyle(row.isAcknowledged ? Theme.Role.positive : Theme.Role.supporting)
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(alignment: .firstTextBaseline) {
                         Text(row.title).font(.subheadline.weight(.semibold))
@@ -964,7 +964,7 @@ private struct PeriodVerificationDetailView: View {
                     }
                     Text(row.detail)
                         .font(.footnote)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Role.supporting)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -993,7 +993,7 @@ private struct PeriodVerificationDetailView: View {
             }
             Text(issue.detail)
                 .font(.footnote)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Role.supporting)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.vertical, 3)
@@ -1020,7 +1020,7 @@ private struct VerificationChangeExplanation: View {
             ForEach(Array(summary.statements.enumerated()), id: \.offset) { _, statement in
                 Text(statement)
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Role.supporting)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -1054,7 +1054,7 @@ private struct InsightsUnavailablePeriodView: View {
             FinanceSection {
                 Text("This period cannot be reviewed. Its dates fall outside the range this app can calculate.")
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Role.supporting)
                     .fixedSize(horizontal: false, vertical: true)
                 Button("Go to the current period") { selection.offset = 0 }
                     .accessibilityIdentifier(RouteID.insightsNext)

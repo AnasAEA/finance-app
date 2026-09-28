@@ -19,7 +19,7 @@ struct RecurringPaymentsView: View {
                                 Text(line.name)
                                 HStack(spacing: 6) {
                                     Text(line.cadenceLabel)
-                                        .font(.caption).foregroundStyle(.secondary)
+                                        .font(.caption).foregroundStyle(Theme.Role.supporting)
                                     if let status = line.statusLabel {
                                         Chip(text: status, tint: Theme.Role.caution)
                                     }
@@ -50,12 +50,12 @@ struct InstalmentsView: View {
                         HStack {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(line.title).font(.headline)
-                                Text(line.provider).font(.caption).foregroundStyle(.secondary)
+                                Text(line.provider).font(.caption).foregroundStyle(Theme.Role.supporting)
                             }
                             Spacer()
                             VStack(alignment: .trailing, spacing: 2) {
                                 MoneyText(amount: line.remaining, size: 17, weight: .semibold)
-                                Text("left").font(.caption2).foregroundStyle(.secondary)
+                                Text("left").font(.caption2).foregroundStyle(Theme.Role.supporting)
                             }
                         }
                         ProgressView(
@@ -70,7 +70,7 @@ struct InstalmentsView: View {
                                 Text("Next \(next.formatted(.dateTime.day().month(.abbreviated)))")
                             }
                         }
-                        .font(.caption).foregroundStyle(.secondary)
+                        .font(.caption).foregroundStyle(Theme.Role.supporting)
                     }
                     .padding(.vertical, 4)
                 }
@@ -95,7 +95,7 @@ struct DebtsView: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(debt.name).font(.headline)
                             if let creditor = debt.creditor {
-                                Text(creditor).font(.caption).foregroundStyle(.secondary)
+                                Text(creditor).font(.caption).foregroundStyle(Theme.Role.supporting)
                             }
                         }
                         Spacer()
@@ -103,10 +103,10 @@ struct DebtsView: View {
                     }
                     if let months = debt.monthsToClear {
                         Text("\(debt.monthlyRepayment.formatted()) a month · clears in \(months) months")
-                            .font(.caption).foregroundStyle(.secondary)
+                            .font(.caption).foregroundStyle(Theme.Role.supporting)
                     }
                     if let note = debt.note {
-                        Text(note).font(.caption).foregroundStyle(.secondary)
+                        Text(note).font(.caption).foregroundStyle(Theme.Role.supporting)
                     }
                 }
                 .padding(.vertical, 4)

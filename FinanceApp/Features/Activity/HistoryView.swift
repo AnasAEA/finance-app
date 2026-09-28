@@ -98,7 +98,7 @@ struct HistoryBrowserView: View {
             if showsSearch {
                 HStack(spacing: Theme.Space.sm) {
                     Image(systemName: "magnifyingglass")
-                        .foregroundStyle(.secondary).accessibilityHidden(true)
+                        .foregroundStyle(Theme.Role.supporting).accessibilityHidden(true)
                     TextField("Search transactions", text: $searchText)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
@@ -748,7 +748,7 @@ private struct SourceGapNotice: View {
                      ? gaps[0].message
                      : "Bank records for parts of this period are incomplete. Missing periods are never treated as zero spending.")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Role.supporting)
             }
         }
         .accessibilityElement(children: .combine)
@@ -943,7 +943,7 @@ private struct HistoryFiltersView: View {
                             Divider()
                             TextField("Maximum", text: $maximumAmount).keyboardType(.decimalPad)
                             Text("Choose one currency to compare amounts.")
-                                .font(Theme.TypeStyle.metadata).foregroundStyle(.secondary)
+                                .font(Theme.TypeStyle.metadata).foregroundStyle(Theme.Role.supporting)
                         }
                         FilterSelectionSection(title: "Type", options: catalog.economicTypes, selection: $draft.economicTypes)
                         FilterSelectionSection(title: "Income source", options: catalog.economicSources,
@@ -1108,10 +1108,10 @@ private struct FilterSelectionSection: View {
                 HStack(spacing: Theme.Space.md) {
                     Text(selection.isEmpty ? (title == "Category" ? "All categories" : title == "Account" ? "All accounts" : "Any \(title.lowercased())")
                          : options.filter { selection.contains($0.id) }.map { $0.name.displayHistoryToken }.joined(separator: ", "))
-                        .foregroundStyle(selection.isEmpty ? .secondary : Theme.Role.accent)
+                        .foregroundStyle(selection.isEmpty ? Theme.Role.supporting : Theme.Role.accent)
                         .fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: 8)
-                    Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                    Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(Theme.Role.supporting)
                 }
                 .frame(minHeight: Theme.Metric.minimumTarget)
                 .padding(Theme.Space.md)
@@ -1119,7 +1119,7 @@ private struct FilterSelectionSection: View {
             }
             .buttonStyle(.plain)
             .accessibilityIdentifier("activity.filter.\(title.lowercased().replacingOccurrences(of: " ", with: "-"))")
-            if let footer { Text(footer).font(Theme.TypeStyle.metadata).foregroundStyle(.secondary) }
+            if let footer { Text(footer).font(Theme.TypeStyle.metadata).foregroundStyle(Theme.Role.supporting) }
         }
     }
 }
@@ -1130,7 +1130,7 @@ private struct FilterSelectionRows: View {
 
     var body: some View {
         if options.isEmpty {
-            Text("No options").foregroundStyle(.secondary)
+            Text("No options").foregroundStyle(Theme.Role.supporting)
         } else {
             ForEach(options) { option in
                 Button {
@@ -1145,7 +1145,7 @@ private struct FilterSelectionRows: View {
                             .foregroundStyle(.primary)
                         Spacer()
                         Image(systemName: selection.contains(option.id) ? "checkmark.circle.fill" : "circle")
-                            .foregroundStyle(selection.contains(option.id) ? Theme.Role.accent : .secondary)
+                            .foregroundStyle(selection.contains(option.id) ? Theme.Role.accent : Theme.Role.supporting)
                     }
                     .frame(minHeight: Theme.Metric.minimumTarget)
                     .contentShape(Rectangle())

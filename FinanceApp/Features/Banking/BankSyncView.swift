@@ -133,7 +133,7 @@ struct BankSyncView: View {
                         Spacer()
                         Text("\(completed) of \(store.bankSyncRuns.count)")
                             .font(.caption.monospacedDigit())
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Theme.Role.supporting)
                     }
                     ProgressView(value: Double(completed), total: Double(store.bankSyncRuns.count))
                         .tint(hasBankWarning ? Theme.Role.caution : Theme.Role.accent)
@@ -162,7 +162,7 @@ struct BankSyncView: View {
                      ? "Saving new bank activity on this device…"
                      : "New bank activity will appear after the check finishes. You can leave this screen while it runs.")
                     .font(.callout)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Role.supporting)
             case .idle:
                 EmptyView()
             }
@@ -201,17 +201,17 @@ struct BankSyncView: View {
                                                  ? Theme.Role.caution : Theme.Role.positive)
                         }
                         if let institution = connection.institution {
-                            Text(institution).font(.caption).foregroundStyle(.secondary)
+                            Text(institution).font(.caption).foregroundStyle(Theme.Role.supporting)
                         }
                         if let last = connection.lastSyncedAt {
                             Text("Last synced \(last, format: .dateTime.day().month().hour().minute())")
-                                .font(.caption2).foregroundStyle(.secondary)
+                                .font(.caption2).foregroundStyle(Theme.Role.supporting)
                         }
                         if let expires = connection.consentExpires {
                             Text("Access expires \(expires.formatted(.dateTime.day().month().year()))")
                                 .font(.caption2)
                                 .foregroundStyle(connection.state == .expiringSoon
-                                                 ? Theme.Role.caution : .secondary)
+                                                 ? Theme.Role.caution : Theme.Role.supporting)
                         }
                         if connection.state.needsAttention {
                             // Consent is never renewed silently. Reauthorization
@@ -234,7 +234,7 @@ struct BankSyncView: View {
         if remoteAccounts.isEmpty {
             Section("Accounts") {
                 Text("Sync to see the accounts your banks report.")
-                    .font(.callout).foregroundStyle(.secondary)
+                    .font(.callout).foregroundStyle(Theme.Role.supporting)
             }
         } else {
             Section {
@@ -249,17 +249,17 @@ struct BankSyncView: View {
                                 Text(account.isMapped ? "Mapped" : "Not mapped")
                                     .font(.caption)
                                     .foregroundStyle(account.isMapped
-                                                     ? Theme.Role.positive : .secondary)
+                                                     ? Theme.Role.positive : Theme.Role.supporting)
                             }
                             Text([account.providerName, account.currencyCode]
                                 .compactMap { $0 }.joined(separator: " · "))
-                                .font(.caption).foregroundStyle(.secondary)
+                                .font(.caption).foregroundStyle(Theme.Role.supporting)
                             if let local = account.mappedLocalAccountName {
-                                Text("→ \(local)").font(.caption2).foregroundStyle(.secondary)
+                                Text("→ \(local)").font(.caption2).foregroundStyle(Theme.Role.supporting)
                             }
                             if let boundary = account.syncStartBoundary {
                                 Text("New activity after \(boundary.formatted(.dateTime.day().month().year()))")
-                                    .font(.caption2).foregroundStyle(.secondary)
+                                    .font(.caption2).foregroundStyle(Theme.Role.supporting)
                             }
                         }
                     }
@@ -328,7 +328,7 @@ private struct BankProviderSyncRow: View {
             Text(name).font(.body.weight(.medium))
             Spacer()
             Text(status).font(.subheadline)
-                .foregroundStyle(needsAttention ? Theme.Role.caution : .secondary)
+                .foregroundStyle(needsAttention ? Theme.Role.caution : Theme.Role.supporting)
             if run.state == "running" { ProgressView().controlSize(.small) }
         }
         .accessibilityElement(children: .combine)
@@ -460,7 +460,7 @@ struct MapAccountSheet: View {
                 } else if candidates.isEmpty {
                     Section {
                         Text("No unmapped local account in this currency. Create one first, or leave this account unmapped.")
-                            .font(.callout).foregroundStyle(.secondary)
+                            .font(.callout).foregroundStyle(Theme.Role.supporting)
                     }
                 } else {
                     Section("Map to") {

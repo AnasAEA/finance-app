@@ -25,9 +25,12 @@ enum Theme {
     }
 
     enum Role {
-        /// Secondary facts that identify a record or an available action.
-        /// Unlike system secondary text, this stays readable on both the
-        /// page and inset surfaces in the two appearances.
+        /// Every secondary line in the app: captions, labels, dates, accounts,
+        /// states, section footers and quiet indicators. System secondary text
+        /// blends to about 3.3:1 on the paper background; this stays at 6.2:1
+        /// or more on page, card and inset surfaces in both appearances and
+        /// darkens further under Increase Contrast. It is still visibly
+        /// quieter than primary text, so hierarchy survives.
         static let supporting = adaptive(0x4B5953, dark: 0xB9CBC2, contrast: 0x34433B)
         static let positive = adaptive(0x216650, dark: 0x8ACCB2, contrast: 0x124735)
         static let negative = adaptive(0xAD343B, dark: 0xFFABA9, contrast: 0x8A1623)
@@ -135,7 +138,7 @@ struct FinanceSection<Content: View, Header: View, Footer: View>: View {
                 .textCase(nil).accessibilityAddTraits(.isHeader)
             VStack(alignment: .leading, spacing: Theme.Space.md) { content }
                 .frame(maxWidth: .infinity, alignment: .leading)
-            footer.font(Theme.TypeStyle.metadata).foregroundStyle(.secondary)
+            footer.font(Theme.TypeStyle.metadata).foregroundStyle(Theme.Role.supporting)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -258,7 +261,7 @@ private struct FinanceLabeledStyle: LabeledContentStyle {
             ? AnyLayout(VStackLayout(alignment: .leading, spacing: Theme.Space.xs))
             : AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: Theme.Space.md))
         layout {
-            configuration.label.font(Theme.TypeStyle.supporting).foregroundStyle(.secondary)
+            configuration.label.font(Theme.TypeStyle.supporting).foregroundStyle(Theme.Role.supporting)
             if !dynamicTypeSize.isAccessibilitySize { Spacer(minLength: Theme.Space.sm) }
             configuration.content.font(Theme.TypeStyle.supporting).foregroundStyle(.primary)
                 .fixedSize(horizontal: false, vertical: true)
