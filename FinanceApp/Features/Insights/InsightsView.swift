@@ -52,6 +52,10 @@ struct InsightsView: View {
                         .font(.subheadline)
                         .foregroundStyle(Theme.Role.supporting)
                 }
+            case let .records(set):
+                InsightsRecordsView(set: set)
+            case let .transaction(id):
+                InsightsTransactionView(transactionID: id)
             }
         }
         .onChange(of: navigation.insightsSelection, initial: true) { _, new in
@@ -81,6 +85,10 @@ private struct InsightsPeriodView: View {
             FinanceSection { header }
             verificationSection
             FinanceSection { summaryCard }
+            // Where the money went is the period's most-asked question, so it
+            // is on the page whenever the figures are known, and each line
+            // opens the records behind it.
+            whereItWentSection
             findingsSection
             if review.showsHistoricalHomePointer {
                 FinanceSection {
@@ -100,14 +108,13 @@ private struct InsightsPeriodView: View {
             if showsDetails {
                 coverageSection
                 budgetSection
-                spendingSection
                 incomeSection
                 expectationsSection
-                goalsSection
                 // Forward-looking risk belongs to the period being lived. A
                 // past period never restates today's amount or date, behind a
                 // disclosure or otherwise; its pointer to Home is the whole
-                // answer.
+                // answer. Goals and the upcoming list live in Plan, and this
+                // screen links there rather than keeping a second copy.
                 if !review.showsHistoricalHomePointer { outlookSection }
             }
         }
@@ -162,7 +169,9 @@ private struct InsightsPeriodView: View {
         Button {
             selection.offset -= 1
         } label: {
-            Image(systemName: "chevron.left").frame(width: 28, height: 28)
+            // 32 points plus the bordered style's inset reaches the 44-point
+            // minimum touch target; 28 fell a few points short.
+            Image(systemName: "chevron.left").frame(width: 32, height: 32)
         }
         .buttonStyle(.bordered)
         .disabled(!review.canGoBack)
@@ -174,7 +183,7 @@ private struct InsightsPeriodView: View {
         Button {
             selection.offset += 1
         } label: {
-            Image(systemName: "chevron.right").frame(width: 28, height: 28)
+            Image(systemName: "chevron.right").frame(width: 32, height: 32)
         }
         .buttonStyle(.bordered)
         .disabled(!review.canGoForward)
@@ -215,11 +224,11 @@ private struct InsightsPeriodView: View {
                     || review.income.amount?.isZero != true {
                     ViewThatFits(in: .horizontal) {
                         HStack(alignment: .top, spacing: 24) {
-                            figure("Recorded spent", review.spending)
+                            spentFigure
                             figure("Recorded inflow", review.income)
                         }
                         VStack(alignment: .leading, spacing: 14) {
-                            figure("Recorded spent", review.spending)
+                            spentFigure
                             figure("Recorded inflow", review.income)
                         }
                     }
@@ -228,6 +237,12 @@ private struct InsightsPeriodView: View {
                 Text(review.recordsQualityStatement)
                     .font(.subheadline)
                     .fixedSize(horizontal: false, vertical: true)
+                // The limitation appears once, with the one place it can be
+                // worked on — or with nothing to press when it cannot.
+                if let action = review.coverage.action {
+                    ownerButton(action)
+                        .accessibilityIdentifier(InsightsID.fixCoverage)
+                }
                 if let primary = review.primaryFinding {
                     findingRow(primary)
                 }
@@ -251,6 +266,108 @@ private struct InsightsPeriodView: View {
                     .font(.money(20, weight: .medium))
                     .foregroundStyle(Theme.Role.supporting)
             }
+        }
+    }
+
+    /// Spending is the figure people question, so when its records are known
+    /// it opens them. An unknown total stays a plain "Unavailable".
+    @ViewBuilder
+    private var spentFigure: some View {
+        if let records = review.spendingRecords {
+            NavigationLink(value: InsightsRoute.records(records)) {
+                HStack(alignment: .lastTextBaseline, spacing: Theme.Space.sm) {
+                    figure("Recorded spent", review.spending)
+                    Image(systemName: "chevron.right")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Theme.Role.accent)
+                        .accessibilityHidden(true)
+                }
+            }
+            .buttonStyle(FinancePressStyle())
+            .accessibilityElement(children: .combine)
+            .accessibilityHint("Shows the transactions behind this figure")
+            .accessibilityIdentifier(InsightsID.spentRecords)
+        } else {
+            figure("Recorded spent", review.spending)
+        }
+    }
+
+    // MARK: - Where it went
+
+    /// Categories and one-off purchases, each opening what it is made of.
+    /// Shown only when the period's figures are known: an incomplete period
+    /// has no breakdown to give, and its limitation is already stated once.
+    @ViewBuilder
+    private var whereItWentSection: some View {
+        if review.zeroMeansZero, !review.topCategories.isEmpty || !review.exceptional.isEmpty {
+            FinanceSection {
+                ForEach(review.topCategories) { category in
+                    breakdownRow(
+                        title: category.name, detail: category.records.map(recordCount),
+                        amount: category.amount,
+                        route: category.records.map(InsightsRoute.records)
+                    )
+                    .accessibilityIdentifier(InsightsID.category(category.id))
+                }
+                ForEach(review.exceptional) { purchase in
+                    breakdownRow(
+                        title: purchase.label, detail: "One-off · \(dayText(purchase.day))",
+                        amount: purchase.amount,
+                        route: purchase.transactionID.map(InsightsRoute.transaction)
+                    )
+                }
+            } header: {
+                Text("Where it went")
+            } footer: {
+                Text("Budget categories and large one-off purchases. Uncategorized spending "
+                     + "is counted in the total but has no line here.")
+            }
+        }
+    }
+
+    private func recordCount(_ set: ReviewRecordSet) -> String {
+        set.records.count == 1 ? "1 transaction" : "\(set.records.count) transactions"
+    }
+
+    /// A breakdown line: a link when there is something exact to open, and
+    /// plain text otherwise, so nothing looks tappable that is not.
+    @ViewBuilder
+    private func breakdownRow(
+        title: String, detail: String?, amount: Amount, route: InsightsRoute?
+    ) -> some View {
+        // At accessibility sizes the amount moves under the name rather than
+        // shrinking beside it.
+        let stacked = dynamicTypeSize.isAccessibilitySize
+        let layout = stacked
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: Theme.Space.xs))
+            : AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: Theme.Space.md))
+        let content = HStack(alignment: .firstTextBaseline, spacing: Theme.Space.md) {
+            layout {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).font(Theme.TypeStyle.body)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if let detail {
+                        Text(detail).font(Theme.TypeStyle.metadata)
+                            .foregroundStyle(Theme.Role.supporting)
+                    }
+                }
+                if !stacked { Spacer(minLength: Theme.Space.sm) }
+                MoneyText(amount: amount, size: 17)
+            }
+            if stacked { Spacer(minLength: 0) }
+            if route != nil {
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Theme.Role.supporting)
+                    .accessibilityHidden(true)
+            }
+        }
+        if let route {
+            NavigationLink(value: route) { content }
+                .buttonStyle(FinancePressStyle())
+                .accessibilityElement(children: .combine)
+        } else {
+            content.accessibilityElement(children: .combine)
         }
     }
 
@@ -346,6 +463,14 @@ private struct InsightsPeriodView: View {
                                 .font(.footnote)
                                 .foregroundStyle(Theme.Role.supporting)
                         }
+                        // The month's own figure above is the whole month, so
+                        // its records are the whole month too.
+                        if review.zeroMeansZero, let records = context.records {
+                            NavigationLink(value: InsightsRoute.records(records)) {
+                                ActionLabel(title: "See \(recordCount(records)) this month")
+                            }
+                            .buttonStyle(FinancePressStyle())
+                        }
                     }
                     .padding(.vertical, 2)
                 }
@@ -381,42 +506,6 @@ private struct InsightsPeriodView: View {
             return month + " · \(remaining.formatted()) left"
         }
         return month
-    }
-
-    // MARK: - Spending
-
-    @ViewBuilder private var spendingSection: some View {
-        FinanceSection {
-            if !review.topCategories.isEmpty {
-                ForEach(review.topCategories) { category in
-                    LabeledContent {
-                        MoneyText(amount: category.amount, size: 17)
-                    } label: {
-                        Text(category.name)
-                    }
-                }
-            } else {
-                Text(review.zeroMeansZero
-                     ? "No spending recorded."
-                     : "Spending breakdown unavailable.")
-                    .font(.footnote)
-                    .foregroundStyle(Theme.Role.supporting)
-            }
-            ForEach(review.exceptional) { purchase in
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack {
-                        Text(purchase.label)
-                        Spacer()
-                        MoneyText(amount: purchase.amount, size: 17)
-                    }
-                    Text("One-off · \(dayText(purchase.day))")
-                        .font(.caption)
-                        .foregroundStyle(Theme.Role.supporting)
-                }
-            }
-        } header: {
-            Text("Where it went")
-        }
     }
 
     // MARK: - Income and support
@@ -476,15 +565,29 @@ private struct InsightsPeriodView: View {
         if !review.expectations.isEmpty {
             FinanceSection {
                 ForEach(review.expectations) { item in
-                    VStack(alignment: .leading, spacing: 2) {
+                    let content = VStack(alignment: .leading, spacing: 2) {
                         HStack {
                             Text(item.name)
                             Spacer()
                             MoneyText(amount: item.actual ?? item.expected, size: 17)
+                            if item.transactionID != nil {
+                                Image(systemName: "chevron.right")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(Theme.Role.supporting)
+                                    .accessibilityHidden(true)
+                            }
                         }
                         Text(expectationText(item))
                             .font(.caption)
                             .foregroundStyle(item.state == .missed ? Theme.Role.caution : Theme.Role.supporting)
+                    }
+                    // A settled payment opens the transaction that settled it.
+                    if let id = item.transactionID {
+                        NavigationLink(value: InsightsRoute.transaction(id)) { content }
+                            .buttonStyle(FinancePressStyle())
+                            .accessibilityElement(children: .combine)
+                    } else {
+                        content.accessibilityElement(children: .combine)
                     }
                 }
             } header: {
@@ -500,34 +603,6 @@ private struct InsightsPeriodView: View {
         case .expected: "Due \(dayText(item.day))"
         case .skipped: "Skipped · was due \(dayText(item.day))"
         case .noLongerDue: "No longer due"
-        }
-    }
-
-    // MARK: - Goals
-
-    @ViewBuilder private var goalsSection: some View {
-        if !review.goals.currentlySetAside.isZero || !review.goals.active.isEmpty {
-            FinanceSection {
-                row("Set aside now", review.goals.currentlySetAside)
-                ForEach(review.goals.active) { goal in
-                    LabeledContent {
-                        MoneyText(amount: goal.reserved, size: 17)
-                    } label: {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(goal.name)
-                            if let day = goal.targetDay {
-                                Text("Target \(goal.target.formatted()) by \(dayText(day))")
-                                    .font(.caption)
-                                    .foregroundStyle(Theme.Role.supporting)
-                            }
-                        }
-                    }
-                }
-            } header: {
-                Text("Goals and set aside")
-            } footer: {
-                Text("Shown for context. Reviewing does not change reservations.")
-            }
         }
     }
 
@@ -612,9 +687,12 @@ private struct InsightsPeriodView: View {
         .padding(.vertical, 2)
     }
 
+    /// The one next step a finding offers, or nothing. The mapper decided the
+    /// destination; this only names it and goes there.
     @ViewBuilder
     private func findingAction(_ finding: ReviewFindingCard) -> some View {
-        if case let .reviewItems(ids)? = finding.destination {
+        switch finding.destination {
+        case let .reviewItems(ids)?:
             Button {
                 navigation.openReviewItems(ids)
             } label: {
@@ -622,7 +700,34 @@ private struct InsightsPeriodView: View {
             }
             .buttonStyle(FinancePressStyle())
             .accessibilityIdentifier("insights.review-items")
+        case let .records(set)?:
+            NavigationLink(value: InsightsRoute.records(set)) {
+                ActionLabel(title: set.records.count == 1
+                            ? "See the transaction" : "See the \(recordCount(set))")
+            }
+            .buttonStyle(FinancePressStyle())
+            .accessibilityIdentifier(InsightsID.findingRecords)
+        case let .transaction(id)?:
+            NavigationLink(value: InsightsRoute.transaction(id)) {
+                ActionLabel(title: "Open the transaction")
+            }
+            .buttonStyle(FinancePressStyle())
+            .accessibilityIdentifier(InsightsID.findingTransaction)
+        case let .owner(owner)?:
+            ownerButton(owner)
+                .accessibilityIdentifier(InsightsID.findingOwner)
+        case nil:
+            EmptyView()
         }
+    }
+
+    private func ownerButton(_ owner: ReviewOwnerDestination) -> some View {
+        Button {
+            InsightsOwnerRoute.open(owner, in: navigation)
+        } label: {
+            ActionLabel(title: InsightsOwnerRoute.title(owner))
+        }
+        .buttonStyle(FinancePressStyle())
     }
 
     private func toneSymbol(_ tone: ReviewFindingTone) -> String {
@@ -641,11 +746,16 @@ private struct InsightsPeriodView: View {
         }
     }
 
-    // MARK: - Outlook
+    // MARK: - Looking ahead
 
+    /// Risk from today, stated once, with the screen that can act on it.
+    ///
+    /// Current cash and the upcoming list belong to Home and Plan. This keeps
+    /// no second copy of either that could drift from them; it links to the
+    /// upcoming list instead. The canonical first risk stays here because the
+    /// finding that would repeat it is folded into it.
     private var outlookSection: some View {
         FinanceSection {
-            row("Available now", review.outlook.liquidityNow)
             if let day = review.outlook.firstRiskDay {
                 VStack(alignment: .leading, spacing: 2) {
                     HStack {
@@ -659,6 +769,8 @@ private struct InsightsPeriodView: View {
                         .font(.caption)
                         .foregroundStyle(Theme.Role.negative)
                 }
+                .accessibilityElement(children: .combine)
+                ownerButton(.fundingNeeded)
             } else if let floor = review.outlook.floorWarningDay {
                 Text("Dips below your safety floor on \(dayText(floor)).")
                     .font(.footnote)
@@ -671,22 +783,18 @@ private struct InsightsPeriodView: View {
             // Forward-looking engine findings belong here, not under What
             // changed, and appear in exactly one of the two.
             ForEach(review.forwardFindings) { finding in findingRow(finding) }
-            ForEach(review.outlook.upcoming) { item in
-                LabeledContent {
-                    MoneyText(amount: item.amount, size: 17)
-                } label: {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(item.name)
-                        Text(dayText(item.day)).font(.caption).foregroundStyle(Theme.Role.supporting)
-                    }
-                }
+            Button {
+                navigation.openPlan(.upcoming)
+            } label: {
+                ActionLabel(title: "See upcoming payments")
             }
+            .buttonStyle(FinancePressStyle())
         } header: {
-            Text("Current outlook")
+            Text("Looking ahead")
         } footer: {
             // Says plainly that this is forward-looking, so nobody reads it as
             // the balance at the end of the reviewed period.
-            Text("Looking forward from \(dayText(review.outlook.asOfDay)), not a "
+            Text("From \(dayText(review.outlook.asOfDay)) onward, not a "
                  + "balance for the period above.")
         }
     }
@@ -709,6 +817,187 @@ private struct InsightsPeriodView: View {
     /// The same short day every other screen writes, in the person's locale.
     private func dayText(_ day: CalendarDay) -> String {
         day.formatted(.dateTime.day().month(.abbreviated))
+    }
+}
+
+/// Where each owning screen is, and what the button to it says. Kept in one
+/// place so a finding, the coverage statement and a record list name the
+/// same screen the same way.
+enum InsightsOwnerRoute {
+    static func title(_ owner: ReviewOwnerDestination) -> String {
+        switch owner {
+        case .budget: "Open budget"
+        case .goals: "Open goals"
+        case .fundingNeeded: "See what's needed"
+        case .safetyReserve: "Open safety reserve"
+        case .banksAndSync: "Open Banks & Sync"
+        }
+    }
+
+    @MainActor
+    static func open(_ owner: ReviewOwnerDestination, in navigation: AppNavigation) {
+        switch owner {
+        case .budget: navigation.openPlan(.budget)
+        case .goals: navigation.openPlan(.goals)
+        case .fundingNeeded: navigation.openPlan(.fundingNeeded)
+        case .safetyReserve: navigation.openPlan(.safetyReserve)
+        case .banksAndSync: navigation.showHome([.settings, .banks])
+        }
+    }
+}
+
+/// The exact records behind one figure on the review.
+///
+/// Every row is a record the review counted, with the amount it counted, so
+/// the list adds up to the figure it was opened from. Rows open the ordinary
+/// transaction detail; nothing here edits, recategorizes or recounts.
+private struct InsightsRecordsView: View {
+    @Environment(FinanceStore.self) private var store
+    @Environment(AppNavigation.self) private var navigation
+    let set: ReviewRecordSet
+
+    var body: some View {
+        // One snapshot read, so every row is resolved against the same moment.
+        let ledger = Dictionary(
+            store.snapshot.activity.flatMap { day in
+                day.rows.map { ($0.id, (row: $0, day: day.date)) }
+            },
+            uniquingKeysWith: { first, _ in first }
+        )
+        return FinancePage {
+            FinanceSection {
+                VStack(alignment: .leading, spacing: Theme.Space.xs) {
+                    Text(set.scopeLabel)
+                        .font(Theme.TypeStyle.supporting)
+                        .foregroundStyle(Theme.Role.supporting)
+                    MoneyText(amount: set.total, size: 34)
+                    Text(set.records.count == 1
+                         ? "Counted from 1 transaction"
+                         : "Counted from \(set.records.count) transactions")
+                        .font(Theme.TypeStyle.supporting)
+                        .foregroundStyle(Theme.Role.supporting)
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier(InsightsID.recordsTotal)
+            }
+            FinanceSection {
+                // Newest first, as in Activity.
+                ForEach(Array(set.records.reversed())) { record in
+                    if let entry = ledger[record.id] {
+                        NavigationLink {
+                            TransactionDetailView(row: entry.row, date: entry.day)
+                        } label: {
+                            InsightsRecordRow(record: record, row: entry.row, opens: true)
+                        }
+                        .buttonStyle(FinancePressStyle())
+                        .accessibilityIdentifier(InsightsID.record(record.id))
+                    } else {
+                        InsightsRecordRow(record: record, row: nil, opens: false)
+                    }
+                }
+            } header: {
+                Text("Transactions")
+            } footer: {
+                Text("Each amount is what that transaction added to the figure above. "
+                     + "A refund counts against spending. Transfers, cash withdrawals and "
+                     + "bank items still waiting for review are not included.")
+            }
+            if let owner = set.owner {
+                FinanceSection {
+                    Button {
+                        InsightsOwnerRoute.open(owner, in: navigation)
+                    } label: {
+                        ActionLabel(title: InsightsOwnerRoute.title(owner))
+                    }
+                    .buttonStyle(FinancePressStyle())
+                }
+            }
+        }
+        .navigationTitle(set.title)
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+/// One counted record: what it was, when and where, and what it added.
+private struct InsightsRecordRow: View {
+    let record: ReviewRecordRow
+    let row: ActivityRow?
+    let opens: Bool
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        // At accessibility sizes the amount moves under the name rather than
+        // shrinking beside it.
+        let stacked = dynamicTypeSize.isAccessibilitySize
+        let layout = stacked
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: Theme.Space.xs))
+            : AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: Theme.Space.md))
+        HStack(alignment: .firstTextBaseline, spacing: Theme.Space.md) {
+            layout {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(row?.title ?? "Transaction unavailable")
+                        .font(Theme.TypeStyle.body.weight(.semibold))
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(detail)
+                        .font(Theme.TypeStyle.metadata)
+                        .foregroundStyle(Theme.Role.supporting)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                if !stacked { Spacer(minLength: Theme.Space.sm) }
+                VStack(alignment: stacked ? .leading : .trailing, spacing: 2) {
+                    MoneyText(amount: record.counted, size: 17, weight: .semibold,
+                              showsSign: record.counted.isNegative)
+                    if record.counted.isNegative {
+                        Text("Reduces spending")
+                            .font(.caption2)
+                            .foregroundStyle(Theme.Role.supporting)
+                    }
+                }
+            }
+            if stacked { Spacer(minLength: 0) }
+            if opens {
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Theme.Role.supporting)
+                    .accessibilityHidden(true)
+            }
+        }
+        .padding(.vertical, Theme.Space.xs)
+        .accessibilityElement(children: .combine)
+    }
+
+    /// The day, what it was filed under and where it was paid from — and,
+    /// when a refund left only part of it counted, how much of it.
+    private var detail: String {
+        var parts = [record.day.formatted(.dateTime.day().month(.abbreviated))]
+        if let category = row?.categoryLabel { parts.append(category) }
+        if let account = row?.primaryAccountLabel { parts.append(account) }
+        if let row, record.counted.isPositive,
+           row.amount.currencyCode == record.counted.currencyCode,
+           row.amount.magnitude != record.counted {
+            parts.append("\(record.counted.formatted()) of \(row.amount.magnitude.formatted()) counted")
+        }
+        return parts.joined(separator: " · ")
+    }
+}
+
+/// One ledger transaction a finding or a row named, opened in its ordinary
+/// detail. If it no longer exists, that is said rather than guessed.
+private struct InsightsTransactionView: View {
+    @Environment(FinanceStore.self) private var store
+    let transactionID: String
+
+    var body: some View {
+        let day = store.snapshot.activity.first { $0.rows.contains { $0.id == transactionID } }
+        if let day, let row = day.rows.first(where: { $0.id == transactionID }) {
+            TransactionDetailView(row: row, date: day.date)
+        } else {
+            ContentUnavailableView(
+                "Transaction unavailable",
+                systemImage: "exclamationmark.triangle",
+                description: Text("It may have been removed since this review was prepared.")
+            )
+        }
     }
 }
 

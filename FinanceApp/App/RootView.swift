@@ -55,6 +55,10 @@ enum PlanRoute: Hashable {
 /// screen Insights already owns; this is only how Home asks to open it.
 enum InsightsRoute: Hashable {
     case monthVerification(ReviewPeriodSelection)
+    /// The exact records behind a figure, with the amount each counted.
+    case records(ReviewRecordSet)
+    /// One ledger transaction a finding or a breakdown row names.
+    case transaction(String)
 }
 
 /// Accessibility identifiers for the primary routes.

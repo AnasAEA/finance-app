@@ -27,6 +27,9 @@ enum ReviewPresentationMapper {
         /// An engine finding can also name ledger or archive records, so it
         /// must not route those into this queue by accident.
         var actionableObservationIDs: Set<String> = []
+        /// Ledger transactions in the document now. Something on the review
+        /// opens a transaction only when its identifier is one of these.
+        var ledgerTransactionIDs: Set<String> = []
     }
 
     static func present(
@@ -42,8 +45,9 @@ enum ReviewPresentationMapper {
     ) -> InsightsPresentation {
         let coverage = coverageSummary(result.coverage, live: live, labels: labels)
         let complete = result.coverage.status == .complete
+        let records = recordSets(result, complete: complete, labels: labels)
         let (periodFindings, forwardFindings) = partition(result.findings, risk: result.risk)
-        let mappedFindings = periodFindings.map { finding($0, labels: labels) }
+        let mappedFindings = periodFindings.map { finding($0, labels: labels, records: records) }
 
         // A figure is stated only when every day behind it is accounted for.
         // Otherwise the honest answer is that it is not known — never zero,
@@ -65,16 +69,19 @@ enum ReviewPresentationMapper {
             summary: summary(findings: mappedFindings, spending: spending,
                              income: income, complete: complete),
             spending: spending,
+            spendingRecords: records.period,
             income: income,
             notableChangeCount: periodFindings.count,
-            monthContexts: result.budget.monthlyContexts.map { monthContext($0, labels: labels) },
-            topCategories: topCategories(result.budget, labels: labels),
+            monthContexts: result.budget.monthlyContexts.map {
+                monthContext($0, labels: labels, records: records)
+            },
+            topCategories: topCategories(result.budget, labels: labels, records: records),
             exceptional: exceptional(result.budget, labels: labels),
             incomeBreakdown: incomeBreakdown(result.income, complete: complete),
-            expectations: result.expectations.items.map(expectation),
+            expectations: result.expectations.items.map { expectation($0, labels: labels) },
             goals: goals(result.goals, labels: labels),
             findings: mappedFindings,
-            forwardFindings: forwardFindings.map { finding($0, labels: labels) },
+            forwardFindings: forwardFindings.map { finding($0, labels: labels, records: records) },
             outlook: outlook(result.risk, labels: labels),
             comparison: comparison(result.comparison),
             recordsQualityStatement: coverage.explanation,
@@ -213,8 +220,29 @@ enum ReviewPresentationMapper {
                 calendarDay($0.start)...calendarDay($0.end)
             },
             unknownAccountNames: unknownNames,
-            mentionsArchive: mentionsArchive
+            mentionsArchive: mentionsArchive,
+            action: coverageAction(coverage, quality: quality, unknownNames: unknownNames,
+                                   mentionsArchive: mentionsArchive)
         )
+    }
+
+    /// Banks & Sync, when that is where the gap can actually close: days the
+    /// bank has not confirmed, a sync that recorded no coverage, or a local
+    /// account with no bank window. An archive gap cannot be fixed on this
+    /// phone, so a period missing archive days offers nothing to press.
+    static func coverageAction(
+        _ coverage: ReviewCoverage,
+        quality: ReviewDataQuality,
+        unknownNames: [String],
+        mentionsArchive: Bool
+    ) -> ReviewOwnerDestination? {
+        guard quality != .complete, !mentionsArchive else { return nil }
+        let syncable: Set<ReviewCoverageReasonKind> = [.coverageMetadataAbsent, .missingLiveInterval]
+        let reasons = Set(coverage.reasons.map(\.kind))
+        guard !unknownNames.isEmpty || (!reasons.isEmpty && reasons.isSubset(of: syncable)) else {
+            return nil
+        }
+        return .banksAndSync
     }
 
     private static func explanation(
@@ -291,7 +319,7 @@ enum ReviewPresentationMapper {
     // MARK: - Budget
 
     static func monthContext(
-        _ context: ReviewMonthlyBudgetContext, labels: Labels
+        _ context: ReviewMonthlyBudgetContext, labels: Labels, records: RecordSets
     ) -> ReviewMonthContext {
         ReviewMonthContext(
             id: context.month.isoString,
@@ -311,13 +339,16 @@ enum ReviewPresentationMapper {
                     periodSpent: amount($0.periodSpent),
                     isOverspent: $0.isOverspent
                 )
-            }
+            },
+            records: records.months[context.month.isoString]
         )
     }
 
     /// Where the money went, largest first. Summed across the months a period
     /// touches so a cross-month week reports one figure per line.
-    static func topCategories(_ budget: ReviewBudget, labels: Labels) -> [ReviewCategoryAmount] {
+    static func topCategories(
+        _ budget: ReviewBudget, labels: Labels, records: RecordSets
+    ) -> [ReviewCategoryAmount] {
         var totals: [String: (name: String, minor: Int64)] = [:]
         var currency = "EUR"
         for context in budget.monthlyContexts {
@@ -332,7 +363,8 @@ enum ReviewPresentationMapper {
                 ReviewCategoryAmount(
                     id: $0.key,
                     name: $0.value.name,
-                    amount: Amount(minorUnits: $0.value.minor, currencyCode: currency)
+                    amount: Amount(minorUnits: $0.value.minor, currencyCode: currency),
+                    records: records.lines[$0.key]
                 )
             }
             .sorted {
@@ -359,9 +391,85 @@ enum ReviewPresentationMapper {
                     id: $0.id,
                     label: labels.transactions[$0.id] ?? "One-off purchase",
                     amount: amount($0.amount),
-                    day: calendarDay($0.date)
+                    day: calendarDay($0.date),
+                    transactionID: labels.ledgerTransactionIDs.contains($0.id) ? $0.id : nil
                 )
             }
+    }
+
+    // MARK: - Records behind a figure
+
+    /// The record lists this review can offer, built once from the engine's
+    /// own contributions: the period's spending, each budget line across the
+    /// period, and each whole month the period touches.
+    struct RecordSets {
+        var period: ReviewRecordSet?
+        var lines: [String: ReviewRecordSet] = [:]
+        var months: [String: ReviewRecordSet] = [:]
+    }
+
+    /// Nothing is offered while coverage is incomplete, because the figures
+    /// are not stated then either. Each set is kept only when its rows add up
+    /// to the figure it explains, so a list can never disagree with a number.
+    static func recordSets(_ result: ReviewResult, complete: Bool, labels: Labels) -> RecordSets {
+        guard complete else { return RecordSets() }
+        let budget = result.budget
+        var sets = RecordSets()
+        sets.period = recordSet(
+            id: "period", title: "Spending", scope: rangeText(result.interval),
+            total: budget.periodEconomicSpending, rows: budget.contributions, owner: nil
+        )
+        var lineTotals: [String: (name: String, minor: Int64, currency: Currency)] = [:]
+        for context in budget.monthlyContexts {
+            for line in context.lines {
+                let name = labels.budgetLines[line.id] ?? line.name
+                lineTotals[line.id, default: (name, 0, line.periodSpent.currency)].minor
+                    += line.periodSpent.minorUnits
+            }
+            sets.months[context.month.isoString] = recordSet(
+                id: "month:\(context.month.isoString)",
+                title: monthLabel(context.month),
+                scope: rangeText(.month(context.month)),
+                total: context.monthSpending, rows: context.contributions, owner: .budget
+            )
+        }
+        for (id, line) in lineTotals {
+            sets.lines[id] = recordSet(
+                id: "line:\(id)", title: line.name, scope: rangeText(result.interval),
+                total: Money(minorUnits: line.minor, currency: line.currency),
+                rows: budget.contributions.filter { $0.budgetID == id }, owner: .budget
+            )
+        }
+        return sets
+    }
+
+    static func recordSet(
+        id: String, title: String, scope: String, total: Money,
+        rows: [ReviewSpendingDriver], owner: ReviewOwnerDestination?
+    ) -> ReviewRecordSet? {
+        recordSet(
+            id: id, title: title, scope: scope, total: total,
+            rows: rows.map { (id: $0.id, day: $0.date, amount: $0.amount) }, owner: owner
+        )
+    }
+
+    /// Kept only when the rows add up, exactly and in one currency, to
+    /// `total`. An empty list explains nothing, so it is not offered either.
+    static func recordSet(
+        id: String, title: String, scope: String, total: Money,
+        rows: [(id: String, day: Day, amount: Money)], owner: ReviewOwnerDestination?
+    ) -> ReviewRecordSet? {
+        guard !rows.isEmpty,
+              rows.allSatisfy({ $0.amount.currency == total.currency }),
+              rows.reduce(Int64(0), { $0 + $1.amount.minorUnits }) == total.minorUnits
+        else { return nil }
+        return ReviewRecordSet(
+            id: id, title: title, scopeLabel: scope, total: amount(total),
+            records: rows.map {
+                ReviewRecordRow(id: $0.id, day: calendarDay($0.day), counted: amount($0.amount))
+            },
+            owner: owner
+        )
     }
 
     // MARK: - Income
@@ -391,7 +499,7 @@ enum ReviewPresentationMapper {
 
     // MARK: - Expected vs actual
 
-    static func expectation(_ item: ReviewExpectation) -> ReviewExpectationRow {
+    static func expectation(_ item: ReviewExpectation, labels: Labels) -> ReviewExpectationRow {
         let state: ReviewExpectationState = switch item.status {
         case .expected: .expected
         case .matched: .matched
@@ -405,7 +513,10 @@ enum ReviewPresentationMapper {
             day: calendarDay(item.expectedDay),
             expected: amount(item.expectedAmount),
             actual: item.actualAmount.map(amount),
-            state: state
+            state: state,
+            transactionID: item.actualTransactionID.flatMap {
+                labels.ledgerTransactionIDs.contains($0) ? $0 : nil
+            }
         )
     }
 
@@ -431,7 +542,9 @@ enum ReviewPresentationMapper {
 
     // MARK: - Findings
 
-    static func finding(_ finding: ReviewFinding, labels: Labels) -> ReviewFindingCard {
+    static func finding(
+        _ finding: ReviewFinding, labels: Labels, records: RecordSets
+    ) -> ReviewFindingCard {
         let tone: ReviewFindingTone = switch finding.severity {
         case .important: .important
         case .warning: .warning
@@ -441,11 +554,65 @@ enum ReviewPresentationMapper {
         return ReviewFindingCard(
             id: finding.id, tone: tone, role: role(for: finding),
             title: title, detail: detail,
-            destination: destination(
-                kind: finding.kind, ids: finding.ids,
+            destination: destination(for: finding, labels: labels, records: records)
+        )
+    }
+
+    /// Where a finding leads, decided per engine kind.
+    ///
+    /// A record list is offered only when it adds up to the exact amount the
+    /// finding quotes; a single transaction only when it is in the ledger now.
+    /// Findings about a plan lead to the screen that owns that plan. A finding
+    /// whose subjects this adapter cannot account for stays informational.
+    static func destination(
+        for finding: ReviewFinding, labels: Labels, records: RecordSets
+    ) -> ReviewFindingDestination? {
+        destination(
+            kind: finding.kind, ids: finding.ids, quoted: finding.amounts.first,
+            labels: labels, records: records
+        )
+    }
+
+    /// The same decision from the finding's parts. `quoted` is the figure the
+    /// finding's own sentence states first.
+    static func destination(
+        kind: ReviewFindingKind,
+        ids: [String],
+        quoted figure: Money?,
+        labels: Labels,
+        records: RecordSets
+    ) -> ReviewFindingDestination? {
+        func quoted(_ set: ReviewRecordSet?) -> ReviewFindingDestination? {
+            guard let set, let figure, amount(figure) == set.total else { return nil }
+            return .records(set)
+        }
+        switch kind {
+        case .unresolvedEvidenceAffectingAccuracy:
+            return destination(
+                kind: kind, ids: ids,
                 actionableObservationIDs: labels.actionableObservationIDs
             )
-        )
+        case .spendingMateriallyHigherThanPrior, .spendingMateriallyLowerThanPrior:
+            return quoted(records.period)
+        case .unusuallyHighCategory:
+            return quoted(ids.first.flatMap { records.lines[$0] })
+        case .budgetOverrun:
+            return quoted(ids.first.flatMap { records.months[$0] })
+        case .majorExceptionalPurchase:
+            guard let id = ids.first, labels.ledgerTransactionIDs.contains(id) else {
+                return nil
+            }
+            return .transaction(id)
+        case .goalDeadlineApproaching:
+            return .owner(.goals)
+        case .upcomingLiquidityRisk:
+            return .owner(.fundingNeeded)
+        case .floorWarning:
+            return .owner(.safetyReserve)
+        case .supportBelowExpected:
+            // The engine names no income records for this comparison.
+            return nil
+        }
     }
 
     private static func role(for finding: ReviewFinding) -> ReviewFindingRole {

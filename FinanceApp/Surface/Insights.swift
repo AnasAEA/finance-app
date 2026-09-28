@@ -62,6 +62,48 @@ struct ReviewCoverageSummary: Hashable, Sendable {
     let unknownAccountNames: [String]
     /// Archive-era days the installed archive does not reach.
     let mentionsArchive: Bool
+    /// Where the limitation can be worked on, when this app can do anything
+    /// about it. Nil means it cannot be resolved from here, and the screen
+    /// says so rather than offering a button that fixes nothing.
+    let action: ReviewOwnerDestination?
+}
+
+// MARK: - Records behind a figure
+
+/// One record a review counted, with exactly what it added to a figure.
+///
+/// `counted` is the review's own resolved amount for this record — net of a
+/// refund applied against it, and negative for a refund that reduced
+/// spending — so a list of these adds up to the figure it explains.
+struct ReviewRecordRow: Identifiable, Hashable, Sendable {
+    /// The ledger transaction's identifier.
+    let id: String
+    let day: CalendarDay
+    let counted: Amount
+}
+
+/// The exact records behind one figure on the review.
+///
+/// Built only from the engine's own contributions, and only when they add
+/// up to the figure being explained: `total` is that figure and the rows sum
+/// to it. A figure whose records cannot be accounted for gets no set at all,
+/// so nothing opens a list that disagrees with the number above it.
+struct ReviewRecordSet: Identifiable, Hashable, Sendable {
+    let id: String
+    /// What the records are: a category, "Spending", or a month.
+    let title: String
+    /// The days the records were taken from.
+    let scopeLabel: String
+    let total: Amount
+    let records: [ReviewRecordRow]
+    /// Where the plan behind this figure can be changed, when it has one.
+    let owner: ReviewOwnerDestination?
+}
+
+/// A screen elsewhere in the app that owns what a finding is about. Insights
+/// explains; changing a budget, a goal or a bank connection happens there.
+enum ReviewOwnerDestination: Hashable, Sendable {
+    case budget, goals, fundingNeeded, safetyReserve, banksAndSync
 }
 
 // MARK: - Budget
@@ -90,6 +132,8 @@ struct ReviewMonthContext: Identifiable, Hashable, Sendable {
     let committed: Amount
     let uncategorized: Amount
     let lines: [ReviewBudgetLineSummary]
+    /// The records behind `monthSpending`, the whole month.
+    let records: ReviewRecordSet?
 }
 
 // MARK: - Spending
@@ -98,6 +142,8 @@ struct ReviewCategoryAmount: Identifiable, Hashable, Sendable {
     let id: String
     let name: String
     let amount: Amount
+    /// The records behind `amount`.
+    let records: ReviewRecordSet?
 }
 
 struct ReviewExceptionalPurchase: Identifiable, Hashable, Sendable {
@@ -105,6 +151,8 @@ struct ReviewExceptionalPurchase: Identifiable, Hashable, Sendable {
     let label: String
     let amount: Amount
     let day: CalendarDay
+    /// The ledger transaction to open, when the purchase is one.
+    let transactionID: String?
 }
 
 // MARK: - Income
@@ -156,6 +204,8 @@ struct ReviewExpectationRow: Identifiable, Hashable, Sendable {
     let expected: Amount
     let actual: Amount?
     let state: ReviewExpectationState
+    /// The ledger transaction that settled it, when one did.
+    let transactionID: String?
 }
 
 // MARK: - Goals
@@ -202,7 +252,14 @@ struct ReviewFindingCard: Identifiable, Hashable, Sendable {
 /// engine named. An explanation with mixed or unavailable subjects stays
 /// informational rather than opening a misleading subset.
 enum ReviewFindingDestination: Hashable, Sendable {
+    /// Bank items still waiting for a decision, exactly those.
     case reviewItems([String])
+    /// The records whose amounts make up the figure the finding quotes.
+    case records(ReviewRecordSet)
+    /// The one ledger transaction the finding names.
+    case transaction(String)
+    /// The screen that owns what the finding is about.
+    case owner(ReviewOwnerDestination)
 }
 
 // MARK: - Outlook
@@ -264,6 +321,8 @@ struct InsightsPresentation: Hashable, Sendable {
     let coverage: ReviewCoverageSummary
     let summary: String
     let spending: ReviewFigure
+    /// The records behind `spending`, when it is known.
+    let spendingRecords: ReviewRecordSet?
     let income: ReviewFigure
     let notableChangeCount: Int
 
