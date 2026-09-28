@@ -171,25 +171,19 @@ enum ReviewPresentationMapper {
             : "\(rangeText(reviewed)) · so far"
     }
 
+    /// Dates follow the person's locale, through the same formatting every
+    /// other screen uses, so Insights and Activity cannot name one day two
+    /// different ways.
     static func rangeText(_ interval: ReviewInterval) -> String {
-        interval.start == interval.end
-            ? dayText(interval.start)
-            : "\(dayText(interval.start)) – \(dayText(interval.end))"
+        calendarDay(interval.start).formatted(through: calendarDay(interval.end))
     }
 
     static func dayText(_ day: Day) -> String {
-        "\(day.day) \(shortMonth(day.month))"
-    }
-
-    static func shortMonth(_ month: Int) -> String {
-        ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
-         "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][max(0, min(11, month - 1))]
+        calendarDay(day).formatted(.dateTime.day().month(.abbreviated))
     }
 
     static func monthLabel(_ month: MonthKey) -> String {
-        let names = ["January", "February", "March", "April", "May", "June", "July",
-                     "August", "September", "October", "November", "December"]
-        return "\(names[max(0, min(11, month.month - 1))]) \(month.year)"
+        CalendarDay.monthTitle(year: month.year, month: month.month)
     }
 
     // MARK: - Coverage

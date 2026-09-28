@@ -114,6 +114,66 @@ struct CalendarDay: Hashable, Sendable, Comparable, Codable, CustomStringConvert
         return description
     }
 
+    /// This day through `end`, written the way the person's locale writes a
+    /// span of days: "Sep 1 – 6" and "Aug 31 – Sep 6" in en_US, "1–6 sept."
+    /// in fr_FR. Each end reads like a single day elsewhere in the app, the
+    /// shared month is written once where the locale does that, and the year
+    /// appears only when the span crosses one.
+    ///
+    /// A range of one day is that day. A day without an instant falls back to
+    /// its structural civil text, as `formatted(_:)` does, and is never
+    /// replaced by a neighbouring day.
+    ///
+    /// Both ends and the span are written in `locale`'s own calendar, so the
+    /// output depends on the locale passed and nothing else. By default that
+    /// is the person's locale and calendar, the same ones every other date on
+    /// screen uses.
+    func formatted(
+        through end: CalendarDay,
+        timeZone: TimeZone = .current,
+        locale: Locale = .autoupdatingCurrent
+    ) -> String {
+        let calendar = Self.displayCalendar(locale, timeZone: timeZone)
+        let crossesYear = end.year != year
+        let base = Date.FormatStyle(locale: locale, calendar: calendar, timeZone: timeZone)
+            .day().month(.abbreviated)
+        let dayStyle = crossesYear ? base.year() : base
+        if end == self { return formatted(dayStyle, timeZone: timeZone) }
+        guard let start = date(in: timeZone), let finish = end.date(in: timeZone),
+              start < finish else {
+            // The separator Foundation's interval style uses, so a fallback
+            // span looks like every other span.
+            return "\(formatted(dayStyle, timeZone: timeZone))\u{2009}–\u{2009}"
+                + end.formatted(dayStyle, timeZone: timeZone)
+        }
+        let span = Date.IntervalFormatStyle(locale: locale, calendar: calendar, timeZone: timeZone)
+            .day().month(.abbreviated)
+        return (crossesYear ? span.year() : span).format(start..<finish)
+    }
+
+    /// A calendar month with its year, "September 2026", in the person's
+    /// locale and its calendar. Components that name no real month print as
+    /// structural civil text rather than as some other month.
+    static func monthTitle(
+        year: Int,
+        month: Int,
+        timeZone: TimeZone = .current,
+        locale: Locale = .autoupdatingCurrent
+    ) -> String {
+        let style = Date.FormatStyle(
+            locale: locale, calendar: displayCalendar(locale, timeZone: timeZone), timeZone: timeZone
+        ).month(.wide).year()
+        return CalendarDay(year: year, month: month, day: 1).formatted(style, timeZone: timeZone)
+    }
+
+    /// The calendar a date is *written* in: the locale's own. Arithmetic keeps
+    /// using `calendar(in:)`, which is Gregorian whatever the locale says.
+    private static func displayCalendar(_ locale: Locale, timeZone: TimeZone) -> Calendar {
+        var calendar = locale.calendar
+        calendar.timeZone = timeZone
+        return calendar
+    }
+
     private static func formatCivil(year: Int, month: Int, day: Int) -> String {
         formatYear(year) + "-" + formatPart(month) + "-" + formatPart(day)
     }

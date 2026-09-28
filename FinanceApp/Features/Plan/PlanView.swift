@@ -226,7 +226,8 @@ private struct BudgetDetailContent: View {
                 .accessibilityLabel("Projected balance over the next \(snapshot.horizonDays) days")
                 } else {
                     ForEach(snapshot.runwayPoints) { point in
-                        LabeledContent(point.date.description, value: point.balance.formatted())
+                        LabeledContent(point.date.formatted(.dateTime.day().month(.abbreviated)),
+                                       value: point.balance.formatted())
                     }
                 }
             }

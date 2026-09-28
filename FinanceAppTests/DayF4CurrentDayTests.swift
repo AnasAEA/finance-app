@@ -75,7 +75,9 @@ struct DayF4CurrentDayTests {
             #expect(presentation.snapshot.expectedPayments.first { $0.ruleID == "synthetic-midnight" }?.status == (expected == first ? .due : .overdue))
             let reviewBefore = clock.samples.count
             let review = try #require(store.review(.init()))
-            #expect(review.rangeLabel == "1 Sep – \(expected.day) Sep · so far")
+            let reviewed = CalendarDay(year: 2026, month: 9, day: 1)
+                .formatted(through: DomainMapper.civilDay(expected))
+            #expect(review.rangeLabel == "\(reviewed) · so far")
             #expect(clock.samples.count == reviewBefore + 1)
             let currentRuns = starts.count
             _ = store.snapshot

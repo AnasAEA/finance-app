@@ -1713,14 +1713,7 @@ struct DomainMapper {
     }
 
     private func monthLabel(_ month: MonthKey) -> String {
-        var components = DateComponents()
-        components.year = month.year
-        components.month = month.month
-        components.day = 1
-        guard let date = Calendar(identifier: .gregorian).date(from: components) else {
-            return month.isoString
-        }
-        return date.formatted(.dateTime.month(.wide).year())
+        CalendarDay.monthTitle(year: month.year, month: month.month)
     }
 
     // MARK: - Activity
