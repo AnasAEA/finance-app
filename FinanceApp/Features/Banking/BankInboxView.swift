@@ -1086,7 +1086,15 @@ struct ProviderBalanceDetailView: View {
                 ObservationReviewView(observationID: item.id)
             } label: {
                 VStack(alignment: .leading) {
-                    Text(item.displayMerchant)
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text(item.displayMerchant)
+                            .lineLimit(2)
+                            .truncationMode(.tail)
+                        Spacer(minLength: 8)
+                        MoneyText(amount: item.amount, size: 15, weight: .medium,
+                                  showsSign: true, colorBySign: false)
+                            .fixedSize(horizontal: true, vertical: false)
+                    }
                     Text(item.status.displayName).font(.caption).foregroundStyle(.secondary)
                 }
             }
