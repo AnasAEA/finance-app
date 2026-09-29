@@ -426,12 +426,14 @@ enum ReviewPresentationMapper {
                 lineTotals[line.id, default: (name, 0, line.periodSpent.currency)].minor
                     += line.periodSpent.minorUnits
             }
-            sets.months[context.month.isoString] = recordSet(
-                id: "month:\(context.month.isoString)",
-                title: monthLabel(context.month),
-                scope: rangeText(.month(context.month)),
-                total: context.monthSpending, rows: context.contributions, owner: .budget
-            )
+            if monthIsCovered(context, asOf: result.asOf) {
+                sets.months[context.month.isoString] = recordSet(
+                    id: "month:\(context.month.isoString)",
+                    title: monthLabel(context.month),
+                    scope: rangeText(.month(context.month)),
+                    total: context.monthSpending, rows: context.contributions, owner: .budget
+                )
+            }
         }
         for (id, line) in lineTotals {
             sets.lines[id] = recordSet(
@@ -441,6 +443,22 @@ enum ReviewPresentationMapper {
             )
         }
         return sets
+    }
+
+    /// Whether a whole-month list would be as complete as the period's own.
+    ///
+    /// Complete coverage is proved for the reviewed interval only. A month's
+    /// list reaches the whole month, so it is offered only when the reviewed
+    /// slice of that month starts on its first day and runs to its last day
+    /// or to today, and every counted row falls inside that slice. A week
+    /// starting mid-month, or one that ended before today, says nothing about
+    /// the rest of the month, and a partial list must not pass as the month.
+    static func monthIsCovered(_ context: ReviewMonthlyBudgetContext, asOf: Day) -> Bool {
+        let month = ReviewInterval.month(context.month)
+        let slice = context.intervalInMonth
+        return slice.start == month.start
+            && (slice.end == month.end || slice.end >= asOf)
+            && context.contributions.allSatisfy { slice.contains($0.date) }
     }
 
     static func recordSet(

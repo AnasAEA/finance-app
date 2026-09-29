@@ -881,6 +881,75 @@ struct InsightsAdapterTests {
         #expect(overrun.detail.contains(set.total.formatted()))
     }
 
+    @Test("A list is found again by its identifier, from whichever review is current")
+    func recordSetsResolveByIdentifier() throws {
+        let review = try linkedMonth()
+        let ids = [review.spendingRecords?.id]
+            + review.topCategories.map { $0.records?.id }
+            + review.monthContexts.map { $0.records?.id }
+        for id in ids.compactMap({ $0 }) {
+            #expect(review.recordSet(id: id)?.id == id)
+        }
+        // A finding's list is one of those same sets, so its route resolves.
+        for finding in review.findings {
+            if case let .records(set)? = finding.destination {
+                #expect(review.recordSet(id: set.id) == set)
+            }
+        }
+        #expect(review.recordSet(id: "line:nobody") == nil)
+
+        // After a record leaves the category, the same identifier yields the
+        // category as it is now. Insights re-reads by identifier for exactly
+        // this reason: a list kept by value would still claim the old record.
+        let moved = try present(
+            document(
+                transactions: [
+                    expense("e1", day: Day(year: 2026, month: 9, day: 1), cents: 4_000),
+                    expense("e2", day: Day(year: 2026, month: 9, day: 2), cents: 2_500),
+                    expense("e3", day: Day(year: 2026, month: 9, day: 2), cents: 1_200),
+                ],
+                budgets: [groceries()],
+                monthlyCeilingCents: 5_000
+            ),
+            selection: ReviewPeriodSelection(scope: .month, offset: 0),
+            live: fullLive(),
+            categoryKeys: ["e1": "groceries"],
+            labels: ReviewPresentationMapper.Labels(ledgerTransactionIDs: ["e1", "e2", "e3"])
+        )
+        let before = try #require(review.recordSet(id: "line:groceries"))
+        let after = try #require(moved.recordSet(id: "line:groceries"))
+        #expect(before.records.map(\.id).contains("e2"))
+        #expect(!after.records.map(\.id).contains("e2"))
+        #expect(after.total == Amount(minorUnits: 4_000, currencyCode: "EUR"))
+    }
+
+    @Test("A month list is offered only when the reviewed days cover that month")
+    func monthListNeedsTheWholeMonth() throws {
+        // The week of 31 August, reviewed through 2 September. August is
+        // reviewed from the 31st only, so nothing proves the rest of August.
+        let review = try present(
+            document(
+                transactions: [
+                    expense("early", day: Day(year: 2026, month: 8, day: 21), cents: 900),
+                    expense("e1", day: Day(year: 2026, month: 8, day: 31), cents: 2_000),
+                    expense("e2", day: Day(year: 2026, month: 9, day: 1), cents: 3_000),
+                ],
+                budgets: [groceries()],
+                monthlyCeilingCents: 70_000
+            ),
+            selection: ReviewPeriodSelection(scope: .week, offset: 0),
+            live: fullLive(),
+            categoryKeys: ["e1": "groceries", "e2": "groceries"],
+            labels: ReviewPresentationMapper.Labels(ledgerTransactionIDs: ["early", "e1", "e2"])
+        )
+        #expect(review.coverage.quality == .complete)
+        let august = try #require(review.monthContexts.first { $0.id == "2026-08" })
+        #expect(august.records == nil)
+        // September is reviewed from its first day through today.
+        let september = try #require(review.monthContexts.first { $0.id == "2026-09" })
+        #expect(september.records?.records.map(\.id) == ["e2"])
+    }
+
     @Test("An incomplete period offers no record list at all")
     func incompletePeriodOffersNoRecords() throws {
         let review = try present(

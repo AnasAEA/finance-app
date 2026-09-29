@@ -361,6 +361,17 @@ struct InsightsPresentation: Hashable, Sendable {
     var remainingFindings: [ReviewFindingCard] {
         findings.filter { $0.role != .coverage && $0.id != primaryFinding?.id }
     }
+
+    /// A record set this review offers, found by identifier. Every set a
+    /// finding links to is one of these same sets, so a list opened from any
+    /// of them can be read again from the current review.
+    func recordSet(id: String) -> ReviewRecordSet? {
+        if spendingRecords?.id == id { return spendingRecords }
+        if let set = topCategories.lazy.compactMap(\.records).first(where: { $0.id == id }) {
+            return set
+        }
+        return monthContexts.lazy.compactMap(\.records).first { $0.id == id }
+    }
 }
 
 /// What the stored checkpoint history says about an ended period, as the

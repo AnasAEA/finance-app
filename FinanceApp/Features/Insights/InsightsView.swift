@@ -52,8 +52,8 @@ struct InsightsView: View {
                         .font(.subheadline)
                         .foregroundStyle(Theme.Role.supporting)
                 }
-            case let .records(set):
-                InsightsRecordsView(set: set)
+            case let .records(period, setID):
+                InsightsRecordsView(selection: period, setID: setID)
             case let .transaction(id):
                 InsightsTransactionView(transactionID: id)
             }
@@ -274,7 +274,7 @@ private struct InsightsPeriodView: View {
     @ViewBuilder
     private var spentFigure: some View {
         if let records = review.spendingRecords {
-            NavigationLink(value: InsightsRoute.records(records)) {
+            NavigationLink(value: InsightsRoute.records(selection, setID: records.id)) {
                 HStack(alignment: .lastTextBaseline, spacing: Theme.Space.sm) {
                     figure("Recorded spent", review.spending)
                     Image(systemName: "chevron.right")
@@ -305,7 +305,7 @@ private struct InsightsPeriodView: View {
                     breakdownRow(
                         title: category.name, detail: category.records.map(recordCount),
                         amount: category.amount,
-                        route: category.records.map(InsightsRoute.records)
+                        route: category.records.map { InsightsRoute.records(selection, setID: $0.id) }
                     )
                     .accessibilityIdentifier(InsightsID.category(category.id))
                 }
@@ -466,7 +466,7 @@ private struct InsightsPeriodView: View {
                         // The month's own figure above is the whole month, so
                         // its records are the whole month too.
                         if review.zeroMeansZero, let records = context.records {
-                            NavigationLink(value: InsightsRoute.records(records)) {
+                            NavigationLink(value: InsightsRoute.records(selection, setID: records.id)) {
                                 ActionLabel(title: "See \(recordCount(records)) this month")
                             }
                             .buttonStyle(FinancePressStyle())
@@ -701,7 +701,7 @@ private struct InsightsPeriodView: View {
             .buttonStyle(FinancePressStyle())
             .accessibilityIdentifier("insights.review-items")
         case let .records(set)?:
-            NavigationLink(value: InsightsRoute.records(set)) {
+            NavigationLink(value: InsightsRoute.records(selection, setID: set.id)) {
                 ActionLabel(title: set.records.count == 1
                             ? "See the transaction" : "See the \(recordCount(set))")
             }
@@ -854,9 +854,27 @@ enum InsightsOwnerRoute {
 private struct InsightsRecordsView: View {
     @Environment(FinanceStore.self) private var store
     @Environment(AppNavigation.self) private var navigation
-    let set: ReviewRecordSet
+    let selection: ReviewPeriodSelection
+    let setID: String
 
+    /// Read from the current review on every render. Opening a record and
+    /// correcting or removing it changes the review, and this list follows —
+    /// or says it no longer exists — instead of repeating what it once was.
     var body: some View {
+        if let set = store.review(selection)?.recordSet(id: setID) {
+            list(set)
+        } else {
+            ContentUnavailableView(
+                "This list has changed",
+                systemImage: "arrow.triangle.2.circlepath",
+                description: Text("The records behind this figure changed. Go back to see the period as it is now.")
+            )
+            .navigationTitle("Transactions")
+            .navigationBarTitleDisplayMode(.inline)
+        }
+    }
+
+    private func list(_ set: ReviewRecordSet) -> some View {
         // One snapshot read, so every row is resolved against the same moment.
         let ledger = Dictionary(
             store.snapshot.activity.flatMap { day in

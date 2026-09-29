@@ -56,7 +56,11 @@ enum PlanRoute: Hashable {
 enum InsightsRoute: Hashable {
     case monthVerification(ReviewPeriodSelection)
     /// The exact records behind a figure, with the amount each counted.
-    case records(ReviewRecordSet)
+    ///
+    /// Carries where the set comes from, not the set. A record opened from
+    /// the list can be corrected or removed, so the list is read again from
+    /// the store every time rather than kept as it was when it was opened.
+    case records(ReviewPeriodSelection, setID: String)
     /// One ledger transaction a finding or a breakdown row names.
     case transaction(String)
 }
