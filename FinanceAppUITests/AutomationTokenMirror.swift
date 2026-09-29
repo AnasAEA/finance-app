@@ -25,6 +25,8 @@ enum AutomationTokenMirror {
     static func limitation(_ id: String) -> String { "activity.limitation." + opaque(id) }
     static func transaction(_ id: String) -> String { "activity.transaction." + opaque(id) }
     static func evidence(_ id: String) -> String { "activity.evidence." + opaque(id) }
+    static func insightsCategory(_ id: String) -> String { "insights.category." + opaque(id) }
+    static func insightsRecord(_ id: String) -> String { "insights.record." + opaque(id) }
 
     static let evidenceSection = "activity.evidence-section"
 

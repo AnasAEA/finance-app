@@ -848,8 +848,68 @@ final class FinanceStore: FinanceProviding {
         case "foreignExpense": return hciForeignExpensePreview()
         case "projectionFailure": return hciProjectionFailurePreview()
         case "longRow": return hciLongRowPreview()
+        case "insights": return hciInsightsPreview()
         default: return hciFullPreview()
         }
+    }
+
+    /// A reviewed period with something to explain: categorized spending this
+    /// month and in the days before it, and a monthly ceiling it went past.
+    /// Bank items are resolved so the review leads with what changed rather
+    /// than with the queue. Every merchant and amount is invented for this
+    /// Debug state; the engine, not this fixture, decides which findings exist.
+    private static func hciInsightsPreview() -> FinanceStore {
+        let store = hciFullPreview()
+        let resolvedAt = store.clock()
+        // Through the review API, so items with no resolution row yet are
+        // resolved too. Pending items stay pending: the API refuses them.
+        for item in store.snapshot.syncedObservations where item.resolution == .unreviewed {
+            try? ExternalEvidenceReview.markNoEconomicEffect(
+                observationID: item.id, resolvedAt: resolvedAt, in: &store.document
+            )
+        }
+        let euro: (Int64) -> Money = { Money(minorUnits: $0, currency: .eur) }
+        let spending: [(id: String, day: Day, cents: Int64, category: String?, merchant: String)] = [
+            ("hci-ins-g1", Day(year: 2027, month: 3, day: 1), 4_250, "food", "Fresh Market"),
+            ("hci-ins-d1", Day(year: 2027, month: 3, day: 2), 1_800, "eating-out", "Noodle Bar"),
+            ("hci-ins-g2", Day(year: 2027, month: 3, day: 3), 3_820, "food", "Corner Grocer"),
+            ("hci-ins-d2", Day(year: 2027, month: 3, day: 4), 2_750, "eating-out", "Pizza Place"),
+            ("hci-ins-g3", Day(year: 2027, month: 3, day: 5), 6_410, "food", "Fresh Market"),
+            ("hci-ins-u1", Day(year: 2027, month: 3, day: 5), 999, nil, "City Parking"),
+            ("hci-ins-p0", Day(year: 2027, month: 2, day: 10), 5_500, "food", "Fresh Market"),
+            ("hci-ins-p1", Day(year: 2027, month: 2, day: 24), 4_000, "food", "Corner Grocer"),
+            ("hci-ins-p2", Day(year: 2027, month: 2, day: 25), 2_100, "eating-out", "Noodle Bar"),
+            ("hci-ins-p3", Day(year: 2027, month: 2, day: 27), 2_500, "food", "Fresh Market"),
+        ]
+        for row in spending {
+            store.document.transactions.append(Transaction(
+                id: row.id, date: row.day, kind: .expense,
+                legs: [AccountLeg(accountID: "bank-main", amount: euro(-row.cents))],
+                factivity: .observed, lifecycle: .cleared,
+                // Confirmed like a person's own entry. The default fixture
+                // provenance is unresolved evidence, which the review would
+                // rightly report as items still to review.
+                provenance: Provenance(source: "HCI-PROTOTYPE", evidenceGrade: .userConfirmed)
+            ))
+            store.transactionPresentation[row.id] = DomainMapper.TransactionPresentation(
+                categoryKey: row.category, merchant: row.merchant
+            )
+        }
+        store.document.planning.monthlyEconomicCeiling = euro(15_000)
+        store.document.planning.budgets = [
+            BudgetAllocation(
+                id: "hci-ins-groceries", name: "Groceries", spendingClass: .flexible,
+                monthlyAmount: euro(30_000), effectiveFrom: MonthKey(year: 2026, month: 12),
+                confirmation: .userConfirmed, categoryKeys: ["food"]
+            ),
+            BudgetAllocation(
+                id: "hci-ins-dining", name: "Eating out", spendingClass: .optional,
+                monthlyAmount: euro(12_000), effectiveFrom: MonthKey(year: 2026, month: 12),
+                confirmation: .userConfirmed, categoryKeys: ["eating-out"]
+            ),
+        ]
+        store.recalculate()
+        return store
     }
 
     /// Shortfall, goals, To Review queue, and bank connections together.
@@ -2981,7 +3041,8 @@ final class FinanceStore: FinanceProviding {
             ),
             actionableObservationIDs: Set(
                 currentPresentation().attention.activity.decisions.map(\.id)
-            ).subtracting(document.transactions.map(\.id))
+            ).subtracting(document.transactions.map(\.id)),
+            ledgerTransactionIDs: Set(document.transactions.map(\.id))
         )
     }
 

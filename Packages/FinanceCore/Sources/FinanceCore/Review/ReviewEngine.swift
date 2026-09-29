@@ -421,6 +421,7 @@ public enum ReviewEngine {
             uncategorized: Money(minorUnits: uncategorized, currency: currency),
             financingRepayments: totals(facts: facts, currency: currency).financingRepayments,
             drivers: drivers,
+            contributions: contributions(facts),
             ordinaryRecurring: Money(minorUnits: ordinaryRecurring, currency: currency),
             ordinaryVariable: Money(minorUnits: ordinaryVariable, currency: currency),
             exceptional: Money(minorUnits: exceptional, currency: currency),
@@ -501,8 +502,28 @@ public enum ReviewEngine {
             remaining: remaining,
             overage: overage,
             uncategorized: Money(minorUnits: uncategorized, currency: currency),
-            lines: lines
+            lines: lines,
+            contributions: contributions(monthFacts)
         )
+    }
+
+    /// The rows behind a spending total, each with the net amount already
+    /// resolved for it. This is the same `netByID` the totals sum, so the
+    /// list and the figure cannot disagree. Zero rows are left out: they move
+    /// nothing a person could reconcile.
+    static func contributions(_ facts: PeriodFacts) -> [ReviewSpendingDriver] {
+        facts.netByID
+            .compactMap { id, amount -> ReviewSpendingDriver? in
+                guard amount.minorUnits != 0, let date = facts.dateByID[id] else { return nil }
+                return ReviewSpendingDriver(
+                    id: id,
+                    date: date,
+                    amount: amount,
+                    nature: facts.natureByID[id] ?? .unresolved,
+                    budgetID: facts.budgetByID[id] ?? nil
+                )
+            }
+            .sorted { ($0.date, $0.id) < ($1.date, $1.id) }
     }
 
     // MARK: - Income

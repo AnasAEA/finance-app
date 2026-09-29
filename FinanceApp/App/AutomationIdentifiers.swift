@@ -162,6 +162,23 @@ enum InsightsID {
     static let verificationChange = "insights.verification-change"
     static let unresolved = "insights.unresolved"
 
+    /// The one action a finding offers, named by what it opens rather than
+    /// by the sentence above it.
+    static let findingRecords = "insights.finding-records"
+    static let findingTransaction = "insights.finding-transaction"
+    static let findingOwner = "insights.finding-owner"
+    /// Where an incomplete period can be worked on, when anywhere can.
+    static let fixCoverage = "insights.fix-coverage"
+
+    /// A figure or breakdown row that opens the exact records behind it, and
+    /// that list. Rows are addressed by opaque token, never by identifier.
+    static let spentRecords = "insights.spent-records"
+    static let recordsTotal = "insights.records-total"
+    static let categoryPrefix = "insights.category."
+    static let recordPrefix = "insights.record."
+    static func category(_ id: String) -> String { categoryPrefix + AutomationToken.opaque(id) }
+    static func record(_ id: String) -> String { recordPrefix + AutomationToken.opaque(id) }
+
     /// The explicit acknowledgment action on the ended-month verification
     /// detail. It names the confirmation, not a close: this build has no close.
     static let acknowledge = "insights.acknowledge"

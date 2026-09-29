@@ -466,6 +466,11 @@ public struct ReviewMonthlyBudgetContext: Hashable, Sendable {
     public let overage: Money?
     public let uncategorized: Money
     public let lines: [ReviewBudgetLine]
+    /// The records behind `monthSpending` — the whole calendar month, not
+    /// only the reviewed slice — each with the net amount it contributed.
+    /// Rows that contributed nothing are omitted, so the amounts sum exactly
+    /// to `monthSpending`.
+    public let contributions: [ReviewSpendingDriver]
 }
 
 public struct ReviewBudget: Hashable, Sendable {
@@ -479,6 +484,16 @@ public struct ReviewBudget: Hashable, Sendable {
     public let uncategorized: Money
     public let financingRepayments: Money
     public let drivers: [ReviewSpendingDriver]
+    /// Every record the review counted, each with the exact net amount it
+    /// contributed, in date order. Unlike `drivers`, refund-reduced and
+    /// negative rows are included, because they move the totals too; rows
+    /// that contributed nothing are omitted.
+    ///
+    /// The amounts sum to `periodEconomicSpending`, and the rows attributed
+    /// to a budget line inside a month's slice sum to that line's
+    /// `periodSpent`. Output plumbing only: read from the same per-row
+    /// resolution the totals use, never computed a second way.
+    public let contributions: [ReviewSpendingDriver]
     public let ordinaryRecurring: Money
     public let ordinaryVariable: Money
     public let exceptional: Money

@@ -466,6 +466,125 @@ final class ReviewEngineTests: XCTestCase {
         XCTAssertEqual(result.budget.periodEconomicSpending, euro("0.00"))
     }
 
+    // MARK: - Contributions (the records behind a figure)
+
+    // A screen that lists "the transactions behind this number" is only
+    // honest if the list adds up to the number. These pin that the exposed
+    // contributions are exactly the rows the totals summed: refunds included
+    // as negatives, account movement never, zero rows never.
+
+    private func sum(_ rows: [ReviewSpendingDriver]) -> Money {
+        Money(minorUnits: rows.reduce(Int64(0)) { $0 + $1.amount.minorUnits }, currency: .eur)
+    }
+
+    private func assertLinesReconcile(_ result: ReviewResult, file: StaticString = #filePath, line: UInt = #line) {
+        for context in result.budget.monthlyContexts {
+            XCTAssertEqual(sum(context.contributions), context.monthSpending,
+                           "month \(context.month.isoString)", file: file, line: line)
+            for budgetLine in context.lines {
+                let rows = result.budget.contributions.filter {
+                    $0.budgetID == budgetLine.id && context.intervalInMonth.contains($0.date)
+                }
+                XCTAssertEqual(sum(rows), budgetLine.periodSpent,
+                               "line \(budgetLine.id) in \(context.month.isoString)", file: file, line: line)
+            }
+        }
+    }
+
+    func testContributionsAreExactlyTheRowsBehindEveryFigure() throws {
+        let partialRefund = Transaction(
+            id: "g2-refund", date: day("2026-09-08"), kind: .refund,
+            legs: [AccountLeg(accountID: "bank", amount: euro("5.00"))],
+            linkedTransactionID: "g2",
+            factivity: .observed
+        )
+        let transfer = Transaction(
+            id: "move", date: day("2026-09-04"), kind: .transfer,
+            legs: [
+                AccountLeg(accountID: "bank", amount: euro("-120.00")),
+                AccountLeg(accountID: "wallet", amount: euro("120.00")),
+            ],
+            factivity: .observed
+        )
+        let withdrawal = Transaction(
+            id: "atm", date: day("2026-09-09"), kind: .cashWithdrawal,
+            legs: [
+                AccountLeg(accountID: "bank", amount: euro("-40.00")),
+                AccountLeg(accountID: "cash", amount: euro("40.00")),
+            ],
+            factivity: .observed
+        )
+        let doc = document(
+            transactions: [
+                expense("g1", "30.00", on: "2026-09-02"),
+                expense("g2", "20.00", on: "2026-09-05"),
+                expense("t1", "15.00", on: "2026-09-06"),
+                expense("u1", "7.00", on: "2026-09-07"),
+                partialRefund, transfer, withdrawal,
+            ],
+            budgets: [
+                budget("groceries", "200.00", categoryKeys: ["groceries"]),
+                budget("transport", "80.00", categoryKeys: ["transport"]),
+            ]
+        )
+        let result = try review(monthlyRequest(
+            doc,
+            categoryKeys: ["g1": "groceries", "g2": "groceries", "g2-refund": "groceries",
+                           "t1": "transport"]
+        ))
+
+        let contributions = result.budget.contributions
+        XCTAssertEqual(sum(contributions), result.budget.periodEconomicSpending)
+        XCTAssertEqual(result.budget.periodEconomicSpending, euro("67.00"))
+        XCTAssertEqual(contributions.first { $0.id == "g2-refund" }?.amount, euro("-5.00"))
+        XCTAssertFalse(contributions.contains { $0.id == "move" || $0.id == "atm" })
+        XCTAssertFalse(contributions.contains { $0.amount.minorUnits == 0 })
+        XCTAssertEqual(contributions.map(\.date), contributions.map(\.date).sorted())
+        assertLinesReconcile(result)
+    }
+
+    func testMonthContributionsCoverTheWholeMonthWhileThePeriodCoversTheWeek() throws {
+        let doc = document(
+            transactions: [
+                expense("aug-early", "11.00", on: "2026-08-10"),
+                expense("aug-in-week", "13.00", on: "2026-08-31"),
+                expense("sep-in-week", "17.00", on: "2026-09-02"),
+                expense("sep-late", "19.00", on: "2026-09-20"),
+            ],
+            budgets: [budget("food", "300.00", categoryKeys: ["food"])],
+            asOf: "2026-09-25"
+        )
+        let request = try weeklyRequest(
+            doc, starting: "2026-08-31", asOf: "2026-09-25",
+            coverage: liveCovering(ReviewInterval(start: day("2026-08-01"), end: day("2026-09-30"))),
+            categoryKeys: ["aug-early": "food", "aug-in-week": "food",
+                           "sep-in-week": "food", "sep-late": "food"]
+        )
+        let result = try review(request)
+
+        XCTAssertEqual(Set(result.budget.contributions.map(\.id)), ["aug-in-week", "sep-in-week"])
+        XCTAssertEqual(sum(result.budget.contributions), result.budget.periodEconomicSpending)
+        let august = try XCTUnwrap(result.budget.monthlyContexts.first { $0.month == self.august })
+        XCTAssertEqual(Set(august.contributions.map(\.id)), ["aug-early", "aug-in-week"])
+        let september = try XCTUnwrap(result.budget.monthlyContexts.first { $0.month == self.september })
+        XCTAssertEqual(Set(september.contributions.map(\.id)), ["sep-in-week", "sep-late"])
+        assertLinesReconcile(result)
+    }
+
+    func testAFullyRefundedPurchaseListsNoZeroRow() throws {
+        let purchase = expense("p", "21.99", on: "2026-09-02")
+        let refund = Transaction(
+            id: "r", date: day("2026-09-08"), kind: .refund,
+            legs: [AccountLeg(accountID: "bank", amount: euro("21.99"))],
+            linkedTransactionID: "p",
+            factivity: .observed
+        )
+        let result = try review(monthlyRequest(document(transactions: [purchase, refund])))
+        XCTAssertEqual(sum(result.budget.contributions), result.budget.periodEconomicSpending)
+        XCTAssertFalse(result.budget.contributions.contains { $0.amount.minorUnits == 0 })
+        assertLinesReconcile(result)
+    }
+
     // MARK: - History EUR valuation (Debt B)
 
     // `classifyHistory` used to reach for `originalAmount.cents` whenever the

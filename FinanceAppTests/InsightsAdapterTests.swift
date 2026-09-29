@@ -804,6 +804,245 @@ struct InsightsAdapterTests {
         #expect(review.forwardFindings.contains { $0.title.contains("floor") })
     }
 
+    // MARK: - Records behind a figure
+
+    // A screen that says "see the transactions behind this" is only honest
+    // when the list adds up to the number it was opened from. These prove the
+    // lists come from the engine's own contributions, add up exactly, and are
+    // withheld whenever they would not.
+
+    private func groceries() -> BudgetAllocation {
+        BudgetAllocation(
+            id: "groceries",
+            name: "Groceries",
+            spendingClass: .flexible,
+            monthlyAmount: Money(minorUnits: 30_000, currency: .eur),
+            effectiveFrom: MonthKey(year: 2026, month: 1),
+            confirmation: .userConfirmed,
+            categoryKeys: ["groceries"]
+        )
+    }
+
+    private func linkedMonth() throws -> InsightsPresentation {
+        try present(
+            document(
+                transactions: [
+                    expense("e1", day: Day(year: 2026, month: 9, day: 1), cents: 4_000),
+                    expense("e2", day: Day(year: 2026, month: 9, day: 2), cents: 2_500),
+                    expense("e3", day: Day(year: 2026, month: 9, day: 2), cents: 1_200),
+                ],
+                budgets: [groceries()],
+                monthlyCeilingCents: 5_000
+            ),
+            selection: ReviewPeriodSelection(scope: .month, offset: 0),
+            live: fullLive(),
+            categoryKeys: ["e1": "groceries", "e2": "groceries"],
+            labels: ReviewPresentationMapper.Labels(
+                budgetLines: ["groceries": "Groceries"],
+                ledgerTransactionIDs: ["e1", "e2", "e3"]
+            )
+        )
+    }
+
+    private func sum(_ set: ReviewRecordSet) -> Int64 {
+        set.records.reduce(0) { $0 + $1.counted.minorUnits }
+    }
+
+    @Test("Spending, each category and each month open lists that add up to them")
+    func recordListsAddUp() throws {
+        let review = try linkedMonth()
+
+        let spent = try #require(review.spendingRecords)
+        #expect(spent.total == review.spending.amount)
+        #expect(sum(spent) == spent.total.minorUnits)
+        #expect(Set(spent.records.map(\.id)) == ["e1", "e2", "e3"])
+
+        let category = try #require(review.topCategories.first { $0.id == "groceries" })
+        let categoryRecords = try #require(category.records)
+        #expect(categoryRecords.total == category.amount)
+        #expect(Set(categoryRecords.records.map(\.id)) == ["e1", "e2"])
+        #expect(categoryRecords.owner == .budget)
+
+        let month = try #require(review.monthContexts.first)
+        let monthRecords = try #require(month.records)
+        #expect(monthRecords.total == month.monthSpending)
+        #expect(sum(monthRecords) == month.monthSpending.minorUnits)
+    }
+
+    @Test("An over-budget month opens exactly the records behind the figure it quotes")
+    func budgetOverrunOpensItsMonth() throws {
+        let review = try linkedMonth()
+        let overrun = try #require(review.findings.first { $0.title.contains("over budget") })
+        guard case let .records(set)? = overrun.destination else {
+            Issue.record("expected a record list, got \(String(describing: overrun.destination))")
+            return
+        }
+        #expect(set.total == review.monthContexts.first?.monthSpending)
+        #expect(overrun.detail.contains(set.total.formatted()))
+    }
+
+    @Test("A list is found again by its identifier, from whichever review is current")
+    func recordSetsResolveByIdentifier() throws {
+        let review = try linkedMonth()
+        let ids = [review.spendingRecords?.id]
+            + review.topCategories.map { $0.records?.id }
+            + review.monthContexts.map { $0.records?.id }
+        for id in ids.compactMap({ $0 }) {
+            #expect(review.recordSet(id: id)?.id == id)
+        }
+        // A finding's list is one of those same sets, so its route resolves.
+        for finding in review.findings {
+            if case let .records(set)? = finding.destination {
+                #expect(review.recordSet(id: set.id) == set)
+            }
+        }
+        #expect(review.recordSet(id: "line:nobody") == nil)
+
+        // After a record leaves the category, the same identifier yields the
+        // category as it is now. Insights re-reads by identifier for exactly
+        // this reason: a list kept by value would still claim the old record.
+        let moved = try present(
+            document(
+                transactions: [
+                    expense("e1", day: Day(year: 2026, month: 9, day: 1), cents: 4_000),
+                    expense("e2", day: Day(year: 2026, month: 9, day: 2), cents: 2_500),
+                    expense("e3", day: Day(year: 2026, month: 9, day: 2), cents: 1_200),
+                ],
+                budgets: [groceries()],
+                monthlyCeilingCents: 5_000
+            ),
+            selection: ReviewPeriodSelection(scope: .month, offset: 0),
+            live: fullLive(),
+            categoryKeys: ["e1": "groceries"],
+            labels: ReviewPresentationMapper.Labels(ledgerTransactionIDs: ["e1", "e2", "e3"])
+        )
+        let before = try #require(review.recordSet(id: "line:groceries"))
+        let after = try #require(moved.recordSet(id: "line:groceries"))
+        #expect(before.records.map(\.id).contains("e2"))
+        #expect(!after.records.map(\.id).contains("e2"))
+        #expect(after.total == Amount(minorUnits: 4_000, currencyCode: "EUR"))
+    }
+
+    @Test("A month list is offered only when the reviewed days cover that month")
+    func monthListNeedsTheWholeMonth() throws {
+        // The week of 31 August, reviewed through 2 September. August is
+        // reviewed from the 31st only, so nothing proves the rest of August.
+        let review = try present(
+            document(
+                transactions: [
+                    expense("early", day: Day(year: 2026, month: 8, day: 21), cents: 900),
+                    expense("e1", day: Day(year: 2026, month: 8, day: 31), cents: 2_000),
+                    expense("e2", day: Day(year: 2026, month: 9, day: 1), cents: 3_000),
+                ],
+                budgets: [groceries()],
+                monthlyCeilingCents: 70_000
+            ),
+            selection: ReviewPeriodSelection(scope: .week, offset: 0),
+            live: fullLive(),
+            categoryKeys: ["e1": "groceries", "e2": "groceries"],
+            labels: ReviewPresentationMapper.Labels(ledgerTransactionIDs: ["early", "e1", "e2"])
+        )
+        #expect(review.coverage.quality == .complete)
+        let august = try #require(review.monthContexts.first { $0.id == "2026-08" })
+        #expect(august.records == nil)
+        // September is reviewed from its first day through today.
+        let september = try #require(review.monthContexts.first { $0.id == "2026-09" })
+        #expect(september.records?.records.map(\.id) == ["e2"])
+    }
+
+    @Test("An incomplete period offers no record list at all")
+    func incompletePeriodOffersNoRecords() throws {
+        let review = try present(
+            document(transactions: [
+                expense("e1", day: Day(year: 2026, month: 9, day: 1), cents: 4_000),
+            ]),
+            selection: ReviewPeriodSelection(scope: .week, offset: 0),
+            live: fullLive(through: Day(year: 2026, month: 9, day: 1)),
+            labels: ReviewPresentationMapper.Labels(ledgerTransactionIDs: ["e1"])
+        )
+        #expect(review.spendingRecords == nil)
+        #expect(review.topCategories.allSatisfy { $0.records == nil })
+        #expect(review.monthContexts.allSatisfy { $0.records == nil })
+    }
+
+    @Test("A list that would not add up to its figure is withheld")
+    func mismatchedListIsWithheld() {
+        let day = Day(year: 2026, month: 9, day: 1)
+        let euros = { (cents: Int64) in Money(minorUnits: cents, currency: .eur) }
+        let rows = [(id: "a", day: day, amount: euros(1_000)), (id: "b", day: day, amount: euros(-200))]
+        #expect(ReviewPresentationMapper.recordSet(
+            id: "x", title: "X", scope: "", total: euros(800), rows: rows, owner: nil
+        )?.records.count == 2)
+        #expect(ReviewPresentationMapper.recordSet(
+            id: "x", title: "X", scope: "", total: euros(900), rows: rows, owner: nil
+        ) == nil)
+        #expect(ReviewPresentationMapper.recordSet(
+            id: "x", title: "X", scope: "", total: euros(0),
+            rows: [(id: String, day: Day, amount: Money)](), owner: nil
+        ) == nil)
+        let mixed = [(id: "a", day: day, amount: Money(minorUnits: 800, currency: .usd))]
+        #expect(ReviewPresentationMapper.recordSet(
+            id: "x", title: "X", scope: "", total: euros(800), rows: mixed, owner: nil
+        ) == nil)
+    }
+
+    @Test("Each finding leads to its exact records, its transaction, its owner, or nowhere")
+    func findingDestinations() {
+        let day = Day(year: 2026, month: 9, day: 1)
+        let euros = { (cents: Int64) in Money(minorUnits: cents, currency: .eur) }
+        func set(_ id: String, _ cents: Int64) -> ReviewRecordSet? {
+            ReviewPresentationMapper.recordSet(
+                id: id, title: id, scope: "", total: euros(cents),
+                rows: [(id: "t-\(id)", day: day, amount: euros(cents))], owner: .budget
+            )
+        }
+        var records = ReviewPresentationMapper.RecordSets()
+        records.period = set("period", 7_700)
+        records.lines["groceries"] = set("groceries", 6_500)
+        records.months["2026-09"] = set("month", 7_700)
+        let labels = ReviewPresentationMapper.Labels(ledgerTransactionIDs: ["big"])
+        func route(_ kind: ReviewFindingKind, _ ids: [String], _ cents: Int64?) -> ReviewFindingDestination? {
+            ReviewPresentationMapper.destination(
+                kind: kind, ids: ids, quoted: cents.map(euros), labels: labels, records: records
+            )
+        }
+
+        #expect(route(.spendingMateriallyHigherThanPrior, [], 7_700) == records.period.map(ReviewFindingDestination.records))
+        #expect(route(.spendingMateriallyLowerThanPrior, [], 7_700) == records.period.map(ReviewFindingDestination.records))
+        // A figure the list does not add up to gets no list.
+        #expect(route(.spendingMateriallyHigherThanPrior, [], 7_600) == nil)
+        #expect(route(.unusuallyHighCategory, ["groceries"], 6_500)
+                == records.lines["groceries"].map(ReviewFindingDestination.records))
+        #expect(route(.unusuallyHighCategory, ["unknown-line"], 6_500) == nil)
+        #expect(route(.budgetOverrun, ["2026-09"], 7_700) == records.months["2026-09"].map(ReviewFindingDestination.records))
+        #expect(route(.majorExceptionalPurchase, ["big"], 50_000) == .transaction("big"))
+        #expect(route(.majorExceptionalPurchase, ["archive-row"], 50_000) == nil)
+        #expect(route(.goalDeadlineApproaching, ["goal"], 1_000) == .owner(.goals))
+        #expect(route(.upcomingLiquidityRisk, [], 2_000) == .owner(.fundingNeeded))
+        #expect(route(.floorWarning, [], nil) == .owner(.safetyReserve))
+        #expect(route(.supportBelowExpected, [], 30_000) == nil)
+    }
+
+    @Test("A coverage gap offers Banks & Sync only when syncing can close it")
+    func coverageActionOnlyWhenActionable() throws {
+        let complete = try linkedMonth()
+        #expect(complete.coverage.action == nil)
+
+        let missingDay = try present(
+            document(),
+            selection: ReviewPeriodSelection(scope: .week, offset: 0),
+            live: fullLive(through: Day(year: 2026, month: 9, day: 1))
+        )
+        #expect(missingDay.coverage.action == .banksAndSync)
+
+        let unknownAccount = try present(
+            document(),
+            selection: ReviewPeriodSelection(scope: .week, offset: 0),
+            live: LiveCoverageResolution(intervals: [], unknownAccountIDs: ["bank"], knownAccountIDs: [])
+        )
+        #expect(unknownAccount.coverage.action == .banksAndSync)
+    }
+
     // MARK: - Findings come only from the engine
 
     @Test("Every rendered card corresponds to an engine finding")

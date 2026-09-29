@@ -102,6 +102,44 @@ final class ProductionHCIUITests: XCTestCase {
         _ = revealIdentifier("activity.pending-section", as: .any)
     }
 
+    /// A breakdown line opens exactly the records behind it, a record opens
+    /// its ordinary detail, and Back returns through the same list to the
+    /// period that was being read.
+    func testInsightBreakdownOpensItsRecordsAndReturns() {
+        launch(variant: "insights", tab: "insights")
+        XCTAssertTrue(app.navigationBars["Insights"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.descendants(matching: .any)["insights.spent-records"].waitForExistence(timeout: 5))
+
+        revealIdentifier(AutomationTokenMirror.insightsCategory("hci-ins-groceries"), as: .any).tap()
+        XCTAssertTrue(app.navigationBars["Groceries"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.descendants(matching: .any)["insights.records-total"].exists)
+
+        revealIdentifier(AutomationTokenMirror.insightsRecord("hci-ins-g1"), as: .any).tap()
+        XCTAssertTrue(app.navigationBars["Transaction"].waitForExistence(timeout: 5))
+        app.navigationBars["Transaction"].buttons.firstMatch.tap()
+        XCTAssertTrue(app.navigationBars["Groceries"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.descendants(matching: .any)["insights.records-total"].exists)
+
+        app.navigationBars["Groceries"].buttons.firstMatch.tap()
+        XCTAssertTrue(app.navigationBars["Insights"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.descendants(matching: .any)["insights.spent-records"].exists)
+    }
+
+    /// A finding that quotes a figure offers that figure's records, not a
+    /// generic list, and a plan finding hands off to the screen that owns it.
+    func testInsightFindingOpensTheRecordsItQuotes() {
+        launch(variant: "insights", tab: "insights")
+        XCTAssertTrue(app.navigationBars["Insights"].waitForExistence(timeout: 8))
+        let link = app.descendants(matching: .any)
+            .matching(identifier: "insights.finding-records").firstMatch
+        XCTAssertTrue(link.waitForExistence(timeout: 5))
+        link.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["insights.records-total"].waitForExistence(timeout: 5))
+        let budget = revealIdentifier("Open budget", as: .button)
+        budget.tap()
+        XCTAssertTrue(app.navigationBars["Budget"].waitForExistence(timeout: 8))
+    }
+
     func testHomeReviewMonthOpensCanonicalVerificationDetail() {
         launch(variant: "positive")
         XCTAssertTrue(app.navigationBars["Home"].waitForExistence(timeout: 8))

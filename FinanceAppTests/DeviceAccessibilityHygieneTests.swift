@@ -163,6 +163,8 @@ struct DeviceAccessibilityHygieneTests {
             InsightsID.scopeWeek, InsightsID.scopeMonth, InsightsID.showDetails,
             InsightsID.verification, InsightsID.verificationChange, InsightsID.unresolved,
             InsightsID.acknowledge, InsightsID.acknowledgmentState,
+            InsightsID.findingRecords, InsightsID.findingTransaction, InsightsID.findingOwner,
+            InsightsID.fixCoverage, InsightsID.spentRecords, InsightsID.recordsTotal,
             RouteID.insightsScope, RouteID.insightsPrevious, RouteID.insightsNext,
             RouteID.insightsSummary, RouteID.insightsCoverage,
             RouteID.homeSafeToUse, RouteID.homeAttention, RouteID.homeCash,
