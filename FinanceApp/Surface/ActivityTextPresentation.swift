@@ -51,7 +51,7 @@ enum ActivityTextPresentation {
             of: #/PRLV SEPA (.+?) (?:ECH|ID EMETTEUR|MDT|REF|LIB)\/.*/#
         ) else { return nil }
         let creditor = match.1.trimmingCharacters(in: .whitespaces)
-        return creditor.isEmpty || creditor.contains("/") ? nil : creditor
+        return creditor.isEmpty ? nil : creditor
     }
 
     /// The merchant inside a French card-payment or card-refund statement

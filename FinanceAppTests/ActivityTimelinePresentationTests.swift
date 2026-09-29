@@ -75,6 +75,10 @@ struct ActivityTimelinePresentationTests {
         // Any one of the bank's markers ends the creditor's name.
         #expect(ActivityTextPresentation.directDebitCreditor(in: "PRLV SEPA SYNTHETIC GYM MDT/SYN0002")
                 == "SYNTHETIC GYM")
+        // The first space-delimited marker bounds the name, so punctuation
+        // inside the creditor's own name is kept.
+        #expect(ActivityTextPresentation.directDebitCreditor(in: "PRLV SEPA SYNTHETIC/POWER ECH/010126")
+                == "SYNTHETIC/POWER")
         // Without a marker there is no shape to trust, so the words stay.
         #expect(ActivityTextPresentation.directDebitCreditor(in: "PRLV SEPA SYNTHETIC GYM") == nil)
         #expect(ActivityTextPresentation.directDebitCreditor(in: "PRLV SEPA ECH/010126") == nil)
