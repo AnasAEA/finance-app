@@ -302,7 +302,8 @@ struct HistoryBrowserView: View {
                     Text("Clear all")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(Theme.Role.accent)
-                        .frame(minHeight: Theme.Metric.minimumTarget)
+                        .frame(minWidth: Theme.Metric.minimumTarget,
+                               minHeight: Theme.Metric.minimumTarget)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -782,7 +783,7 @@ private struct FilterChip: View {
             .padding(.vertical, 6)
             .background(Theme.Role.accent.opacity(0.12), in: Capsule())
             .foregroundStyle(Theme.Role.accent)
-            .frame(minHeight: Theme.Metric.minimumTarget)
+            .frame(minWidth: Theme.Metric.minimumTarget, minHeight: Theme.Metric.minimumTarget)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
