@@ -36,9 +36,18 @@ Deliberately not done, and why:
   presentation change.
 - **Evidence status** remains under More filters. Ledger rows carry no provider
   status, so promoting it would silently hide every recorded transaction.
-- **Physical-device check and a manual VoiceOver walkthrough** of the final build
-  have not been run. The policy in `.agent/DEVICE_POLICY.md` (over-install,
-  WAL-aware store copies, `NO_BUSINESS_MUTATION`) applies when the owner asks for it.
+- **Manual VoiceOver listening pass** has not been run. Row and control labels were
+  checked through the accessibility tree on the simulator and on the phone; the
+  tooling cannot capture VoiceOver audio.
+
+Physical check, 29 September: the signed Release build of `ab97299` was
+over-installed on the owner's iPhone and browsed read-only (Insights this month
+and last week, a category's record list, a transaction and back, Activity rows).
+A WAL-aware store copy before installation and after navigation compared as
+`NO_BUSINESS_MUTATION`. It found one real-data problem the synthetic fixtures
+could not: ledger rows created from card evidence were titled with the bank's
+full statement line. List rows now show the merchant (#29); detail keeps the
+statement verbatim.
 
 ## What a person should be able to do
 
