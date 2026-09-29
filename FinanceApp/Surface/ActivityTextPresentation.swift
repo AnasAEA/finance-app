@@ -14,6 +14,37 @@ enum ActivityTextPresentation {
             return token.localizedCapitalized
         }.joined(separator: " ")
     }
+
+    /// A row title for a list. A card payment or card refund written as the
+    /// bank's statement line ("FACTURE CARTE DU 010126 CAFE DU PORT CARTE
+    /// 1234XXXXXXXX5678") is named by its merchant: the row already shows the
+    /// date, and the masked card number is detail. Anything else keeps its
+    /// words and only gets readable casing.
+    ///
+    /// Display only. Detail screens keep the descriptor verbatim, search reads
+    /// the original text, and the shape of a descriptor never decides what a
+    /// record is.
+    static func listTitle(_ title: String) -> String {
+        readableTitle(cardMerchant(in: title) ?? title)
+    }
+
+    /// The same for a ledger row, which may carry a name a person typed:
+    /// only an exact card statement line is rewritten, so "SNCF" entered by
+    /// hand keeps its spelling instead of becoming "Sncf".
+    static func ledgerListTitle(_ title: String) -> String {
+        cardMerchant(in: title).map(readableTitle) ?? title
+    }
+
+    /// The merchant inside a French card-payment or card-refund statement
+    /// line, or nil unless the text is exactly that shape.
+    static func cardMerchant(in title: String) -> String? {
+        let line = title.trimmingCharacters(in: .whitespaces)
+        guard let match = line.wholeMatch(
+            of: #/(?:FACTURE|AVOIR) CARTE DU [0-9]{6} (.+?) CARTE [0-9X*]{8,}/#
+        ) else { return nil }
+        let merchant = match.1.trimmingCharacters(in: .whitespaces)
+        return merchant.isEmpty ? nil : merchant
+    }
 }
 
 struct ActivityTimelineGroup<Row: Identifiable>: Identifiable {

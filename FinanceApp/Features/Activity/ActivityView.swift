@@ -329,12 +329,12 @@ struct NeedsReviewView: View {
         VStack(alignment: .leading, spacing: Theme.Space.sm) {
             ViewThatFits(in: .horizontal) {
                 HStack(alignment: .firstTextBaseline, spacing: Theme.Space.md) {
-                    Text(ActivityTextPresentation.readableTitle(item.title)).font(Theme.TypeStyle.body.weight(.semibold)).fixedSize(horizontal: false, vertical: true)
+                    Text(ActivityTextPresentation.listTitle(item.title)).font(Theme.TypeStyle.body.weight(.semibold)).fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: Theme.Space.sm)
                     MoneyText(amount: item.amount, size: 18, weight: .semibold, showsSign: true)
                 }
                 VStack(alignment: .leading, spacing: Theme.Space.xs) {
-                    Text(ActivityTextPresentation.readableTitle(item.title)).font(Theme.TypeStyle.body.weight(.semibold))
+                    Text(ActivityTextPresentation.listTitle(item.title)).font(Theme.TypeStyle.body.weight(.semibold))
                     MoneyText(amount: item.amount, size: 18, weight: .semibold, showsSign: true)
                 }
             }

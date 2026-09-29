@@ -686,8 +686,8 @@ private struct UnifiedHistoryRowView: View {
             let looksLikeStatementDescriptor = letters.count >= 4
                 && merchant == merchant.uppercased()
             return looksLikeStatementDescriptor ? row.displayDescription : merchant
-        case let .live(row): return row.row.title
-        case let .bank(row): return ActivityTextPresentation.readableTitle(row.title)
+        case let .live(row): return ActivityTextPresentation.ledgerListTitle(row.row.title)
+        case let .bank(row): return ActivityTextPresentation.listTitle(row.title)
         }
     }
 
