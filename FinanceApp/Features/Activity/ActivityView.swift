@@ -181,6 +181,7 @@ struct NeedsReviewView: View {
                             .font(Theme.TypeStyle.action)
                             .accessibilityIdentifier("activity.review.show-all")
                     }
+                    .listRowBackground(Theme.Surface.background)
                 }
             }
             if focusedIDs == nil && !sections.decisions.isEmpty {
@@ -271,6 +272,7 @@ struct NeedsReviewView: View {
                 Section {
                     ForEach(sections.pending) { item in
                         PendingObservationRow(item: item)
+                            .listRowBackground(Theme.Surface.background)
                     }
                 } header: {
                     ActivitySectionHeading(title: "Pending", count: sections.pending.count,
@@ -299,6 +301,7 @@ struct NeedsReviewView: View {
                         .padding(.vertical, 3)
                         .accessibilityElement(children: .combine)
                         .accessibilityIdentifier(ActivityID.limitation(item.id))
+                        .listRowBackground(Theme.Surface.background)
                     }
                 } header: {
                     ActivitySectionHeading(title: "Known Limitations", count: sections.limitations.count)
@@ -412,7 +415,7 @@ private struct PendingObservationRow: View {
 
     private var labels: some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text(item.title)
+            Text(ActivityTextPresentation.listTitle(item.title))
                 .font(.body.weight(.medium))
                 .fixedSize(horizontal: false, vertical: true)
             Text(item.subtitle)

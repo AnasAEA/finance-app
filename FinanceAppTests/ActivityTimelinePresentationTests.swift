@@ -63,6 +63,27 @@ struct ActivityTimelinePresentationTests {
         }
     }
 
+    @Test("A SEPA direct debit line is listed by its creditor")
+    func directDebitsListTheirCreditor() {
+        let debit = "PRLV SEPA SYNTHETIC POWER S.A. ECH/010126 ID EMETTEUR/FR00ZZZ000000 "
+            + "MDT/SYN0001 REF/0000000000 LIB/SYNTHETIC INVOICE 01"
+        #expect(ActivityTextPresentation.directDebitCreditor(in: debit) == "SYNTHETIC POWER S.A.")
+        #expect(ActivityTextPresentation.listTitle(debit)
+                == ActivityTextPresentation.readableTitle("SYNTHETIC POWER S.A."))
+        #expect(!ActivityTextPresentation.listTitle(debit).contains("MDT/"))
+        #expect(ActivityTextPresentation.ledgerListTitle(debit) == ActivityTextPresentation.listTitle(debit))
+        // Any one of the bank's markers ends the creditor's name.
+        #expect(ActivityTextPresentation.directDebitCreditor(in: "PRLV SEPA SYNTHETIC GYM MDT/SYN0002")
+                == "SYNTHETIC GYM")
+        // The first space-delimited marker bounds the name, so punctuation
+        // inside the creditor's own name is kept.
+        #expect(ActivityTextPresentation.directDebitCreditor(in: "PRLV SEPA SYNTHETIC/POWER ECH/010126")
+                == "SYNTHETIC/POWER")
+        // Without a marker there is no shape to trust, so the words stay.
+        #expect(ActivityTextPresentation.directDebitCreditor(in: "PRLV SEPA SYNTHETIC GYM") == nil)
+        #expect(ActivityTextPresentation.directDebitCreditor(in: "PRLV SEPA ECH/010126") == nil)
+    }
+
     @Test("A name typed into the ledger keeps its exact spelling")
     func typedLedgerNamesAreUntouched() {
         #expect(ActivityTextPresentation.ledgerListTitle("SNCF") == "SNCF")
