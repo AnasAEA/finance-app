@@ -4,7 +4,41 @@
 
 The app is functionally much stronger than its daily experience. Keep the four financial questions (Home, Activity, Plan, Insights), but redesign **Activity as the place to find and resolve a record** and **Insights as the place to understand a period and act on the explanation**. Do not solve this by adding more cards, charts, or color. The current presentation spends too much space repeating caveats and too little connecting an answer to its evidence.
 
-This is an audit and implementation plan, not a claim that the redesign has shipped. Evidence is current `main` at `881b0a1`, source review, existing tests, and fresh Debug-preview iPhone simulator captures of Activity (light/dark) and Insights (`full` and `positive`). The Debug preview is seeded from the local development fixture; screenshots remained local and were not committed. No live phone data was used. Prior [visual acceptance](visual-acceptance.md) acknowledged repeated Insights prose and crowded Activity chrome; the fresh review finds those issues material to product value.
+This began as an audit and implementation plan; the status section below records what has since shipped and what was deliberately left. Evidence is current `main` at `881b0a1`, source review, existing tests, and fresh Debug-preview iPhone simulator captures of Activity (light/dark) and Insights (`full` and `positive`). The Debug preview is seeded from the local development fixture; screenshots remained local and were not committed. No live phone data was used. Prior [visual acceptance](visual-acceptance.md) acknowledged repeated Insights prose and crowded Activity chrome; the fresh review finds those issues material to product value.
+
+## Implementation status — 29 September 2026
+
+The plan below has been carried out in reviewable slices. Each merged only after
+the local gate (`Scripts/check`, `Scripts/test-app`, Release privacy gate,
+repository safety), a synthetic simulator review in light and dark, and the four
+required checks on the exact PR head.
+
+| Finding | Status | Where |
+| --- | --- | --- |
+| P0 Act on an Insight | Shipped. Unresolved bank items open exactly their decisions. Recorded spent, each category, each budget month and any finding that quotes one of those figures open the review's own record list for it. Those lists come from the engine's contributions and are withheld unless their rows add up to the figure. A list is read again from the current review each time it is shown, and a whole-month list appears only when the reviewed days cover that month. Large one-offs and settled expected payments open their transaction. Goal, cash-risk and floor findings open the Plan screen that owns them. A coverage gap that syncing can close offers Banks & Sync. | #22, #27 |
+| P0 Repeated coverage copy | Shipped. One conclusion leads, coverage is stated once, and unknown totals are hidden rather than shown as zero. | #23 |
+| P0 Row collision on narrow screens | Shipped. Rows reflow on actual width, and a Debug `longRow` variant stresses it. | #22 |
+| P1 Activity chrome | Shipped. Search opens from the toolbar. Sort and filters share one row, and rare filters sit behind More filters. Each applied filter is a removable chip, and filters survive a switch to To Review and back. | #22, #28 |
+| P1 One timeline, clearer semantics | Shipped. Rows state their record kind and state visually. VoiceOver hears one sentence (name, amount, kind and state, account) plus a hint naming the screen the row opens. | #22, #28 |
+| P1 Muted hierarchy | Shipped. `Theme.Role.supporting` (at least 6.2:1 on every app surface in light and dark, darker under Increase Contrast) replaces system secondary and tertiary text across the app. The To Review rules explanation moved into its row. | #24, #26 |
+| P1 Tests for comprehension | Shipped. UI journeys: Insight → review items → back; Insight category → records → transaction → back; finding → records → Budget; filter chip survives a section switch and removes only itself; the row speaks its kind. Engine tests prove the contributions add up. | #22, #27, #28 |
+| P2 Details that change no decision | Shipped. Where it went is on the page whenever figures are known. Goals are no longer repeated (Plan owns them). Looking ahead states the first risk once and links to Funding Needed and Upcoming instead of copying current cash and the upcoming list. | #27 |
+| P2 Date language | Shipped. Insights and the few raw `YYYY-MM-DD` dates now use the same locale-aware formatting as the rest of the app, including localized spans and the locale's own calendar. | #25 |
+
+Touch targets raised to 44 points: Insights period arrows, Activity section tabs, filter chips, Clear all.
+
+Deliberately not done, and why:
+
+- **Support below expected** stays informational: the engine names no income
+  records for that comparison, so no exact list exists.
+- **Archive-era periods** are not reviewed, because the store does not yet feed
+  archive history to the engine. That is a separate engine phase, not a
+  presentation change.
+- **Evidence status** remains under More filters. Ledger rows carry no provider
+  status, so promoting it would silently hide every recorded transaction.
+- **Physical-device check and a manual VoiceOver walkthrough** of the final build
+  have not been run. The policy in `.agent/DEVICE_POLICY.md` (over-install,
+  WAL-aware store copies, `NO_BUSINESS_MUTATION`) applies when the owner asks for it.
 
 ## What a person should be able to do
 
