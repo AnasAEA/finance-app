@@ -15,24 +15,43 @@ enum ActivityTextPresentation {
         }.joined(separator: " ")
     }
 
-    /// A row title for a list. A card payment or card refund written as the
-    /// bank's statement line ("FACTURE CARTE DU 010126 CAFE DU PORT CARTE
-    /// 1234XXXXXXXX5678") is named by its merchant: the row already shows the
-    /// date, and the masked card number is detail. Anything else keeps its
+    /// A row title for a list. A card payment or refund written as the bank's
+    /// statement line ("FACTURE CARTE DU 010126 CAFE DU PORT CARTE
+    /// 1234XXXXXXXX5678") is named by its merchant, and a SEPA direct debit
+    /// ("PRLV SEPA SYNTHETIC POWER ECH/010126 ID EMETTEUR/… MDT/… REF/…
+    /// LIB/…") by its creditor: the row already shows the date, and card
+    /// numbers, mandates and references are detail. Anything else keeps its
     /// words and only gets readable casing.
     ///
     /// Display only. Detail screens keep the descriptor verbatim, search reads
     /// the original text, and the shape of a descriptor never decides what a
     /// record is.
     static func listTitle(_ title: String) -> String {
-        readableTitle(cardMerchant(in: title) ?? title)
+        readableTitle(statementPayee(in: title) ?? title)
     }
 
     /// The same for a ledger row, which may carry a name a person typed:
-    /// only an exact card statement line is rewritten, so "SNCF" entered by
-    /// hand keeps its spelling instead of becoming "Sncf".
+    /// only an exact statement line is rewritten, so "SNCF" entered by hand
+    /// keeps its spelling instead of becoming "Sncf".
     static func ledgerListTitle(_ title: String) -> String {
-        cardMerchant(in: title).map(readableTitle) ?? title
+        statementPayee(in: title).map(readableTitle) ?? title
+    }
+
+    /// Who a recognised statement line was paid to, or nil.
+    static func statementPayee(in title: String) -> String? {
+        cardMerchant(in: title) ?? directDebitCreditor(in: title)
+    }
+
+    /// The creditor of a SEPA direct debit statement line: the words between
+    /// "PRLV SEPA" and the first of the bank's own markers (ECH/, ID
+    /// EMETTEUR/, MDT/, REF/, LIB/). Nil unless the line has that shape.
+    static func directDebitCreditor(in title: String) -> String? {
+        let line = title.trimmingCharacters(in: .whitespaces)
+        guard let match = line.wholeMatch(
+            of: #/PRLV SEPA (.+?) (?:ECH|ID EMETTEUR|MDT|REF|LIB)\/.*/#
+        ) else { return nil }
+        let creditor = match.1.trimmingCharacters(in: .whitespaces)
+        return creditor.isEmpty || creditor.contains("/") ? nil : creditor
     }
 
     /// The merchant inside a French card-payment or card-refund statement

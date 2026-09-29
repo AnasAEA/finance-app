@@ -115,7 +115,12 @@ struct HistoryBrowserView: View {
             }
 
             if !coverageGaps.isEmpty {
+                // On the page, like every other row here. With the default
+                // row background it read as a detached white band.
                 SourceGapNotice(gaps: coverageGaps)
+                    .listRowBackground(Theme.Surface.background)
+                    .listRowInsets(EdgeInsets(top: Theme.Space.sm, leading: Theme.Space.xl,
+                                             bottom: Theme.Space.sm, trailing: Theme.Space.xl))
             }
 
             if !pending.isEmpty {
