@@ -46,8 +46,10 @@ and last week, a category's record list, a transaction and back, Activity rows).
 A WAL-aware store copy before installation and after navigation compared as
 `NO_BUSINESS_MUTATION`. It found one real-data problem the synthetic fixtures
 could not: ledger rows created from card evidence were titled with the bank's
-full statement line. List rows now show the merchant (#29); detail keeps the
-statement verbatim.
+full statement line. List rows now show the merchant (#29). A second check of
+`72e661a` (again `NO_BUSINESS_MUTATION`) found the same for SEPA direct debits and
+a coverage notice drawn as a white band; debits now show their creditor and those
+rows sit on the page (#30). Detail keeps statement text verbatim.
 
 ## What a person should be able to do
 
