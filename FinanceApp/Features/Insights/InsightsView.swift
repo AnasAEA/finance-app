@@ -953,7 +953,7 @@ private struct InsightsRecordRow: View {
         HStack(alignment: .firstTextBaseline, spacing: Theme.Space.md) {
             layout {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(row?.title ?? "Transaction unavailable")
+                    Text(row.map { ActivityTextPresentation.ledgerListTitle($0.title) } ?? "Transaction unavailable")
                         .font(Theme.TypeStyle.body.weight(.semibold))
                         .fixedSize(horizontal: false, vertical: true)
                     Text(detail)

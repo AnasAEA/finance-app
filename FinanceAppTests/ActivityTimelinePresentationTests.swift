@@ -35,4 +35,37 @@ struct ActivityTimelinePresentationTests {
         #expect(ActivityTextPresentation.readableTitle("Google Payment Ireland") == "Google Payment Ireland")
         #expect(ActivityTextPresentation.readableTitle("ATM") == "ATM")
     }
+
+    // Every descriptor below is invented: no real merchant, card or date.
+
+    @Test("A card statement line is listed by its merchant")
+    func cardLinesListTheirMerchant() {
+        let payment = "FACTURE CARTE DU 010126 SYNTHETIC CAFE DU PORT CARTE 1234XXXXXXXX5678"
+        #expect(ActivityTextPresentation.cardMerchant(in: payment) == "SYNTHETIC CAFE DU PORT")
+        #expect(ActivityTextPresentation.listTitle(payment) == "Synthetic Cafe Du Port")
+        #expect(ActivityTextPresentation.ledgerListTitle(payment) == "Synthetic Cafe Du Port")
+
+        let refund = "AVOIR CARTE DU 020126 SYNTHETIC SHOP CARTE 1234XXXXXXXX5678"
+        #expect(ActivityTextPresentation.listTitle(refund) == "Synthetic Shop")
+    }
+
+    @Test("Anything not exactly a card statement line keeps its words")
+    func otherTitlesKeepTheirWords() {
+        for title in [
+            "PRLV SEPA SYNTHETIC MOBILE",                              // a direct debit
+            "FACTURE CARTE DU 010126 CARTE 1234XXXXXXXX5678",          // no merchant
+            "FACTURE CARTE DU 0101 SYNTHETIC CAFE CARTE 1234XXXXXXXX5678", // short date
+            "Synthetic Cafe",
+        ] {
+            #expect(ActivityTextPresentation.cardMerchant(in: title) == nil, "\(title)")
+            #expect(ActivityTextPresentation.listTitle(title) == ActivityTextPresentation.readableTitle(title))
+            #expect(ActivityTextPresentation.ledgerListTitle(title) == title)
+        }
+    }
+
+    @Test("A name typed into the ledger keeps its exact spelling")
+    func typedLedgerNamesAreUntouched() {
+        #expect(ActivityTextPresentation.ledgerListTitle("SNCF") == "SNCF")
+        #expect(ActivityTextPresentation.ledgerListTitle("RENT FOR MARCH") == "RENT FOR MARCH")
+    }
 }
