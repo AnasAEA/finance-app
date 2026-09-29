@@ -10,6 +10,9 @@ struct ActivityView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var showsSearch = false
+    /// The Transactions filters live here rather than in the list, so a trip
+    /// to To Review — including one an Insight starts — does not discard them.
+    @State private var historyQuery = HistoryQuery()
 
     var body: some View {
         @Bindable var navigation = navigation
@@ -24,6 +27,10 @@ struct ActivityView: View {
                 ForEach(ActivitySection.allCases) { section in
                     Button {
                         showsSearch = false
+                        // Search closes with the section; filters stay. The
+                        // list may be gone before it can clear its own text,
+                        // so a hidden search is never kept for the return.
+                        historyQuery.searchText = ""
                         navigation.activityReviewIDs = nil
                         navigation.activitySection = section
                     } label: {
@@ -37,7 +44,9 @@ struct ActivityView: View {
                                 }
                                 if dynamicTypeSize.isAccessibilitySize { Spacer(minLength: 8) }
                             }
-                            .frame(minHeight: 32)
+                            // With the spacing and the underline, 36 makes
+                            // the whole tab at least a 44-point target.
+                            .frame(minHeight: 36)
                             Rectangle().fill(navigation.activitySection == section
                                              ? Theme.Role.accent : Color.clear).frame(height: 2)
                         }
@@ -61,7 +70,8 @@ struct ActivityView: View {
 
             switch navigation.activitySection {
             case .transactions:
-                HistoryBrowserView(snapshot: presentation.snapshot, showsSearch: $showsSearch)
+                HistoryBrowserView(snapshot: presentation.snapshot, showsSearch: $showsSearch,
+                                   query: $historyQuery)
             case .toReview:
                 NeedsReviewView.content(sections: sections, observations: presentation.snapshot.syncedObservations,
                                         reduceMotion: reduceMotion,
